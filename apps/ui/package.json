@@ -24,7 +24,7 @@
     "@xterm/xterm": "^5.5.0",
     "ahooks": "^3.8.0",
     "antd": "^6.3.4",
-    "axios": "^1.15.0",
+    "axios": "^1.16.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.11",

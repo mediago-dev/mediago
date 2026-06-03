@@ -38,7 +38,7 @@
     "vitest": "^4.0.1"
   },
   "dependencies": {
-    "axios": "^1.15.0",
+    "axios": "^1.16.0",
     "eventsource": "^4.0.0",
     "mitt": "^3.0.1"
   }
