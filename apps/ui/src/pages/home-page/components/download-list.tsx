@@ -1,201 +1,164 @@
-import type { DownloadFilter, DownloadTask } from "@mediago/shared-common";
-import { useMemoizedFn } from "ahooks";
-import { App, Empty } from "antd";
-import { produce } from "immer";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import DownloadForm, { type DownloadFormRef } from "@/components/download-form";
-import Loading from "@/components/loading";
-import { EDIT_DOWNLOAD } from "@/const";
-import { usePlatform } from "@/hooks/use-platform";
 import {
+  DownloadFilter,
+  type DownloadTaskWithFile,
+} from "@mediago/shared-common";
+import { useMemoizedFn } from "ahooks";
+import { App } from "antd";
+import { Download } from "lucide-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  deleteDownloadTask,
   startDownload,
   stopDownload,
-  deleteDownloadTask,
 } from "@/api/download-task";
+import { MgButton } from "@/components/mg";
+import { TaskContextMenu } from "@/components/task-context-menu";
 import { useTasks } from "@/hooks/use-tasks";
-import { cn, tdApp } from "@/utils";
+import { useUiStore } from "@/store/ui";
 import { DownloadTaskItem } from "./download-item";
+import { DownloadLogPanel } from "./download-log-panel";
 import { ListHeader } from "./list-header";
 
 interface Props {
   filter: DownloadFilter;
 }
 
+function Skeletons() {
+  return (
+    <div className="flex flex-col gap-3">
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="flex h-24 items-center gap-4 rounded-[16px] border border-mg-line bg-mg-surface p-[18px] [animation:mgpulse_1.4s_ease-in-out_infinite]"
+        >
+          <div className="size-[54px] shrink-0 rounded-[13px] bg-mg-surface2" />
+          <div className="flex flex-1 flex-col gap-2.5">
+            <div className="h-[13px] w-2/5 rounded-md bg-mg-surface2" />
+            <div className="h-2.5 w-3/5 rounded-md bg-mg-surface2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function DownloadTaskList({ filter }: Props) {
-  const [selected, setSelected] = useState<number[]>([]);
-  const { contextMenu } = usePlatform();
-  const { message } = App.useApp();
   const { t } = useTranslation();
-  const editFormRef = useRef<DownloadFormRef>(null);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const downloadListId = useId();
-  const { mutate, isLoading, data } = useTasks(filter);
+  const { message } = App.useApp();
+  const { data, isLoading, mutate } = useTasks(filter);
+  const openEditDownload = useUiStore((s) => s.openEditDownload);
+  const openNewDownload = useUiStore((s) => s.openNewDownload);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [logOpen, setLogOpen] = useState(false);
 
-  useEffect(() => {
-    return () => {
-      // Clean up any pending refresh timers
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-        refreshTimeoutRef.current = null;
-      }
-    };
-  }, [mutate]);
+  const isList = filter === DownloadFilter.list;
+  const anySelected = selected.length > 0;
 
-  const handleItemSelectChange = useMemoizedFn((id: number) => {
-    setSelected(
-      produce((draft) => {
-        const index = draft.indexOf(id);
-        if (index !== -1) {
-          draft.splice(index, 1);
-        } else {
-          draft.push(id);
-        }
-      }),
-    );
-  });
+  const toggleSelect = useMemoizedFn((id: number) =>
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    ),
+  );
+  const addSelect = useMemoizedFn((id: number) =>
+    setSelected((prev) => (prev.includes(id) ? prev : [...prev, id])),
+  );
+  const selectAll = useMemoizedFn(() =>
+    setSelected((prev) => (prev.length ? [] : data.map((x) => x.id))),
+  );
 
-  const handleSelectAll = useMemoizedFn(() => {
-    setSelected(
-      produce((draft) => {
-        if (draft.length) {
-          draft.splice(0, draft.length);
-        } else {
-          draft.push(...data.map((task) => task.id));
-        }
-      }),
-    );
-  });
-
-  const listChecked = useMemo(() => {
-    if (selected.length === 0) {
-      return false;
-    }
-    if (selected.length === data.length) {
-      return true;
-    }
-    return "indeterminate";
-  }, [selected, data.length]);
-
-  const onStartDownload = useMemoizedFn(async (id: number) => {
+  const onStart = useMemoizedFn(async (id: number) => {
     await startDownload(id);
-
-    message.success(t("addTaskSuccess"));
+    message.success(t("downloadStarted"));
     mutate();
   });
-
-  const onStopDownload = useMemoizedFn(async (id: number) => {
+  const onStop = useMemoizedFn(async (id: number) => {
     await stopDownload(id);
-
-    setTimeout(() => {
-      mutate();
-    }, 500);
+    setTimeout(() => mutate(), 500);
   });
-
-  const handleFormConfirm = useMemoizedFn(async () => {
+  const onEdit = useMemoizedFn((task: DownloadTaskWithFile) =>
+    openEditDownload(task),
+  );
+  const onDelete = useMemoizedFn(async (id: number) => {
+    await deleteDownloadTask(id);
     mutate();
   });
 
-  const handleContext = useMemoizedFn(async (id: number) => {
-    const action = await contextMenu.show([
-      { key: "select", label: t("select") },
-      { key: "download", label: t("download") },
-      { key: "refresh", label: t("refresh") },
-      { key: "separator", label: "", type: "separator" },
-      { key: "delete", label: t("delete") },
-    ]);
-    if (action === "select") {
-      setSelected((keys) => [...keys, id]);
-    } else if (action === "download") {
-      onStartDownload(id);
-    } else if (action === "refresh") {
-      mutate();
-    } else if (action === "delete") {
-      await deleteDownloadTask(id);
-      mutate();
-    }
-  });
-
-  const onDeleteItems = useMemoizedFn(async (ids: number[]) => {
-    await Promise.allSettled(ids.map((id) => deleteDownloadTask(Number(id))));
+  const onBatchStart = useMemoizedFn(async () => {
+    await Promise.allSettled(selected.map((id) => startDownload(id)));
+    message.success(t("downloadStarted"));
     setSelected([]);
     mutate();
   });
-
-  const onDownloadItems = useMemoizedFn(async (ids: number[]) => {
-    await Promise.allSettled(ids.map((id) => startDownload(Number(id))));
-
-    message.success(t("addTaskSuccess"));
+  const onBatchDelete = useMemoizedFn(async () => {
+    await Promise.allSettled(selected.map((id) => deleteDownloadTask(id)));
+    setSelected([]);
     mutate();
-    setSelected([]);
-  });
-
-  const onCancelItems = useMemoizedFn(async () => {
-    setSelected([]);
-  });
-
-  const handleShowDownloadForm = useMemoizedFn((task: DownloadTask) => {
-    tdApp.onEvent(EDIT_DOWNLOAD);
-    const { id, name, url, headers, type, folder } = task;
-    const values = {
-      batch: false,
-      id,
-      name,
-      url,
-      headers,
-      type,
-      folder,
-    };
-    editFormRef.current?.openModal(values);
   });
 
   return (
-    <div className="flex flex-col flex-1 overflow-auto">
+    <div className="flex flex-1 flex-col">
       <ListHeader
-        selected={selected}
-        checked={listChecked}
-        onSelectAll={handleSelectAll}
-        onDeleteItems={onDeleteItems}
-        onDownloadItems={onDownloadItems}
-        onCancelItems={onCancelItems}
+        anySelected={anySelected}
+        selectedCount={selected.length}
+        totalCount={data.length}
+        onSelectAll={selectAll}
+        onBatchStart={onBatchStart}
+        onBatchDelete={onBatchDelete}
+        onToggleLog={() => setLogOpen((v) => !v)}
+        logOpen={logOpen}
         filter={filter}
       />
-      <div
-        className={cn(
-          "flex w-full flex-1 shrink-0 flex-col gap-3 overflow-auto",
-        )}
-      >
-        {isLoading && <Loading />}
-        {data.length === 0 && !isLoading && (
-          <div className="flex h-full flex-1 flex-row items-center justify-center rounded-lg bg-white dark:bg-[#1F2024]">
-            <Empty description={t("noData")} />
+
+      {logOpen && <DownloadLogPanel tasks={data} />}
+
+      {isLoading ? (
+        <Skeletons />
+      ) : data.length === 0 ? (
+        <div className="py-[70px] text-center">
+          <div className="mx-auto mb-[22px] flex size-[90px] items-center justify-center rounded-[26px] bg-mg-primary-weak">
+            <Download size={42} className="text-mg-primary" strokeWidth={1.7} />
           </div>
-        )}
-        {data.length > 0 &&
-          data.map((task) => {
-            return (
-              <DownloadTaskItem
-                key={task.id}
-                task={task}
-                selected={selected.includes(task.id)}
-                onSelectChange={handleItemSelectChange}
-                onStartDownload={onStartDownload}
-                onStopDownload={onStopDownload}
-                onContextMenu={handleContext}
-                onShowEditForm={handleShowDownloadForm}
-              />
-            );
-          })}
-      </div>
-      <DownloadForm
-        id={downloadListId}
-        ref={editFormRef}
-        isEdit
-        onConfirm={handleFormConfirm}
+          <h3 className="mb-2 text-[18px] font-bold text-mg-fg">
+            {isList ? t("emptyDownloadsTitle") : t("emptyCompletedTitle")}
+          </h3>
+          <p className="mb-[22px] text-[13.5px] text-mg-fg2">
+            {isList ? t("emptyDownloadsSub") : t("emptyCompletedSub")}
+          </p>
+          {isList && (
+            <MgButton
+              variant="primary"
+              size="lg"
+              onClick={() => openNewDownload()}
+            >
+              {t("newDownload")}
+            </MgButton>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {data.map((task) => (
+            <DownloadTaskItem
+              key={task.id}
+              task={task}
+              selected={selected.includes(task.id)}
+              onSelectChange={toggleSelect}
+              onStart={onStart}
+              onStop={onStop}
+              onEdit={onEdit}
+            />
+          ))}
+        </div>
+      )}
+
+      <TaskContextMenu
+        onSelect={addSelect}
+        onDownload={onStart}
+        onRefresh={() => mutate()}
+        onDelete={onDelete}
       />
     </div>
   );
 }
 
-// Legacy export for backward compatibility
 export const DownloadList = DownloadTaskList;

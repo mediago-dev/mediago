@@ -74,8 +74,8 @@ const SourceExtract: FC<SourceExtractProps> = ({ page = false }) => {
     };
   }, []);
 
-  const setPageInfo = useMemoizedFn(({ url, title }: UrlDetail) => {
-    setBrowserStore({ url, title });
+  const setPageInfo = useMemoizedFn(({ url, title: pageTitle }: UrlDetail) => {
+    setBrowserStore({ url, title: pageTitle });
   });
 
   const onDomReady = useMemoizedFn((...args: unknown[]) => {
@@ -110,7 +110,7 @@ const SourceExtract: FC<SourceExtractProps> = ({ page = false }) => {
   return (
     <PageContainer
       className={cn("flex flex-col p-0", { "gap-2": !page })}
-      wrapperClassName={cn({ "p-0 bg-[#EBF0F5] dark:bg-[#141415]": page })}
+      wrapperClassName={cn("bg-mg-bg", { "p-0": page })}
     >
       <ToolBar page={page} />
       <div className="flex flex-1 overflow-hidden">

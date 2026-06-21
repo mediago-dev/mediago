@@ -59,6 +59,9 @@ export function useTasks(filter: DownloadFilter = DownloadFilter.list) {
     ({ args }) => {
       return fetchDownloadTasks(args);
     },
+    // Keep showing the current list while the next filter/page loads, so
+    // switching Downloads <-> Completed doesn't flash the loading skeleton.
+    { keepPreviousData: true },
   );
 
   const detail: DownloadTaskDetails[] = useMemo(() => {

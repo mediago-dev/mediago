@@ -251,7 +251,8 @@ export default forwardRef<DownloadFormRef, DownloadFormProps>(
         open={modalOpen}
         key={isEdit ? "edit" : "new"}
         title={isEdit ? t("editDownload") : t("newDownload")}
-        width={500}
+        width="min(500px, calc(100vw - 24px))"
+        className="mediago-download-modal"
         onCancel={() => setModalOpen(false)}
         afterOpenChange={afterOpenChange}
         destroyOnHidden={destroyOnClose}
@@ -288,9 +289,11 @@ export default forwardRef<DownloadFormRef, DownloadFormProps>(
         <Form
           form={form}
           autoFocus
-          labelCol={{ span: 5 }}
+          labelCol={{ xs: { span: 24 }, sm: { span: 5 } }}
+          wrapperCol={{ xs: { span: 24 }, sm: { span: 19 } }}
           layout="horizontal"
           colon={false}
+          labelWrap
           onValuesChange={handleValuesChange}
         >
           <Form.Item name="id" hidden>

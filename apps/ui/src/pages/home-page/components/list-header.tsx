@@ -1,110 +1,92 @@
-import { useMemoizedFn } from "ahooks";
-import { App, Button, Dropdown, type MenuProps } from "antd";
-import { useMemo } from "react";
-import { Trans, useTranslation } from "react-i18next";
-import { Checkbox } from "@/components/ui/checkbox";
-import { usePlatform } from "@/hooks/use-platform";
-import { isWeb } from "@/utils";
 import { DownloadFilter } from "@mediago/shared-common";
+import { Check, Play, ScrollText, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { MgButton, MgIconButton } from "@/components/mg";
+import { cn } from "@/utils";
 
 interface Props {
-  onSelectAll: (checked: boolean) => void;
-  checked: boolean | "indeterminate";
-  selected: number[];
-  onDeleteItems: (id: number[]) => void;
-  onDownloadItems: (id: number[]) => void;
-  onCancelItems: () => void;
+  anySelected: boolean;
+  selectedCount: number;
+  totalCount: number;
+  onSelectAll: () => void;
+  onBatchStart: () => void;
+  onBatchDelete: () => void;
+  onToggleLog: () => void;
+  logOpen: boolean;
   filter: DownloadFilter;
 }
 
 export function ListHeader({
+  anySelected,
+  selectedCount,
+  totalCount,
   onSelectAll,
-  checked,
-  selected,
-  onDeleteItems,
-  onDownloadItems,
-  onCancelItems,
+  onBatchStart,
+  onBatchDelete,
+  onToggleLog,
+  logOpen,
   filter,
 }: Props) {
-  const { message } = App.useApp();
   const { t } = useTranslation();
-  const disabled = useMemo(() => selected.length === 0, [selected.length]);
-  const { dialog } = usePlatform();
-  const items: MenuProps["items"] = useMemo(() => {
-    return [
-      {
-        key: "exportDownloadList",
-        label: t("exportDownloadList"),
-      },
-    ];
-  }, [t]);
-
-  const onMenuClick: MenuProps["onClick"] = useMemoizedFn(async (e) => {
-    const { key } = e;
-    if (key === "exportDownloadList") {
-      try {
-        const { exportDownloadList } = await import("@/api/download-task");
-        const content = await exportDownloadList();
-        await dialog.save({
-          content:
-            typeof content === "string" ? content : JSON.stringify(content),
-          defaultPath: "downloads.txt",
-          filters: [{ name: "Text", extensions: ["txt"] }],
-        });
-      } catch {
-        message.error(t("exportDownloadListFailed"));
-      }
-    }
-  });
 
   return (
-    <div className="flex flex-row items-center justify-between pb-2 pl-3">
-      <div className="flex flex-row items-center gap-3">
-        <Checkbox checked={checked} onCheckedChange={onSelectAll} />
+    <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-[14px] border border-mg-line bg-mg-surface p-[10px_12px]">
+      <button
+        type="button"
+        onClick={onSelectAll}
+        className="flex h-[34px] items-center gap-2 rounded-[9px] border border-mg-line bg-mg-surface2 px-3 text-[12.5px] font-semibold text-mg-fg"
+      >
         <span
-          className="cursor-pointer text-sm text-[#343434] dark:text-white"
-          onClick={() => onSelectAll(true)}
+          className={cn(
+            "flex size-[17px] items-center justify-center rounded-[5px] border-2",
+            anySelected ? "border-mg-primary bg-mg-primary" : "border-mg-line2",
+          )}
         >
-          {t("selectAll")}
+          {anySelected && <Check size={11} color="#fff" strokeWidth={3.5} />}
         </span>
-        {!!selected.length && (
-          <span className="text-xs text-[#A4A4A4]">
-            <Trans
-              i18nKey="selectedItems"
-              values={{ count: selected.length }}
-            />
-          </span>
-        )}
-      </div>
-      <div className="flex flex-row items-center gap-3">
-        <Button
-          disabled={disabled}
-          onClick={async () => onDeleteItems(selected)}
+        {t("selectAll")}
+      </button>
+
+      <span className="text-[12.5px] font-semibold text-mg-fg2">
+        {t("selectedItems", { count: selectedCount })}
+        {totalCount > 0 ? ` / ${totalCount}` : ""}
+      </span>
+
+      <div className="flex-1" />
+
+      {filter === DownloadFilter.list && (
+        <MgButton
+          variant="surface"
+          size="sm"
+          disabled={!anySelected}
+          onClick={onBatchStart}
+          className={cn(anySelected && "border-mg-primary text-mg-primary")}
         >
-          {t("delete")}
-        </Button>
-        <Button disabled={disabled} onClick={() => onCancelItems()}>
-          {t("cancel")}
-        </Button>
-        {filter === DownloadFilter.list && (
-          <Button
-            disabled={disabled}
-            type="primary"
-            onClick={() => onDownloadItems(selected)}
-          >
-            {t("download")}
-          </Button>
-        )}
-        {!isWeb && (
-          <Dropdown
-            menu={{ items, onClick: onMenuClick }}
-            placement="bottomRight"
-            trigger={["click"]}
-          >
-            <Button type="primary">{t("more")}</Button>
-          </Dropdown>
-        )}
-      </div>
+          <Play size={14} strokeWidth={2.2} fill="currentColor" />
+          {t("batchStart")}
+        </MgButton>
+      )}
+
+      <MgButton
+        variant="surface"
+        size="sm"
+        disabled={!anySelected}
+        onClick={onBatchDelete}
+        className={cn(anySelected && "border-[#f43f5e] text-[#f43f5e]")}
+      >
+        <Trash2 size={14} strokeWidth={2.2} />
+        {t("delete")}
+      </MgButton>
+
+      <MgIconButton
+        variant="surface"
+        size="sm"
+        title="log"
+        onClick={onToggleLog}
+        className={cn(logOpen && "border-mg-primary text-mg-primary")}
+      >
+        <ScrollText size={15} strokeWidth={2} />
+      </MgIconButton>
     </div>
   );
 }

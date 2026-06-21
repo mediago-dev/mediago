@@ -3,7 +3,7 @@ import { Empty, Space, Spin, Splitter } from "antd";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
-import { Button } from "@/components/ui/button";
+import { MgButton } from "@/components/mg";
 import WebView from "@/components/web-view";
 import { useBrowserActions } from "@/hooks/use-browser-actions";
 import { usePlatform } from "@/hooks/use-platform";
@@ -44,10 +44,10 @@ export function BrowserView() {
     // Loading or Loaded: show the WebView so the native WebContentsView is visible
     if (status === BrowserStatus.Loading || status === BrowserStatus.Loaded) {
       return (
-        <div className="relative h-full w-full flex-1">
+        <div className="relative h-full w-full flex-1 bg-mg-bg">
           <WebView className="h-full w-full flex-1" />
           {status === BrowserStatus.Loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-black/40">
+            <div className="absolute inset-0 flex items-center justify-center bg-mg-bg/60">
               <Spin />
             </div>
           )}
@@ -58,11 +58,15 @@ export function BrowserView() {
     // Load failure
     if (status === BrowserStatus.Failed) {
       return (
-        <div className="flex h-full w-full flex-row items-center justify-center">
+        <div className="flex h-full w-full flex-row items-center justify-center bg-mg-bg">
           <Empty description={`${errMsg || t("loadFailed")} (${errCode})`}>
             <Space>
-              <Button onClick={goHome}>{t("backToHome")}</Button>
-              <Button onClick={() => goto(url)}>{t("refresh")}</Button>
+              <MgButton variant="surface" size="sm" onClick={goHome}>
+                {t("backToHome")}
+              </MgButton>
+              <MgButton variant="primary" size="sm" onClick={() => goto(url)}>
+                {t("refresh")}
+              </MgButton>
             </Space>
           </Empty>
         </div>
@@ -77,9 +81,9 @@ export function BrowserView() {
       {!sources.length ? (
         renderContent()
       ) : (
-        <Splitter className="flex h-full flex-1 gap-2">
+        <Splitter className="flex h-full flex-1">
           <Splitter.Panel>{renderContent()}</Splitter.Panel>
-          <Splitter.Panel min="20%" max="70%" defaultSize={240}>
+          <Splitter.Panel min="20%" max="70%" defaultSize={320}>
             <BrowserViewPanel />
           </Splitter.Panel>
         </Splitter>

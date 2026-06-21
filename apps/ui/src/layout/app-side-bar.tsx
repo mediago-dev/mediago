@@ -1,253 +1,82 @@
 import { useMemoizedFn } from "ahooks";
-import { Badge } from "antd";
-import {
-  cloneElement,
-  type PropsWithChildren,
-  type ReactElement,
-  useMemo,
-} from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
-import siderBg from "@/assets/images/sider-bg.png";
-import {
-  ConverterIcon,
-  DoneIcon,
-  ExtractIcon,
-  ListIcon,
-  SettingsIcon,
-  ShareIcon,
-} from "@/assets/svg";
-import {
-  appStoreSelector,
-  setAppStoreSelector,
-  useAppStore,
-} from "@/store/app";
+import { appStoreSelector, useAppStore } from "@/store/app";
 import { downloadStoreSelector, useDownloadStore } from "@/store/download";
-import { updateSelector, useSessionStore } from "@/store/session";
-import { cn, isWeb } from "@/utils";
-import { usePlatform } from "@/hooks/use-platform";
+import { useUiStore } from "@/store/ui";
+import { cn } from "@/utils";
+import { useNavItems } from "./nav";
 
-function processLocation(pathname: string) {
-  let name = pathname;
-  if (pathname === "/") {
-    name = "/home";
-  }
-  return name.substring(1);
-}
-
-type MenuItem = {
-  label: ReactElement;
-  key: string;
-};
-
-interface AppMenuItemProps extends PropsWithChildren {
-  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
-  link: string;
-  activeKey: string;
-  className?: string;
-  icon?: ReactElement;
-}
-
-function AppMenuItem({
-  children,
-  onClick,
-  link,
-  activeKey,
-  className,
-  icon,
-}: AppMenuItemProps) {
-  const isActive = useMemo(() => {
-    return activeKey === processLocation(link);
-  }, [activeKey, link]);
-
-  return (
-    <Link discover="render" to={link} onClick={onClick}>
-      <div
-        className={cn(
-          "flex h-10 flex-row items-center gap-1 rounded-lg bg-[#FAFCFF] px-3 text-sm text-[#636D7E] hover:bg-[#E1F0FF] hover:text-[#636D7E] dark:bg-[#2C2E33] dark:text-[rgba(255,255,255,0.85)] dark:hover:bg-[#3B3C41] dark:hover:text-[rgba(255,255,255,0.85)]",
-          {
-            "bg-linear-to-r from-[#127AF3] to-[#06D5FB] text-white hover:text-white dark:text-white":
-              isActive,
-          },
-          className,
-        )}
-      >
-        {icon &&
-          cloneElement(icon as React.ReactElement, {
-            fill: isActive ? "#fff" : "#AAB5CB",
-          })}
-        {children}
-      </div>
-    </Link>
-  );
-}
-
-interface Props {
-  className?: string;
-}
-
-export function AppSideBar({ className }: Props) {
-  const { app } = usePlatform();
+export function AppSideBar() {
   const { t } = useTranslation();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const items = useNavItems();
+  const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const { count, clearCount } = useDownloadStore(
     useShallow(downloadStoreSelector),
   );
-  const appStore = useAppStore(useShallow(appStoreSelector));
-  const { setAppStore } = useAppStore(useShallow(setAppStoreSelector));
-  const { updateAvailable } = useSessionStore(useShallow(updateSelector));
+  const { maxRunner } = useAppStore(useShallow(appStoreSelector));
 
-  const activeKey = useMemo(
-    () => processLocation(location.pathname),
-    [location.pathname],
-  );
+  // The sidebar only renders on tablet + desktop (mobile uses bottom nav),
+  // so the hamburger's collapse flag drives the width at every width here.
+  const expanded = !collapsed;
+  const width = expanded ? 244 : 74;
 
-  const handleExternalLink = useMemoizedFn(
-    async (e: React.MouseEvent<HTMLDivElement>) => {
-      e.stopPropagation();
-      e.preventDefault();
-
-      if (appStore.openInNewWindow) {
-        setAppStore({ openInNewWindow: false });
-        navigate("/source");
-        await app.combineToHomePage({
-          url: "",
-          sourceList: [],
-        });
-      } else {
-        setAppStore({ openInNewWindow: true });
-        if (location.pathname === "/source") {
-          navigate("/");
-        }
-        await app.showBrowserWindow();
-      }
-    },
-  );
-
-  const handleClearCount = useMemoizedFn(() => {
-    clearCount();
-  });
-
-  const handleExtractPage = useMemoizedFn(
-    (e: React.MouseEvent<HTMLAnchorElement>) => {
-      if (appStore.openInNewWindow) {
-        e.preventDefault();
-        e.stopPropagation();
-        app.showBrowserWindow();
-      }
-    },
-  );
-
-  const items1: MenuItem[] = useMemo(() => {
-    return [
-      {
-        label: (
-          <AppMenuItem
-            link="/"
-            onClick={handleClearCount}
-            activeKey={activeKey}
-            icon={<ListIcon />}
-          >
-            <span>{t("downloadList")}</span>
-            {count > 0 && (
-              <Badge count={count} offset={[5, 1]} size="small"></Badge>
-            )}
-          </AppMenuItem>
-        ),
-        key: "home",
-      },
-      {
-        label: (
-          <AppMenuItem link="/done" activeKey={activeKey} icon={<DoneIcon />}>
-            <span>{t("downloadComplete")}</span>
-          </AppMenuItem>
-        ),
-        key: "done",
-      },
-      {
-        label: (
-          <AppMenuItem
-            link="/converter"
-            activeKey={activeKey}
-            icon={<ConverterIcon />}
-          >
-            <span>{t("converter")}</span>
-          </AppMenuItem>
-        ),
-        key: "converter",
-      },
-      {
-        label: (
-          <AppMenuItem
-            link="/source"
-            activeKey={activeKey}
-            className="group"
-            icon={<ExtractIcon />}
-            onClick={handleExtractPage}
-          >
-            <span className="flex flex-1">{t("materialExtraction")}</span>
-            <div
-              title={t("openInNewWindow")}
-              className="hidden hover:opacity-70 group-hover:block"
-              onClick={handleExternalLink}
-            >
-              <ShareIcon
-                className={cn({ "rotate-180": appStore.openInNewWindow })}
-                fill={"/source" === location.pathname ? "#fff" : "#AAB5CB"}
-              />
-            </div>
-          </AppMenuItem>
-        ),
-        key: "source",
-      },
-      {
-        label: (
-          <AppMenuItem
-            link="/settings"
-            activeKey={activeKey}
-            icon={<SettingsIcon />}
-          >
-            <span>{t("setting")}</span>
-            <Badge dot={updateAvailable} offset={[-13, -3]} />
-          </AppMenuItem>
-        ),
-        key: "settings",
-      },
-    ];
-  }, [
-    activeKey,
-    count,
-    handleExternalLink,
-    location.pathname,
-    t,
-    updateAvailable,
-    handleClearCount,
-  ]);
-
-  const finalItems = useMemo(() => {
-    return items1.filter((i) =>
-      isWeb ? i.key !== "source" && i.key !== "converter" : true,
-    );
-  }, [items1]);
+  const onHome = useMemoizedFn(() => clearCount());
 
   return (
-    <div
-      className={cn(
-        "relative select-none bg-white p-3 dark:bg-[#1F2024]",
-        className,
-      )}
+    <aside
+      style={{ width }}
+      className="flex shrink-0 select-none flex-col gap-1 overflow-hidden border-r border-mg-line bg-mg-surface px-3 py-[14px] transition-[width] duration-200"
     >
-      <div className="relative z-10 flex flex-row gap-3 sm:w-[180px] sm:flex-col">
-        {finalItems.map((item) => cloneElement(item.label, { key: item.key }))}
-      </div>
+      <nav className="flex flex-col gap-1">
+        {items.map(({ key, to, label, Icon, active, showCount }) => (
+          <Link
+            key={key}
+            to={to}
+            title={label}
+            onClick={key === "home" ? onHome : undefined}
+            className={cn(
+              "flex h-11 items-center gap-[13px] whitespace-nowrap rounded-[12px] px-3 text-[14px] font-semibold transition-colors",
+              active
+                ? "bg-mg-primary-weak text-mg-primary"
+                : "text-mg-fg2 hover:bg-mg-surface2",
+              !expanded && "justify-center px-0",
+            )}
+          >
+            <Icon size={20} strokeWidth={2} className="shrink-0" />
+            {expanded && <span className="flex-1">{label}</span>}
+            {expanded && showCount && count > 0 && (
+              <span
+                className={cn(
+                  "ml-auto min-w-5 rounded-[9px] px-[7px] py-[2px] text-center text-[11.5px] font-bold",
+                  active
+                    ? "bg-mg-primary text-white"
+                    : "bg-mg-surface2 text-mg-fg3",
+                )}
+              >
+                {count}
+              </span>
+            )}
+          </Link>
+        ))}
+      </nav>
 
-      <img
-        src={siderBg}
-        alt=""
-        className="pointer-events-none absolute bottom-0 left-0 right-0 w-full select-none"
-      />
-    </div>
+      <div className="flex-1" />
+
+      {expanded && (
+        <div className="mx-1 mb-1 mt-2 rounded-[14px] border border-mg-line bg-[linear-gradient(135deg,var(--mg-primary-weak),transparent)] p-[14px]">
+          <div className="mb-[7px] flex items-center gap-2">
+            <span className="size-2 rounded-full bg-[#10b981] shadow-[0_0_0_3px_rgba(16,185,129,.18)]" />
+            <span className="text-[12.5px] font-bold text-mg-fg">
+              {t("engineRunning")}
+            </span>
+          </div>
+          <div className="text-[11.5px] leading-relaxed text-mg-fg2">
+            {t("maxRunner")}: {maxRunner}
+          </div>
+        </div>
+      )}
+    </aside>
   );
 }

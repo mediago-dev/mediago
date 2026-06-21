@@ -20,20 +20,33 @@ const PageContainer: FC<PageContainerProps> = ({
   wrapperClassName,
 }) => {
   return (
-    <div className={cn("flex h-full flex-col gap-3 p-3", wrapperClassName)}>
+    <div
+      className={cn(
+        "mediago-page-container flex h-full flex-col gap-3 p-3",
+        wrapperClassName,
+      )}
+    >
       {title && (
-        <div className="flex flex-row items-center justify-between rounded-lg bg-white p-3 dark:bg-[#1F2024]">
-          <div className="flex flex-row gap-3">
-            <div className="text-sm text-[#343434] dark:text-white">
+        <div className="mediago-page-titlebar flex flex-col gap-2 rounded-lg bg-white p-3 sm:flex-row sm:items-center sm:justify-between dark:bg-[#1F2024]">
+          <div className="flex min-w-0 flex-row gap-3">
+            <div className="min-w-0 truncate text-sm text-[#343434] dark:text-white">
               {title}
             </div>
             {titleExtra && <div>{titleExtra}</div>}
           </div>
-          {rightExtra && <div>{rightExtra}</div>}
+          {rightExtra && (
+            <div className="mediago-page-title-actions w-full sm:w-auto">
+              {rightExtra}
+            </div>
+          )}
         </div>
       )}
 
-      <div className={cn("flex-1 overflow-auto", className)}>{children}</div>
+      <div
+        className={cn("mediago-page-content flex-1 overflow-auto", className)}
+      >
+        {children}
+      </div>
     </div>
   );
 };
