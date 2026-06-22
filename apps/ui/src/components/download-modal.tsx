@@ -104,7 +104,7 @@ export function DownloadModal() {
       setBatch(false);
       setName(editTask.name ?? "");
       setUrl(editTask.url ?? "");
-      setFolder(editTask.folder ?? local ?? "");
+      setFolder(editTask.folder ?? "");
       setHeaders(editTask.headers ?? "");
       setBatchText("");
     } else {
@@ -112,7 +112,7 @@ export function DownloadModal() {
       setBatch(prefill?.batch ?? lastIsBatch ?? false);
       setName(prefill?.name ?? "");
       setUrl(prefill?.url ?? "");
-      setFolder(prefill?.folder ?? local ?? "");
+      setFolder(prefill?.folder ?? "");
       setHeaders(prefill?.headers ?? "");
       setBatchText(prefill?.batchList ?? "");
     }
@@ -148,7 +148,11 @@ export function DownloadModal() {
   });
 
   const urlError = urlTouched && url.trim() !== "" && !URL_RE.test(url);
-  const batchRows = batch ? parseBatch(batchText, folder || local || "") : [];
+  // `folder` is a subdirectory under the download dir (empty = root). Do NOT
+  // default it to the absolute `local` dir — the Go core does
+  // filepath.Join(localDir, folder), so an absolute folder double-nests
+  // (e.g. /app/mediago/downloads/app/mediago/downloads).
+  const batchRows = batch ? parseBatch(batchText, folder) : [];
   const validCount = batchRows.filter((r) => r.valid).length;
   const invalidCount = batchRows.length - validCount;
 
@@ -342,7 +346,7 @@ export function DownloadModal() {
                     )}
                     value={folder}
                     list="mg-folders"
-                    placeholder={t("pleaseInputVideoFolder")}
+                    placeholder={local || t("pleaseInputVideoFolder")}
                     onChange={(e) => setFolder(e.target.value)}
                   />
                   <datalist id="mg-folders">
