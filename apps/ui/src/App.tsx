@@ -37,6 +37,7 @@ const SettingPage = lazy(() => import("./pages/setting-page"));
 const ConverterPage = lazy(() => import("./pages/converter-page"));
 const SigninPage = lazy(() => import("./pages/signin-page"));
 const OverlayDialog = lazy(() => import("./pages/overlay-dialog"));
+const ShareRoute = lazy(() => import("./pages/share"));
 
 function getAlgorithm(appTheme: "dark" | "light") {
   return appTheme === "dark"
@@ -258,6 +259,14 @@ const App: FC = () => {
               element={
                 <Suspense fallback={<Loading />}>
                   <ConverterPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="share"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <ShareRoute />
                 </Suspense>
               }
             />
