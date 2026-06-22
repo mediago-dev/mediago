@@ -5,11 +5,13 @@ import { enableMapSet } from "immer";
 // Allow Immer to work with Map in state
 enableMapSet();
 
-// Normalize percent input (supports 0-1 ratio or 0-100 value); returns null for invalid numbers
+// Normalize percent input. Go Core reports percent on a 0-100 scale (e.g. 1 == 1%),
+// so just clamp to [0,100]. Do NOT treat small values as a 0-1 ratio — that turned a
+// real 1% into 100% (`1 * 100`), and Math.max() in setEvents then pinned it at 100.
 const normalizePercent = (value: string | number | undefined) => {
   const num = Number.parseFloat(String(value ?? ""));
   if (!Number.isFinite(num) || num < 0) return null;
-  return num <= 1 ? num * 100 : num;
+  return Math.min(100, num);
 };
 interface DownloadEvent {
   percent: string;
