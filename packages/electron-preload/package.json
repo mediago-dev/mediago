@@ -22,7 +22,7 @@
   "devDependencies": {
     "@types/node": "^24.7.2",
     "typescript": "^6.0.2",
-    "electron": "41.1.0",
+    "electron": "41.10.3",
     "esbuild": "^0.25.10",
     "tsdown": "^0.15.9",
     "tsx": "^4.11.0"

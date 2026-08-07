@@ -21,7 +21,7 @@
     "typescript": "^6.0.2",
     "cross-env": "^10.1.0",
     "dotenv-flow": "^4.1.0",
-    "electron": "41.1.0",
+    "electron": "41.10.3",
     "electron-builder": "26.8.1",
     "electron-builder-squirrel-windows": "26.8.1",
     "electron-updater": "^6.8.3",
