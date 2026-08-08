@@ -75,7 +75,8 @@ func DefaultSchemas() SchemaList {
 					"url":        {ArgsName: []string{}},
 					"localDir":   {ArgsName: []string{"--work-dir"}},
 					"name":       {ArgsName: []string{"--file-pattern"}},
-					"__common__": {ArgsName: []string{"--use-app-api", "--encoding-priority", "avc,hevc,av1"}},
+					"cookie":     {ArgsName: []string{"--cookie"}},
+					"__common__": {ArgsName: []string{"--encoding-priority", "avc,hevc,av1"}},
 				},
 				ConsoleReg: ConsoleReg{
 					Percent: `([\d.]+)%`,

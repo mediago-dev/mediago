@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"caorushizi.cn/mediago/internal/core"
 	"caorushizi.cn/mediago/internal/db"
@@ -42,7 +43,7 @@ type DownloadTaskWithFile struct {
 
 // PaginatedResult holds the paginated result.
 type PaginatedResult struct {
-	Total int64                  `json:"total"`
+	Total int64                   `json:"total"`
 	List  []*DownloadTaskWithFile `json:"list"`
 }
 
@@ -173,10 +174,7 @@ func (s *DownloadTaskService) StartDownload(taskID int64, localPath string, dele
 
 	var headers []string
 	if video.Headers != nil && *video.Headers != "" {
-		if err := json.Unmarshal([]byte(*video.Headers), &headers); err != nil {
-			// If parsing fails, treat as empty headers
-			headers = []string{}
-		}
+		headers = parseStoredHeaders(*video.Headers)
 	}
 
 	params := core.DownloadParams{
@@ -275,6 +273,22 @@ func (s *DownloadTaskService) FindByName(name string) (*db.Video, error) {
 // FindByURL looks up a task by URL.
 func (s *DownloadTaskService) FindByURL(url string) (*db.Video, error) {
 	return s.repo.FindByURL(url)
+}
+
+func parseStoredHeaders(raw string) []string {
+	var headers []string
+	if err := json.Unmarshal([]byte(raw), &headers); err == nil {
+		return headers
+	}
+
+	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	headers = make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line = strings.TrimSpace(line); line != "" {
+			headers = append(headers, line)
+		}
+	}
+	return headers
 }
 
 func joinLines(lines []string) string {

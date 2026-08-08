@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { ElectronBlocker } from "@ghostery/adblocker-electron";
 import { provide } from "@inversifyjs/binding-decorators";
+import { DownloadType } from "@mediago/shared-common";
 import { i18n } from "../core/i18n";
 import {
   type Event,
@@ -145,10 +146,32 @@ export default class WebviewService {
 
   onSource = async (item: SourceParams) => {
     if (!this.view) return;
+    const enrichedItem = await this.withBilibiliSessionCookies(item);
     // Send to the window for processing
     // Previously addDownloadTask was called here; now handled by Go server
-    this.window?.webContents.send("browser:sourceDetected", item);
+    this.window?.webContents.send("browser:sourceDetected", enrichedItem);
   };
+
+  async withBilibiliSessionCookies<
+    T extends Pick<SourceParams, "type" | "headers">,
+  >(item: T): Promise<T> {
+    if (item.type !== DownloadType.bilibili || hasCookieHeader(item.headers)) {
+      return item;
+    }
+
+    const cookies = await this.session.cookies.get({
+      url: "https://www.bilibili.com",
+    });
+    if (cookies.length === 0) return item;
+
+    const cookieHeader = cookies
+      .map(({ name, value }) => `${name}=${value}`)
+      .join("; ");
+    const headers = [item.headers, `Cookie:${cookieHeader}`]
+      .filter(Boolean)
+      .join("\n");
+    return { ...item, headers };
+  }
 
   getPageInfo() {
     if (!this.view) {
@@ -393,4 +416,12 @@ export default class WebviewService {
       this.window?.webContents.send("browser:privacyChanged");
     }
   }
+}
+
+function hasCookieHeader(headers?: string): boolean {
+  if (!headers) return false;
+  return headers
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .some((line) => line.split(":", 1)[0]?.trim().toLowerCase() === "cookie");
 }

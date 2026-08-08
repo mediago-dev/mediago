@@ -96,6 +96,11 @@ func (d *DownloaderSvc) buildArgs(p DownloadParams, s schema.Schema) []string {
 				}
 			}
 
+		case "cookie":
+			if cookie := headerValue(p.Headers, "Cookie"); cookie != "" {
+				pushKV(spec.ArgsName, cookie)
+			}
+
 		case "deleteSegments":
 			// delete segments argument: explicitly pass true/false
 			if d.cfg.(interface{ GetDeleteSegments() bool }).GetDeleteSegments() {
@@ -121,6 +126,30 @@ func (d *DownloaderSvc) buildArgs(p DownloadParams, s schema.Schema) []string {
 	return out
 }
 
+func headerValue(headers []string, name string) string {
+	for _, header := range headers {
+		key, value, found := strings.Cut(header, ":")
+		if found && strings.EqualFold(strings.TrimSpace(key), name) {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func redactSensitiveArgs(args []string) []string {
+	redacted := append([]string(nil), args...)
+	for i, arg := range redacted {
+		switch {
+		case arg == "--cookie" || arg == "-c":
+			if i+1 < len(redacted) {
+				redacted[i+1] = "[REDACTED]"
+			}
+		case strings.HasPrefix(arg, "--cookie="):
+			redacted[i] = "--cookie=[REDACTED]"
+		}
+	}
+	return redacted
+}
 
 // SanitizeFilename strips or replaces characters that filesystems — chiefly
 // Windows — reject or misinterpret when they appear in a filename. It is
@@ -235,7 +264,7 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 	args := d.buildArgs(p, schema)
 	logger.Debug("Command arguments built",
 		zap.String("id", string(p.ID)),
-		zap.Strings("args", args))
+		zap.Strings("args", redactSensitiveArgs(args)))
 
 	// initialize parse state
 	st := &parser.ParseState{}

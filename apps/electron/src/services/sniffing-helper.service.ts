@@ -34,6 +34,7 @@ export class SniffingHelper extends EventEmitter {
   private pageInfo: PageInfo = { title: "", url: "" };
   private readonly prepareDelay = 1000;
   private checkTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly pageHeaders = new Map<DownloadType, string>();
 
   constructor(
     @inject(ElectronLogger)
@@ -44,6 +45,10 @@ export class SniffingHelper extends EventEmitter {
 
   pluginReady() {
     // empty
+  }
+
+  getPageHeaders(type: DownloadType): string | undefined {
+    return this.pageHeaders.get(type);
   }
 
   update(pageInfo: PageInfo) {
@@ -75,12 +80,14 @@ export class SniffingHelper extends EventEmitter {
           documentURL: pageInfo.url,
           name: pageInfo.title,
           type: filter.type,
+          headers: this.pageHeaders.get(filter.type),
         });
       }
     }, this.prepareDelay);
   }
 
   start(privacy: boolean = false) {
+    this.pageHeaders.clear();
     const partition = privacy ? PRIVACY_WEBVIEW : PERSIST_WEBVIEW;
     const viewSession = session.fromPartition(partition);
     viewSession.webRequest.onSendHeaders(this.onSendHeaders);
@@ -102,6 +109,12 @@ export class SniffingHelper extends EventEmitter {
   private onSendHeaders = (details: OnSendHeadersListenerDetails): void => {
     const { url, requestHeaders } = details;
     const { title, url: documentURL } = this.pageInfo;
+    const headers = formatHeaders(requestHeaders);
+
+    const cookieBackedType = getCookieBackedType(url);
+    if (cookieBackedType && hasHeader(requestHeaders, "cookie")) {
+      this.pageHeaders.set(cookieBackedType, headers);
+    }
 
     const filter = matchRequestUrl(url);
     if (filter) {
@@ -110,8 +123,29 @@ export class SniffingHelper extends EventEmitter {
         documentURL,
         name: title,
         type: filter.type,
-        headers: formatHeaders(requestHeaders),
+        headers,
       });
     }
   };
+}
+
+export function hasHeader(
+  headers: Record<string, string>,
+  name: string,
+): boolean {
+  return Object.keys(headers).some(
+    (headerName) => headerName.toLowerCase() === name.toLowerCase(),
+  );
+}
+
+export function getCookieBackedType(url: string): DownloadType | undefined {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (hostname === "bilibili.com" || hostname.endsWith(".bilibili.com")) {
+      return DownloadType.bilibili;
+    }
+  } catch {
+    // Ignore malformed request URLs.
+  }
+  return undefined;
 }

@@ -24,7 +24,7 @@ import ElectronStore from "../vendor/ElectronStore";
 @injectable()
 @provide()
 export default class MainWindow extends Window {
-  url = isDev ? "http://localhost:8555/" : `${defaultScheme}://index.html/`;
+  url = isDev ? "http://localhost:8500/" : `${defaultScheme}://index.html/`;
   private initialUrl: string | null = null;
 
   constructor(

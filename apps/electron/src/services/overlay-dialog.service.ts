@@ -17,7 +17,7 @@ export default class OverlayDialogService {
   private pendingData: Omit<DownloadTask, "id">[] | null = null;
 
   private readonly url = isDev
-    ? "http://localhost:8555/download-dialog"
+    ? "http://localhost:8500/download-dialog"
     : `${defaultScheme}://index.html/download-dialog`;
 
   constructor(

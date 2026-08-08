@@ -81,7 +81,17 @@ export default class WebviewController implements Controller {
 
   @handle(IPC.browser.showDownloadDialog)
   async showDownloadDialog(e: IpcMainEvent, data: DownloadTask[]) {
-    this.overlayDialog.show(data);
+    this.overlayDialog.show(
+      await Promise.all(
+        data.map(async (task) =>
+          this.webview.withBilibiliSessionCookies({
+            ...task,
+            headers:
+              task.headers || this.sniffingHelper.getPageHeaders(task.type),
+          }),
+        ),
+      ),
+    );
   }
 
   @handle(IPC.browser.dismissOverlayDialog)

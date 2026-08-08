@@ -11,7 +11,7 @@ import ElectronStore from "../vendor/ElectronStore";
 @provide()
 export default class BrowserWindow extends Window {
   url = isDev
-    ? "http://localhost:8555/browser"
+    ? "http://localhost:8500/browser"
     : `${defaultScheme}://index.html/browser`;
 
   constructor(
