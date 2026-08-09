@@ -1,6 +1,6 @@
-import { PlusOutlined } from "@ant-design/icons";
 import { useMemoizedFn } from "ahooks";
 import { App, Form, Input, Modal, Spin } from "antd";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ADD_FAVORITE, OPEN_FAVORITE } from "@/const";
@@ -101,15 +101,18 @@ export function FavoriteList() {
 
   if (error) {
     return (
-      <div className="flex h-full w-full items-center justify-center text-red-500">
+      <div className="flex h-full w-full items-center justify-center text-[#f43f5e]">
         {t("loadFailed")}
       </div>
     );
   }
 
   return (
-    <div className="h-full w-full py-4">
-      <div className="grid grid-cols-4 place-items-center gap-4 overflow-auto md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-9">
+    <div className="h-full w-full overflow-y-auto bg-mg-bg px-[clamp(14px,2vw,26px)] py-[22px]">
+      <div className="mb-[13px] text-[12.5px] font-bold uppercase tracking-[0.02em] text-mg-fg3">
+        {t("materialExtraction")}
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] gap-3">
         {favoriteList.map((item) => (
           <FavItem
             key={item.id}
@@ -117,13 +120,15 @@ export function FavoriteList() {
             onClick={() => onClickLoadItem(item)}
             onClose={() => handleRemoveFavorite(item.id)}
             src={item.icon}
+            url={item.url}
             title={item.title}
           />
         ))}
         <FavItem
-          key={"add"}
+          key="add"
+          add
           onClick={showModal}
-          icon={<PlusOutlined />}
+          icon={<Plus size={24} strokeWidth={2} />}
           title={t("addFavorite")}
         />
       </div>

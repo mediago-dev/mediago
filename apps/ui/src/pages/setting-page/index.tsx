@@ -1,55 +1,126 @@
-import {
-  ClearOutlined,
-  CopyOutlined,
-  DownloadOutlined,
-  FolderOpenOutlined,
-  UploadOutlined,
-} from "@ant-design/icons";
 import { useMemoizedFn } from "ahooks";
-import {
-  App,
-  Badge,
-  Button,
-  Card,
-  Form,
-  type FormInstance,
-  Input,
-  InputNumber,
-  Modal,
-  Progress,
-  Radio,
-  Select,
-  Space,
-  Switch,
-} from "antd";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { App, Badge, Modal, Progress } from "antd";
+import { Copy, Download, FolderOpen, Upload } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
-import PageContainer from "@/components/page-container";
-import { CHECK_UPDATE } from "@/const";
-import { usePlatform } from "@/hooks/use-platform";
-import { useEnvPath } from "@/hooks/use-config";
 import { setConfigValue } from "@/api/config";
 import {
   exportFavorites as exportFavoritesApi,
   importFavorites,
 } from "@/api/favorite";
 import {
+  MgButton,
+  MgCard,
+  MgIconButton,
+  MgPill,
+  MgSegment,
+  type MgSegmentOption,
+  MgStepper,
+  MgToggle,
+} from "@/components/mg";
+import { CHECK_UPDATE } from "@/const";
+import { useEnvPath } from "@/hooks/use-config";
+import { usePlatform } from "@/hooks/use-platform";
+import {
   appStoreSelector,
   setAppStoreSelector,
   useAppStore,
 } from "@/store/app";
 import { updateSelector, useSessionStore } from "@/store/session";
-import { isWeb, tdApp } from "@/utils";
-import { AppLanguage, AppStore, AppTheme } from "@mediago/shared-common";
+import { cn, isWeb, tdApp } from "@/utils";
+import { AppLanguage, type AppStore, AppTheme } from "@mediago/shared-common";
 
 const version = import.meta.env.APP_VERSION;
 
+/**
+ * A single settings row: label (+ optional description) on the left, the
+ * control on the right. `flex-wrap` makes the control drop below the label
+ * on narrow widths, matching MediaGo.dc.html (settings rows, lines 276-280).
+ */
+function SettingRow({
+  label,
+  desc,
+  control,
+  last,
+}: {
+  label: ReactNode;
+  desc?: ReactNode;
+  control: ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-[14px] px-[18px] py-[13px]",
+        !last && "border-b border-mg-line",
+      )}
+    >
+      <div className="min-w-[160px] flex-1">
+        <div className="text-[13.5px] font-semibold text-mg-fg">{label}</div>
+        {desc && (
+          <div className="mt-[2px] text-[11.5px] text-mg-fg3">{desc}</div>
+        )}
+      </div>
+      <div className="flex-none">{control}</div>
+    </div>
+  );
+}
+
+/** A settings group card: header (title + optional desktop badge) + rows. */
+function SettingSection({
+  title,
+  desktop,
+  badgeLabel,
+  children,
+}: {
+  title: ReactNode;
+  desktop?: boolean;
+  badgeLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <MgCard className="overflow-hidden">
+      <div className="flex items-center gap-[9px] border-b border-mg-line px-[18px] pb-[13px] pt-[15px]">
+        <span className="text-[13.5px] font-extrabold tracking-[-0.01em] text-mg-fg">
+          {title}
+        </span>
+        {desktop && (
+          <MgPill className="bg-mg-surface2 text-mg-fg3">{badgeLabel}</MgPill>
+        )}
+      </div>
+      <div>{children}</div>
+    </MgCard>
+  );
+}
+
+/** Mono text input used for paths / URLs / API keys. */
+function MonoInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  value: string;
+  onChange?: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      placeholder={placeholder}
+      readOnly={!onChange}
+      onChange={(e) => onChange?.(e.target.value)}
+      className="h-[38px] min-w-0 flex-1 rounded-[10px] border-[1.5px] border-mg-line bg-mg-surface2 px-3 font-mono text-[12px] text-mg-fg outline-none transition-colors focus:border-mg-primary focus:bg-mg-surface"
+    />
+  );
+}
+
 const SettingPage: React.FC = () => {
-  const { dialog, shell, browser, contextMenu, update, on, off, app } =
-    usePlatform();
+  const { dialog, shell, browser, update, on, off, app } = usePlatform();
   const { t } = useTranslation();
-  const formRef = useRef<FormInstance<AppStore>>(null);
   const settings = useAppStore(useShallow(appStoreSelector));
   const { setAppStore } = useAppStore(useShallow(setAppStoreSelector));
   const { envPath } = useEnvPath();
@@ -61,71 +132,54 @@ const SettingPage: React.FC = () => {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
-  // Mounting all 6 cards + ~25 Form.Items in one render produces a
-  // ~300ms long task on navigation (dominated by Ant Design Form.Item
-  // registration + cssinjs). Render one card per animation frame so the
-  // longest task is just a single card (~50ms) — no individual frame is
-  // long enough to feel janky.
-  const [visibleCount, setVisibleCount] = useState(1);
+  // Persist a single key the same way the AntD form did: push to Go Core,
+  // then mirror into the Zustand store (which also drives app-wide theme /
+  // language switches via setAppStore).
+  const commit = useMemoizedFn(
+    async <K extends keyof AppStore>(key: K, value: AppStore[K]) => {
+      try {
+        await setConfigValue(key as string, value);
+        setAppStore({ [key]: value } as Partial<AppStore>);
+      } catch (e: unknown) {
+        message.error((e as Error).message);
+      }
+    },
+  );
 
-  const isFirstSync = useRef(true);
   useEffect(() => {
-    // initialValues already seeds the form on mount; the extra
-    // setFieldsValue here would force Ant Form to diff every Form.Item
-    // again right after mount, which is a meaningful slice of the jank.
-    if (isFirstSync.current) {
-      isFirstSync.current = false;
-      return;
-    }
-    formRef.current?.setFieldsValue(settings);
-  }, [settings]);
-
-  // Mount remaining cards one per animation frame, so each task stays
-  // short enough to avoid a visible freeze.
-  useEffect(() => {
-    if (visibleCount >= 6) return;
-    const raf = requestAnimationFrame(() => {
-      setVisibleCount((c) => c + 1);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [visibleCount]);
+    const onDownloadProgress = (
+      _event: unknown,
+      progress: { percent: number },
+    ) => {
+      setDownloadProgress(progress.percent);
+    };
+    const onDownloaded = () => {
+      setUpdateDownloaded(true);
+    };
+    on("update:downloadProgress", onDownloadProgress);
+    on("update:downloaded", onDownloaded);
+    return () => {
+      off("update:downloadProgress", onDownloadProgress);
+      off("update:downloaded", onDownloaded);
+    };
+  }, [on, off]);
 
   const onSelectDir = useMemoizedFn(async () => {
     const paths = await dialog.open({ type: "directory" });
     const local = paths?.[0];
-    if (local) {
-      await setConfigValue("local", local);
-      setAppStore({ local });
-      formRef.current?.setFieldValue("local", local);
-    }
+    if (local) await commit("local", local);
   });
 
-  const renderButtonLabel = useMemoizedFn(() => {
-    if (isWeb) {
-      return t("localDir");
-    }
-
-    return (
-      <Button onClick={onSelectDir} icon={<FolderOpenOutlined />}>
-        {t("selectFolder")}
-      </Button>
-    );
-  });
-
-  const onFormValueChange = useMemoizedFn(async (values: Partial<AppStore>) => {
+  const handleClearWebviewCache = useMemoizedFn(async () => {
     try {
-      await Promise.all(
-        Object.entries(values)
-          .filter(([, value]) => value !== undefined && value !== null)
-          .map(([key, value]) => setConfigValue(key, value)),
-      );
-      setAppStore(values);
-    } catch (e: unknown) {
-      message.error((e as Error).message);
+      await browser.clearCache();
+      message.success(t("clearCacheSuccess"));
+    } catch {
+      message.error(t("clearCacheFailed"));
     }
   });
 
-  const onMenuClick = useMemoizedFn(async (_) => {
+  const handleImportFavorite = useMemoizedFn(async () => {
     try {
       const contents = await dialog.open({
         type: "file",
@@ -134,9 +188,7 @@ const SettingPage: React.FC = () => {
       });
       if (!contents?.length) return;
       const favorites = JSON.parse(contents[0]);
-      if (Array.isArray(favorites)) {
-        await importFavorites(favorites);
-      }
+      if (Array.isArray(favorites)) await importFavorites(favorites);
       message.success(t("importFavoriteSuccess"));
     } catch {
       message.error(t("importFavoriteFailed"));
@@ -166,503 +218,519 @@ const SettingPage: React.FC = () => {
     await update.check();
   });
 
-  const handleHiddenUpdateModal = useMemoizedFn(() => {
-    setOpenUpdateModal(false);
+  const copy = useMemoizedFn((text: string) => {
+    navigator.clipboard.writeText(text);
+    message.success(t("skillsCopied"));
   });
 
-  const handleUpdate = useMemoizedFn(() => {
-    update.startDownload();
+  const openFolder = useMemoizedFn((target?: string) => {
+    if (target) shell.open(target);
   });
 
-  const handleInstallUpdate = useMemoizedFn(() => {
-    update.install();
+  const openExtensionDir = useMemoizedFn(async () => {
+    const dir = await app.getExtensionDir();
+    if (dir) shell.open(dir);
   });
 
-  useEffect(() => {
-    const onDownloadProgress = (
-      _event: unknown,
-      progress: { percent: number },
-    ) => {
-      setDownloadProgress(progress.percent);
-    };
-    const onDownloaded = () => {
-      setUpdateDownloaded(true);
-    };
-    on("update:downloadProgress", onDownloadProgress);
-    on("update:downloaded", onDownloaded);
+  // ---- Segment option sets ----
+  const themeOptions: MgSegmentOption<AppTheme>[] = [
+    { value: AppTheme.System, label: t("followSystem") },
+    { value: AppTheme.Dark, label: t("dark") },
+    { value: AppTheme.Light, label: t("light") },
+  ];
+  const langOptions: MgSegmentOption<AppLanguage>[] = [
+    { value: AppLanguage.System, label: t("followSystem") },
+    { value: AppLanguage.ZH, label: t("chinese") },
+    { value: AppLanguage.EN, label: t("english") },
+    { value: AppLanguage.IT, label: t("italian") },
+  ];
+  // closeMainWindow: true = quit on close, false = minimize to tray.
+  const closeOptions: MgSegmentOption<"minimize" | "close">[] = [
+    { value: "minimize", label: t("minimizeToTray") },
+    { value: "close", label: t("close") },
+  ];
 
-    return () => {
-      off("update:downloadProgress", onDownloadProgress);
-      off("update:downloaded", onDownloaded);
-    };
-  }, []);
+  // ---- Skills commands (reuse the existing wiring) ----
+  const coreUrl = envPath?.playerUrl
+    ? envPath.playerUrl.replace(/\/player\/$/, "")
+    : "";
+  const installCmd = t("skillsInstallCmd");
+  let setupCmd: string;
+  if (isWeb) {
+    const url = coreUrl || "http://localhost:8899";
+    setupCmd = settings.apiKey
+      ? `Set mediago url to ${url}, api key to ${settings.apiKey}`
+      : `Set mediago url to ${url}`;
+  } else {
+    setupCmd = coreUrl
+      ? `Set mediago url to ${coreUrl}`
+      : "Set mediago url to http://localhost:39719";
+  }
 
-  const handleClearWebviewCache = useMemoizedFn(async () => {
-    try {
-      await browser.clearCache();
-      message.success(t("clearCacheSuccess"));
-    } catch {
-      message.error(t("clearCacheFailed"));
-    }
-  });
-
-  const cardSections: Array<{
-    key: string;
-    title: string;
-    hidden?: boolean;
-    children: React.ReactNode;
-  }> = useMemo<
-    Array<{
-      key: string;
-      title: string;
-      hidden?: boolean;
-      children: React.ReactNode;
-    }>
-  >(
-    () =>
-      [
-        {
-          key: "1",
-          title: t("basicSetting"),
-          children: (
-            <>
-              <Form.Item name="local" label={renderButtonLabel()}>
-                <Input disabled placeholder={t("pleaseSelectDownloadDir")} />
-              </Form.Item>
-              <Form.Item
-                hidden={isWeb}
-                name="theme"
-                label={t("downloaderTheme")}
-              >
-                <Select
-                  options={[
-                    { label: t("followSystem"), value: AppTheme.System },
-                    { label: t("dark"), value: AppTheme.Dark },
-                    { label: t("light"), value: AppTheme.Light },
-                  ]}
-                  placeholder={t("pleaseSelectTheme")}
-                  allowClear={false}
-                />
-              </Form.Item>
-              <Form.Item name="language" label={t("displayLanguage")}>
-                <Select
-                  options={[
-                    { label: t("followSystem"), value: AppLanguage.System },
-                    { label: t("chinese"), value: AppLanguage.ZH },
-                    { label: t("english"), value: AppLanguage.EN },
-                    { label: t("italian"), value: AppLanguage.IT },
-                  ]}
-                  placeholder={t("pleaseSelectLanguage")}
-                  allowClear={false}
-                />
-              </Form.Item>
-              <Form.Item
-                hidden={isWeb}
-                label={t("downloadPrompt")}
-                name="promptTone"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t("showTerminal")} name="showTerminal">
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                hidden={isWeb}
-                label={t("autoUpgrade")}
-                tooltip={t("autoUpgradeTooltip")}
-                name="autoUpgrade"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                hidden={isWeb}
-                label={t("allowBetaVersion")}
-                name="allowBeta"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                hidden={isWeb}
-                label={t("closeMainWindow")}
-                name="closeMainWindow"
-              >
-                <Radio.Group>
-                  <Radio value={true}>{t("close")}</Radio>
-                  <Radio value={false}>{t("minimizeToTray")}</Radio>
-                </Radio.Group>
-              </Form.Item>
-              <Form.Item
-                label={t("enableMobilePlayer")}
-                name="enableMobilePlayer"
-                hidden={isWeb}
-              >
-                <Switch />
-              </Form.Item>
-            </>
-          ),
-        },
-        {
-          key: "2",
-          hidden: isWeb,
-          title: t("browserSetting"),
-          children: !isWeb && (
-            <>
-              <Form.Item label={t("audioMuted")} name="audioMuted">
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t("openInNewWindow")} name="openInNewWindow">
-                <Switch />
-              </Form.Item>
-              <Form.Item name="proxy" label={t("proxySetting")}>
-                <Input
-                  placeholder={t("pleaseEnterProxy")}
-                  onContextMenu={() =>
-                    contextMenu.show([
-                      { key: "copy", label: t("copy") },
-                      { key: "paste", label: t("paste") },
-                    ])
-                  }
-                />
-              </Form.Item>
-              <Form.Item
-                name="useProxy"
-                label={t("proxySwitch")}
-                rules={[
-                  {
-                    validator(rules, value) {
-                      if (
-                        value &&
-                        formRef.current?.getFieldValue("proxy") === ""
-                      ) {
-                        return Promise.reject(t("pleaseEnterProxyFirst"));
-                      }
-                      return Promise.resolve();
-                    },
-                  },
-                ]}
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t("blockAds")} name="blockAds">
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t("enterMobileMode")} name="isMobile">
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                label={t("useImmersiveSniffing")}
-                tooltip={t("immersiveSniffingDescription")}
-                name="useExtension"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                label={t("privacy")}
-                tooltip={t("privacyTooltip")}
-                name="privacy"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t("moreAction")}>
-                <Space wrap>
-                  <Button
-                    onClick={handleClearWebviewCache}
-                    icon={<ClearOutlined />}
-                  >
-                    {t("clearCache")}
-                  </Button>
-                  <Button onClick={handleExportFavorite}>
-                    <DownloadOutlined />
-                    {t("exportFavorite")}
-                  </Button>
-
-                  <Button onClick={onMenuClick}>
-                    <UploadOutlined />
-                    {t("importFavorite")}
-                  </Button>
-                </Space>
-              </Form.Item>
-            </>
-          ),
-        },
-        {
-          key: "3",
-          title: t("downloadSetting"),
-          children: (
-            <>
-              <Form.Item hidden={!isWeb} name="proxy" label={t("proxySetting")}>
-                <Input
-                  placeholder={t("pleaseEnterProxy")}
-                  onContextMenu={() =>
-                    contextMenu.show([
-                      { key: "copy", label: t("copy") },
-                      { key: "paste", label: t("paste") },
-                    ])
-                  }
-                />
-              </Form.Item>
-              <Form.Item
-                name="downloadProxySwitch"
-                label={t("downloadProxySwitch")}
-                rules={[
-                  {
-                    validator(rules, value) {
-                      if (
-                        value &&
-                        formRef.current?.getFieldValue("proxy") === ""
-                      ) {
-                        return Promise.reject(t("pleaseEnterProxyFirst"));
-                      }
-                      return Promise.resolve();
-                    },
-                  },
-                ]}
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t("deleteSegments")} name="deleteSegments">
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                label={t("maxRunner")}
-                tooltip={t("maxRunnerDescription")}
-                name="maxRunner"
-              >
-                <InputNumber min={1} max={50} precision={0} />
-              </Form.Item>
-            </>
-          ),
-        },
-        {
-          key: "4",
-          title: t("dockerSetting"),
-          hidden: isWeb,
-          children: (
-            <>
-              <Form.Item name="apiKey" label={t("apiKey")}>
-                <Input
-                  placeholder={t("pleaseEnterApiKey")}
-                  onContextMenu={() =>
-                    contextMenu.show([
-                      { key: "copy", label: t("copy") },
-                      { key: "paste", label: t("paste") },
-                    ])
-                  }
-                />
-              </Form.Item>
-              <Form.Item name="dockerUrl" label={t("dockerUrl")}>
-                <Input
-                  placeholder={t("pleaseEnterDockerUrl")}
-                  onContextMenu={() =>
-                    contextMenu.show([
-                      { key: "copy", label: t("copy") },
-                      { key: "paste", label: t("paste") },
-                    ])
-                  }
-                />
-              </Form.Item>
-              <Form.Item label={t("enableDocker")} name="enableDocker">
-                <Switch />
-              </Form.Item>
-            </>
-          ),
-        },
-        {
-          key: "5",
-          title: t("skillsSetting"),
-          children: (() => {
-            const coreUrl = envPath?.playerUrl
-              ? envPath.playerUrl.replace(/\/player\/$/, "")
-              : "";
-            const apiKey = settings.apiKey || "";
-            let setupCmd: string;
-            if (isWeb) {
-              // Server/Docker mode: need both URL and API key
-              const url = coreUrl || "http://localhost:8899";
-              setupCmd = apiKey
-                ? `Set mediago url to ${url}, api key to ${apiKey}`
-                : `Set mediago url to ${url}`;
-            } else {
-              // Electron mode: only need URL
-              setupCmd = coreUrl
-                ? `Set mediago url to ${coreUrl}`
-                : "Set mediago url to http://localhost:39719";
-            }
-            const installCmd = t("skillsInstallCmd");
-            return (
-              <>
-                <Form.Item
-                  label={t("skillsInstall")}
-                  tooltip={t("skillsInstallTooltip")}
-                >
-                  <Space.Compact className="w-full">
-                    <Input value={installCmd} readOnly className="font-mono" />
-                    <Button
-                      icon={<CopyOutlined />}
-                      onClick={() => {
-                        navigator.clipboard.writeText(installCmd);
-                        message.success(t("skillsCopied"));
-                      }}
-                    >
-                      {t("skillsCopy")}
-                    </Button>
-                  </Space.Compact>
-                </Form.Item>
-                <Form.Item
-                  label={t("skillsInit")}
-                  tooltip={t("skillsInitTooltip")}
-                >
-                  <Space.Compact className="w-full">
-                    <Input value={setupCmd} readOnly className="font-mono" />
-                    <Button
-                      icon={<CopyOutlined />}
-                      onClick={() => {
-                        navigator.clipboard.writeText(setupCmd);
-                        message.success(t("skillsCopied"));
-                      }}
-                    >
-                      {t("skillsCopy")}
-                    </Button>
-                  </Space.Compact>
-                </Form.Item>
-              </>
-            );
-          })(),
-        },
-        {
-          key: "6",
-          title: t("moreSettings"),
-          children: (
-            <>
-              <Form.Item hidden={!isWeb} name="apiKey" label={t("apiKey")}>
-                <Input disabled />
-              </Form.Item>
-              <Form.Item hidden={isWeb} label={t("moreAction")}>
-                <Space wrap>
-                  <Button
-                    onClick={() =>
-                      envPath?.configDir && shell.open(envPath.configDir)
-                    }
-                    icon={<FolderOpenOutlined />}
-                  >
-                    {t("configDir")}
-                  </Button>
-                  <Button
-                    onClick={() =>
-                      envPath?.binDir && shell.open(envPath.binDir)
-                    }
-                    icon={<FolderOpenOutlined />}
-                  >
-                    {t("binPath")}
-                  </Button>
-                  <Button
-                    onClick={() => settings.local && shell.open(settings.local)}
-                    icon={<FolderOpenOutlined />}
-                  >
-                    {t("localDir")}
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      const dir = await app.getExtensionDir();
-                      if (dir) shell.open(dir);
-                    }}
-                    icon={<FolderOpenOutlined />}
-                  >
-                    {t("extensionDir")}
-                  </Button>
-                </Space>
-              </Form.Item>
-              <Form.Item label={t("currentVersion")}>
-                <Space wrap>
-                  <div>{version}</div>
-                  {!isWeb && (
-                    <Badge dot={updateAvailable}>
-                      <Button type="text" onClick={handleCheckUpdate}>
-                        {t("checkUpdate")}
-                      </Button>
-                    </Badge>
-                  )}
-                </Space>
-              </Form.Item>
-            </>
-          ),
-        },
-      ].filter((item) => !item.hidden),
-    [
-      // Form.Items subscribe to the form store by name, so we don't need
-      // the full settings object here — only the two fields that are read
-      // directly inside the JSX (skillsSetting IIFE and the "open local"
-      // button). Keeping the dep list narrow lets the memo survive most
-      // SSE config-changed updates.
-      t,
-      settings.apiKey,
-      settings.local,
-      envPath,
-      updateAvailable,
-      renderButtonLabel,
-      onMenuClick,
-      handleExportFavorite,
-      handleClearWebviewCache,
-      handleCheckUpdate,
-      contextMenu,
-      shell,
-      message,
-    ],
-  );
+  const badge = t("desktopBadge");
 
   return (
-    <PageContainer title={t("setting")}>
-      <div className="h-full overflow-auto px-1 py-2">
-        <Form<AppStore>
-          ref={formRef}
-          layout="horizontal"
-          labelAlign="left"
-          labelCol={{ flex: "140px" }}
-          wrapperCol={{ flex: "1 1 auto" }}
-          colon={false}
-          initialValues={settings}
-          onValuesChange={onFormValueChange}
-        >
-          <div className="gap-4 md:columns-2">
-            {cardSections.slice(0, visibleCount).map((section) => (
-              <div key={section.key} className="mb-4 block break-inside-avoid">
-                <Card title={section.title} size="small" variant="borderless">
-                  {section.children}
-                </Card>
-              </div>
-            ))}
-          </div>
-        </Form>
+    <div className="mediago-settings-scroll h-full overflow-auto bg-mg-bg">
+      <div
+        className="mx-auto max-w-[780px]"
+        style={{ padding: "24px clamp(16px,3vw,34px) 90px" }}
+      >
+        <div className="mb-[22px]">
+          <h1 className="m-0 text-[clamp(22px,2.4vw,28px)] font-extrabold tracking-[-0.03em] text-mg-fg">
+            {t("setting")}
+          </h1>
+          <p className="mt-[5px] text-[13.5px] text-mg-fg2">
+            {t("personalizeExperience")}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-[18px]">
+          {/* ---------- General ---------- */}
+          <SettingSection title={t("basicSetting")} badgeLabel={badge}>
+            <SettingRow
+              label={t("localDir")}
+              control={
+                <div className="flex w-[min(320px,100%)] gap-2">
+                  <MonoInput
+                    value={settings.local}
+                    placeholder={t("pleaseSelectDownloadDir")}
+                  />
+                  {!isWeb && (
+                    <MgIconButton
+                      size="lg"
+                      title={t("selectFolder")}
+                      onClick={onSelectDir}
+                    >
+                      <FolderOpen size={16} strokeWidth={2} />
+                    </MgIconButton>
+                  )}
+                </div>
+              }
+            />
+            {!isWeb && (
+              <SettingRow
+                label={t("downloaderTheme")}
+                control={
+                  <MgSegment
+                    value={settings.theme}
+                    onChange={(v) => commit("theme", v)}
+                    options={themeOptions}
+                  />
+                }
+              />
+            )}
+            <SettingRow
+              label={t("displayLanguage")}
+              control={
+                <MgSegment
+                  value={settings.language}
+                  onChange={(v) => commit("language", v)}
+                  options={langOptions}
+                />
+              }
+            />
+            {!isWeb && (
+              <SettingRow
+                label={t("downloadPrompt")}
+                control={
+                  <MgToggle
+                    checked={settings.promptTone}
+                    onChange={(v) => commit("promptTone", v)}
+                  />
+                }
+              />
+            )}
+            <SettingRow
+              label={t("showTerminal")}
+              control={
+                <MgToggle
+                  checked={settings.showTerminal}
+                  onChange={(v) => commit("showTerminal", v)}
+                />
+              }
+            />
+            {!isWeb && (
+              <SettingRow
+                label={t("autoUpgrade")}
+                control={
+                  <MgToggle
+                    checked={settings.autoUpgrade}
+                    onChange={(v) => commit("autoUpgrade", v)}
+                  />
+                }
+              />
+            )}
+            {!isWeb && (
+              <SettingRow
+                label={t("allowBetaVersion")}
+                control={
+                  <MgToggle
+                    checked={settings.allowBeta}
+                    onChange={(v) => commit("allowBeta", v)}
+                  />
+                }
+              />
+            )}
+            {!isWeb && (
+              <SettingRow
+                label={t("closeMainWindow")}
+                control={
+                  <MgSegment
+                    value={settings.closeMainWindow ? "close" : "minimize"}
+                    onChange={(v) => commit("closeMainWindow", v === "close")}
+                    options={closeOptions}
+                  />
+                }
+              />
+            )}
+            {!isWeb && (
+              <SettingRow
+                label={t("enableMobilePlayer")}
+                last
+                control={
+                  <MgToggle
+                    checked={settings.enableMobilePlayer}
+                    onChange={(v) => commit("enableMobilePlayer", v)}
+                  />
+                }
+              />
+            )}
+          </SettingSection>
+
+          {/* ---------- Browser (desktop only) ---------- */}
+          {!isWeb && (
+            <SettingSection
+              title={t("browserSetting")}
+              desktop
+              badgeLabel={badge}
+            >
+              <SettingRow
+                label={t("audioMuted")}
+                control={
+                  <MgToggle
+                    checked={settings.audioMuted}
+                    onChange={(v) => commit("audioMuted", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label={t("openInNewWindow")}
+                control={
+                  <MgToggle
+                    checked={settings.openInNewWindow}
+                    onChange={(v) => commit("openInNewWindow", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label={t("blockAds")}
+                control={
+                  <MgToggle
+                    checked={settings.blockAds}
+                    onChange={(v) => commit("blockAds", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label={t("enterMobileMode")}
+                control={
+                  <MgToggle
+                    checked={settings.isMobile}
+                    onChange={(v) => commit("isMobile", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label={t("useImmersiveSniffing")}
+                desc={t("immersiveSniffingDescription")}
+                control={
+                  <MgToggle
+                    checked={settings.useExtension}
+                    onChange={(v) => commit("useExtension", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label={t("privacy")}
+                control={
+                  <MgToggle
+                    checked={settings.privacy}
+                    onChange={(v) => commit("privacy", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label={t("moreAction")}
+                last
+                control={
+                  <div className="flex flex-wrap gap-[7px]">
+                    <MgButton size="sm" onClick={handleClearWebviewCache}>
+                      {t("clearCache")}
+                    </MgButton>
+                    <MgButton size="sm" onClick={handleImportFavorite}>
+                      <Upload size={15} strokeWidth={2} />
+                      {t("importFavorite")}
+                    </MgButton>
+                    <MgButton size="sm" onClick={handleExportFavorite}>
+                      <Download size={15} strokeWidth={2} />
+                      {t("exportFavorite")}
+                    </MgButton>
+                  </div>
+                }
+              />
+            </SettingSection>
+          )}
+
+          {/* ---------- Download ---------- */}
+          <SettingSection title={t("downloadSetting")} badgeLabel={badge}>
+            <SettingRow
+              label={t("proxySetting")}
+              control={
+                <div className="flex w-[min(320px,100%)]">
+                  <MonoInput
+                    value={settings.proxy}
+                    placeholder={t("pleaseEnterProxy")}
+                    onChange={(v) => commit("proxy", v)}
+                  />
+                </div>
+              }
+            />
+            <SettingRow
+              label={t("downloadProxySwitch")}
+              control={
+                <MgToggle
+                  checked={settings.downloadProxySwitch}
+                  onChange={(v) => {
+                    if (v && !settings.proxy) {
+                      message.error(t("pleaseEnterProxyFirst"));
+                      return;
+                    }
+                    commit("downloadProxySwitch", v);
+                  }}
+                />
+              }
+            />
+            <SettingRow
+              label={t("deleteSegments")}
+              control={
+                <MgToggle
+                  checked={settings.deleteSegments}
+                  onChange={(v) => commit("deleteSegments", v)}
+                />
+              }
+            />
+            <SettingRow
+              label={t("maxRunner")}
+              desc={t("maxRunnerDescription")}
+              last
+              control={
+                <MgStepper
+                  value={settings.maxRunner}
+                  onChange={(v) => commit("maxRunner", v)}
+                  min={1}
+                  max={50}
+                />
+              }
+            />
+          </SettingSection>
+
+          {/* ---------- Docker (desktop only) ---------- */}
+          {!isWeb && (
+            <SettingSection
+              title={t("dockerSetting")}
+              desktop
+              badgeLabel={badge}
+            >
+              <SettingRow
+                label={t("enableDocker")}
+                control={
+                  <MgToggle
+                    checked={settings.enableDocker}
+                    onChange={(v) => commit("enableDocker", v)}
+                  />
+                }
+              />
+              <SettingRow
+                label={t("dockerUrl")}
+                control={
+                  <div className="flex w-[min(320px,100%)]">
+                    <MonoInput
+                      value={settings.dockerUrl}
+                      placeholder={t("pleaseEnterDockerUrl")}
+                      onChange={(v) => commit("dockerUrl", v)}
+                    />
+                  </div>
+                }
+              />
+              <SettingRow
+                label={t("apiKey")}
+                last
+                control={
+                  <div className="flex w-[min(320px,100%)]">
+                    <MonoInput
+                      value={settings.apiKey}
+                      placeholder={t("pleaseEnterApiKey")}
+                      onChange={(v) => commit("apiKey", v)}
+                    />
+                  </div>
+                }
+              />
+            </SettingSection>
+          )}
+
+          {/* ---------- Skills ---------- */}
+          <SettingSection title={t("skillsSetting")} badgeLabel={badge}>
+            <SettingRow
+              label={t("skillsInstall")}
+              control={
+                <div className="flex w-[min(360px,100%)] gap-2">
+                  <MonoInput value={installCmd} />
+                  <MgButton
+                    size="sm"
+                    className="h-[38px]"
+                    onClick={() => copy(installCmd)}
+                  >
+                    <Copy size={15} strokeWidth={2} />
+                    {t("skillsCopy")}
+                  </MgButton>
+                </div>
+              }
+            />
+            <SettingRow
+              label={t("skillsInit")}
+              last
+              control={
+                <div className="flex w-[min(360px,100%)] gap-2">
+                  <MonoInput value={setupCmd} />
+                  <MgButton
+                    size="sm"
+                    className="h-[38px]"
+                    onClick={() => copy(setupCmd)}
+                  >
+                    <Copy size={15} strokeWidth={2} />
+                    {t("skillsCopy")}
+                  </MgButton>
+                </div>
+              }
+            />
+          </SettingSection>
+
+          {/* ---------- More ---------- */}
+          <SettingSection title={t("moreSettings")} badgeLabel={badge}>
+            {isWeb && (
+              <SettingRow
+                label={t("apiKey")}
+                control={
+                  <div className="flex w-[min(320px,100%)]">
+                    <MonoInput value={settings.apiKey} />
+                  </div>
+                }
+              />
+            )}
+            {!isWeb && (
+              <SettingRow
+                label={t("moreAction")}
+                control={
+                  <div className="flex flex-wrap gap-[7px]">
+                    <MgButton
+                      size="sm"
+                      onClick={() => openFolder(envPath?.configDir)}
+                    >
+                      <FolderOpen size={15} strokeWidth={2} />
+                      {t("configDir")}
+                    </MgButton>
+                    <MgButton
+                      size="sm"
+                      onClick={() => openFolder(envPath?.binDir)}
+                    >
+                      <FolderOpen size={15} strokeWidth={2} />
+                      {t("binPath")}
+                    </MgButton>
+                    <MgButton
+                      size="sm"
+                      onClick={() => openFolder(settings.local)}
+                    >
+                      <FolderOpen size={15} strokeWidth={2} />
+                      {t("localDir")}
+                    </MgButton>
+                    <MgButton size="sm" onClick={openExtensionDir}>
+                      <FolderOpen size={15} strokeWidth={2} />
+                      {t("extensionDir")}
+                    </MgButton>
+                  </div>
+                }
+              />
+            )}
+            <SettingRow
+              label={t("currentVersion")}
+              desc={`MediaGo ${version}`}
+              last
+              control={
+                isWeb ? (
+                  <span className="font-mono text-[12px] text-mg-fg2">
+                    {version}
+                  </span>
+                ) : (
+                  <Badge dot={updateAvailable}>
+                    <MgButton
+                      variant="primary"
+                      size="sm"
+                      onClick={handleCheckUpdate}
+                    >
+                      {t("checkUpdate")}
+                    </MgButton>
+                  </Badge>
+                )
+              }
+            />
+          </SettingSection>
+        </div>
       </div>
 
       <Modal
         title={t("updateModal")}
         open={openUpdateModal}
-        onCancel={handleHiddenUpdateModal}
+        onCancel={() => setOpenUpdateModal(false)}
         footer={
           updateAvailable
             ? [
-                <Button key="hidden" onClick={handleHiddenUpdateModal}>
+                <MgButton
+                  key="hidden"
+                  size="sm"
+                  onClick={() => setOpenUpdateModal(false)}
+                >
                   {t("close")}
-                </Button>,
+                </MgButton>,
                 updateDownloaded ? (
-                  <Button
+                  <MgButton
                     key="install"
-                    type="primary"
-                    onClick={handleInstallUpdate}
+                    variant="primary"
+                    size="sm"
+                    className="ml-2"
+                    onClick={() => update.install()}
                   >
                     {t("install")}
-                  </Button>
+                  </MgButton>
                 ) : (
-                  <Button key="update" type="primary" onClick={handleUpdate}>
+                  <MgButton
+                    key="update"
+                    variant="primary"
+                    size="sm"
+                    className="ml-2"
+                    onClick={() => update.startDownload()}
+                  >
                     {t("update")}
-                  </Button>
+                  </MgButton>
                 ),
               ]
             : [
-                <Button key="hidden" onClick={handleHiddenUpdateModal}>
+                <MgButton
+                  key="hidden"
+                  size="sm"
+                  onClick={() => setOpenUpdateModal(false)}
+                >
                   {t("close")}
-                </Button>,
+                </MgButton>,
               ]
         }
       >
@@ -677,7 +745,7 @@ const SettingPage: React.FC = () => {
           )}
         </div>
       </Modal>
-    </PageContainer>
+    </div>
   );
 };
 

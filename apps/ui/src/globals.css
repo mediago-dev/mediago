@@ -1,7 +1,9 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* @custom-variant dark (&:is(.dark *)); */
+/* Class-based dark mode (driven by .dark on <html> from the resolved theme). */
+@custom-variant dark (&:is(.dark *));
 
 html,
 body {
@@ -14,10 +16,11 @@ body {
   width: 100vw;
 }
 
+/* ---- MediaGo redesign: scrollbar ---- */
 * {
   &::-webkit-scrollbar {
-    height: 8px;
-    width: 8px;
+    height: 10px;
+    width: 10px;
   }
 
   &::-webkit-scrollbar-track {
@@ -25,59 +28,66 @@ body {
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(0 0 0 / 15%);
+    background: var(--mg-line2);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 8px;
   }
 
-  @media (prefers-color-scheme: dark) {
-    &::-webkit-scrollbar-thumb {
-      background: rgba(255 255 255 / 15%);
-    }
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--mg-fg3);
+    background-clip: content-box;
   }
 }
 
-.ant-modal-content {
-  &:before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 100px;
-    background-image: linear-gradient(#89d4ff 0%, rgba(255, 255, 255, 0) 100%);
-    border-radius: 8px 8px 0 0;
-    z-index: 1;
+/* ---- MediaGo redesign: animations (from MediaGo.dc.html) ---- */
+@keyframes mgspin {
+  to {
+    transform: rotate(360deg);
   }
-  &:after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 100px;
-    background-image: url("./assets/images/modal-bg.png");
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: 80% 0;
-    border-radius: 0 0 8px 8px;
-    z-index: 1;
+}
+@keyframes mgpulse {
+  0%,
+  100% {
+    opacity: 1;
   }
-  @media (prefers-color-scheme: dark) {
-    &:before {
-      filter: invert(100%) hue-rotate(180deg);
-    }
+  50% {
+    opacity: 0.35;
   }
-  @media (prefers-color-scheme: dark) {
-    &:after {
-      filter: invert(100%) hue-rotate(180deg) contrast(100%);
-    }
+}
+@keyframes mgbar {
+  0% {
+    background-position: 0 0;
   }
-
-  .ant-modal-header,
-  .ant-modal-body,
-  .ant-modal-footer {
-    position: relative;
-    z-index: 2;
-    background: transparent;
+  100% {
+    background-position: 28px 0;
+  }
+}
+@keyframes mgpop {
+  0% {
+    transform: scale(0.96) translateY(8px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes mgfade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes mgblink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
   }
 }
 
@@ -118,6 +128,38 @@ body {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* MediaGo design tokens -> Tailwind color utilities (bg-mg-surface, text-mg-fg2, ...) */
+  --color-mg-bg: var(--mg-bg);
+  --color-mg-surface: var(--mg-surface);
+  --color-mg-surface2: var(--mg-surface2);
+  --color-mg-elev: var(--mg-elev);
+  --color-mg-fg: var(--mg-fg);
+  --color-mg-fg2: var(--mg-fg2);
+  --color-mg-fg3: var(--mg-fg3);
+  --color-mg-line: var(--mg-line);
+  --color-mg-line2: var(--mg-line2);
+  --color-mg-primary: var(--mg-primary);
+  --color-mg-primary-weak: var(--mg-primary-weak);
+  --color-mg-primary-fg: var(--mg-primary-fg);
+
+  /* status + type accent colors (used as utilities where convenient) */
+  --color-mg-waiting: #94a3b8;
+  --color-mg-preparing: #8b5cf6;
+  --color-mg-downloading: #3b82f6;
+  --color-mg-paused: #f59e0b;
+  --color-mg-success: #10b981;
+  --color-mg-failed: #f43f5e;
+
+  /* fonts */
+  --font-sans:
+    "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* design breakpoints: mobile <720, tablet <1080, desktop >=1080 */
+  --breakpoint-mg-tablet: 720px;
+  --breakpoint-mg-desktop: 1080px;
 }
 
 :root {
@@ -153,6 +195,21 @@ body {
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* ---- MediaGo light tokens (from MediaGo.dc.html _tokens()) ---- */
+  --mg-bg: #f3f3f7;
+  --mg-surface: #ffffff;
+  --mg-surface2: #f5f5f9;
+  --mg-elev: #ffffff;
+  --mg-fg: #16162a;
+  --mg-fg2: #5c5c72;
+  --mg-fg3: #9696aa;
+  --mg-line: #ececf1;
+  --mg-line2: #e0e0e8;
+  --mg-primary: #5b5bf5;
+  --mg-primary-weak: #eeeefe;
+  --mg-primary-fg: #ffffff;
+  --mg-shadow: rgba(20, 20, 40, 0.12);
 }
 
 .dark {
@@ -187,13 +244,36 @@ body {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* ---- MediaGo dark tokens ---- */
+  --mg-bg: #0d0d15;
+  --mg-surface: #16161f;
+  --mg-surface2: #1e1e29;
+  --mg-elev: #1a1a23;
+  --mg-fg: #f0f0f6;
+  --mg-fg2: #a2a2b8;
+  --mg-fg3: #6c6c82;
+  --mg-line: #262631;
+  --mg-line2: #33333f;
+  --mg-primary: #7c7cff;
+  --mg-primary-weak: rgba(124, 124, 255, 0.16);
+  --mg-primary-fg: #ffffff;
+  --mg-shadow: rgba(0, 0, 0, 0.5);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* Kill the mobile tap-highlight box that flashes on every tap
+       (bottom nav, links, etc.). Custom :active / active states replace it. */
+    -webkit-tap-highlight-color: transparent;
   }
   body {
-    @apply bg-background text-foreground;
+    background: var(--mg-bg);
+    color: var(--mg-fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
   }
 }

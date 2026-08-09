@@ -13,7 +13,8 @@ type Actions = {
 
 export const useHomeStore = create<State & Actions>()(
   immer((set) => ({
-    page: 0,
+    // 1-indexed: AntD Pagination is 1-based; Go core also coerces <=0 to 1.
+    page: 1,
     pageSize: 20,
     setPage: (page) => {
       set((state) => {

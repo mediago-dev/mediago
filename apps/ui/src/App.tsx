@@ -26,7 +26,7 @@ import { usePlatform } from "./hooks/use-platform";
 import { setupHttp } from "./utils/http";
 import { getConfig } from "./api/config";
 import { initGoEvents, onConfigChanged } from "./api/events";
-import { DownloadFilter } from "@mediago/shared-common";
+import { AppTheme, DownloadFilter } from "@mediago/shared-common";
 import { useAuth } from "./hooks/use-auth";
 import type { Locale } from "antd/es/locale";
 
@@ -37,6 +37,7 @@ const SettingPage = lazy(() => import("./pages/setting-page"));
 const ConverterPage = lazy(() => import("./pages/converter-page"));
 const SigninPage = lazy(() => import("./pages/signin-page"));
 const OverlayDialog = lazy(() => import("./pages/overlay-dialog"));
+const ShareRoute = lazy(() => import("./pages/share"));
 
 function getAlgorithm(appTheme: "dark" | "light") {
   return appTheme === "dark"
@@ -65,7 +66,9 @@ const App: FC = () => {
     useShallow(updateSelector),
   );
   const { setAppStore } = useAppStore(useShallow(setAppStoreSelector));
-  const { language } = useAppStore(useShallow(appStoreSelector));
+  const { language, theme: appTheme } = useAppStore(
+    useShallow(appStoreSelector),
+  );
   const { setBrowserStore } = useBrowserStore(useShallow(setBrowserSelector));
   const { theme, setTheme } = useSessionStore(useShallow(themeSelector));
   const [appLocale, setAppLocale] = useState<Locale>();
@@ -74,14 +77,6 @@ const App: FC = () => {
   useEffect(() => {
     setAppLocale(getAntdLocale(resolveAppLanguage(language)));
   }, [language]);
-
-  const themeChange = useMemoizedFn((event: MediaQueryListEvent) => {
-    if (event.matches) {
-      setTheme("dark");
-    } else {
-      setTheme("light");
-    }
-  });
 
   // 监听config变化
   const handleConfigChanged = useMemoizedFn(
@@ -179,20 +174,25 @@ const App: FC = () => {
     }
   }, []);
 
+  // Resolve theme (system/light/dark) -> Tailwind `.dark` class + AntD algorithm.
   useEffect(() => {
-    const isDarkTheme = matchMedia("(prefers-color-scheme: dark)");
-    isDarkTheme.addEventListener("change", themeChange);
-
-    if (isDarkTheme.matches) {
-      setTheme("dark");
-    } else {
-      setTheme("light");
-    }
-
-    return () => {
-      isDarkTheme.removeEventListener("change", themeChange);
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const resolved =
+        appTheme === AppTheme.System
+          ? mq.matches
+            ? "dark"
+            : "light"
+          : appTheme === AppTheme.Dark
+            ? "dark"
+            : "light";
+      setTheme(resolved);
+      document.documentElement.classList.toggle("dark", resolved === "dark");
     };
-  }, []);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [appTheme, setTheme]);
 
   if (!adapterReady) {
     return <Loading />;
@@ -202,7 +202,15 @@ const App: FC = () => {
     <ConfigProvider
       locale={appLocale}
       componentSize={isWeb ? undefined : "small"}
-      theme={{ algorithm: getAlgorithm(theme) }}
+      theme={{
+        algorithm: getAlgorithm(theme),
+        token: {
+          colorPrimary: theme === "dark" ? "#7c7cff" : "#5b5bf5",
+          borderRadius: 10,
+          fontFamily:
+            "'Plus Jakarta Sans', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif",
+        },
+      }}
     >
       <AntdApp className="size-full overflow-hidden">
         <Routes>
@@ -251,6 +259,14 @@ const App: FC = () => {
               element={
                 <Suspense fallback={<Loading />}>
                   <ConverterPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="share"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <ShareRoute />
                 </Suspense>
               }
             />

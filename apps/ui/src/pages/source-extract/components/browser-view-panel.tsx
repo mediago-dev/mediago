@@ -1,14 +1,11 @@
-import {
-  DeleteOutlined,
-  DockerOutlined,
-  EditOutlined,
-} from "@ant-design/icons";
 import { useMemoizedFn } from "ahooks";
-import { Button as AntdButton, App } from "antd";
+import { App } from "antd";
+import { DownloadType, type DownloadTask } from "@mediago/shared-common";
+import { Container, Download, Pencil, Radio, Trash2 } from "lucide-react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
-import { Button } from "@/components/ui/button";
+import { MgButton, MgPill } from "@/components/mg";
 import { appStoreSelector, useAppStore } from "@/store/app";
 import {
   browserSourcesSelector,
@@ -18,7 +15,46 @@ import {
 } from "@/store/browser";
 import { usePlatform } from "@/hooks/use-platform";
 import { createDownloadTasks } from "@/api/download-task";
-import { DownloadTask } from "@mediago/shared-common";
+
+/** Short type tag + color, mirroring the redesign's HLS-blue / MP4-green split. */
+const TYPE_META: Record<string, { label: string; color: string; bg: string }> =
+  {
+    [DownloadType.m3u8]: {
+      label: "HLS",
+      color: "#3b82f6",
+      bg: "rgba(59,130,246,.13)",
+    },
+    [DownloadType.bilibili]: {
+      label: "B站",
+      color: "#fb7299",
+      bg: "rgba(251,114,153,.13)",
+    },
+    [DownloadType.youtube]: {
+      label: "YT",
+      color: "#f43f5e",
+      bg: "rgba(244,63,94,.13)",
+    },
+    [DownloadType.direct]: {
+      label: "MP4",
+      color: "#10b981",
+      bg: "rgba(16,185,129,.13)",
+    },
+    [DownloadType.mediago]: {
+      label: "MG",
+      color: "#8b5cf6",
+      bg: "rgba(139,92,246,.13)",
+    },
+  };
+
+function typeMeta(type: DownloadType) {
+  return (
+    TYPE_META[type] ?? {
+      label: String(type).toUpperCase(),
+      color: "#10b981",
+      bg: "rgba(16,185,129,.13)",
+    }
+  );
+}
 
 interface SourceItemProps {
   item: SourceData;
@@ -36,51 +72,64 @@ const SourceItem = memo(function SourceItem({
   onDownload,
 }: SourceItemProps) {
   const { t } = useTranslation();
+  const meta = typeMeta(item.type);
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-[#FAFCFF] p-2 dark:bg-[#27292F]">
-      <span
-        className="line-clamp-2 cursor-default break-words text-sm text-[#343434] dark:text-[#B4B4B4]"
-        title={item.name}
-      >
-        {item.name}
-      </span>
-      <span
-        className="line-clamp-2 cursor-default break-words text-xs dark:text-[#515257]"
+    <div className="rounded-[13px] border border-mg-line bg-mg-surface2 p-[12px_13px]">
+      <div className="mb-[7px] flex items-center gap-2">
+        <MgPill color={meta.color} bg={meta.bg} className="text-[10px]">
+          {meta.label}
+        </MgPill>
+        <span
+          className="min-w-0 flex-1 truncate text-[12.5px] font-bold text-mg-fg"
+          title={item.name}
+        >
+          {item.name}
+        </span>
+      </div>
+      <div
+        className="mb-[10px] truncate font-mono text-[10.5px] text-mg-fg3"
         title={item.url}
       >
         {item.url}
-      </span>
-      <div className="flex flex-row items-center justify-between gap-3">
-        <div className="flex flex-row items-center gap-2">
-          <AntdButton
-            icon={<DeleteOutlined />}
-            type="text"
-            size="small"
-            onClick={() => onDelete(item.url)}
-            title={t("delete")}
-            danger
-          />
-          <AntdButton
-            icon={<EditOutlined />}
-            type="text"
-            size="small"
+      </div>
+      <div className="flex items-center gap-[10px]">
+        <div className="flex-1" />
+        <button
+          type="button"
+          title={t("delete")}
+          onClick={() => onDelete(item.url)}
+          className="flex size-[30px] cursor-pointer items-center justify-center rounded-lg border border-mg-line bg-mg-surface text-mg-fg2 transition-colors hover:text-[#f43f5e]"
+        >
+          <Trash2 size={13} strokeWidth={2} />
+        </button>
+        {enableDocker && (
+          <button
+            type="button"
             title={t("edit")}
             onClick={() => onEdit([item])}
-          />
-          {enableDocker && (
-            <AntdButton
-              icon={<DockerOutlined />}
-              type="text"
-              size="small"
-              title={t("edit")}
-              onClick={() => onEdit([item])}
-            />
-          )}
-        </div>
-        <Button size="sm" onClick={() => onDownload(item)}>
-          {t("downloadNow")}
-        </Button>
+            className="flex size-[30px] cursor-pointer items-center justify-center rounded-lg border border-mg-line bg-mg-surface text-mg-fg2 transition-colors hover:text-mg-fg"
+          >
+            <Container size={13} strokeWidth={2} />
+          </button>
+        )}
+        <button
+          type="button"
+          title={t("edit")}
+          onClick={() => onEdit([item])}
+          className="flex size-[30px] cursor-pointer items-center justify-center rounded-lg border border-mg-line bg-mg-surface text-mg-fg2 transition-colors hover:text-mg-fg"
+        >
+          <Pencil size={13} strokeWidth={2} />
+        </button>
+        <MgButton
+          variant="primary"
+          size="sm"
+          className="h-[30px] rounded-lg px-3 text-[11.5px]"
+          onClick={() => onDownload(item)}
+        >
+          <Download size={13} strokeWidth={2.4} />
+          {t("download")}
+        </MgButton>
       </div>
     </div>
   );
@@ -122,22 +171,45 @@ export function BrowserViewPanel() {
   });
 
   return (
-    <div className="flex h-full flex-col gap-3 overflow-y-auto bg-white p-3 dark:bg-[#1F2024]">
-      <div>
-        <AntdButton size="small" danger onClick={handleClear}>
+    <div className="flex h-full flex-col bg-mg-surface">
+      {/* sniffer header */}
+      <div className="flex flex-none items-center gap-[9px] border-b border-mg-line p-[14px_16px]">
+        <span className="size-[9px] rounded-full bg-[#10b981] shadow-[0_0_0_3px_rgba(16,185,129,.18)]" />
+        <span className="flex items-center gap-[7px] text-[13.5px] font-extrabold text-mg-fg">
+          <Radio size={15} strokeWidth={2} className="text-mg-fg2" />
+          {t("materialExtraction")}
+        </span>
+        <MgPill
+          color="var(--mg-primary)"
+          bg="var(--mg-primary-weak)"
+          className="text-[11px]"
+        >
+          {sources.length}
+        </MgPill>
+        <div className="flex-1" />
+        <button
+          type="button"
+          title={t("clear")}
+          onClick={handleClear}
+          className="flex h-[30px] cursor-pointer items-center rounded-lg border border-mg-line bg-transparent px-[11px] text-[11.5px] font-semibold text-mg-fg3 transition-colors hover:text-mg-fg2"
+        >
           {t("clear")}
-        </AntdButton>
+        </button>
       </div>
-      {sources.map((item) => (
-        <SourceItem
-          key={item.id}
-          item={item}
-          enableDocker={enableDocker}
-          onDelete={deleteSource}
-          onEdit={handleEdit}
-          onDownload={handleDownloadNow}
-        />
-      ))}
+
+      {/* resource list */}
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-[10px]">
+        {sources.map((item) => (
+          <SourceItem
+            key={item.id}
+            item={item}
+            enableDocker={enableDocker}
+            onDelete={deleteSource}
+            onEdit={handleEdit}
+            onDownload={handleDownloadNow}
+          />
+        ))}
+      </div>
     </div>
   );
 }
