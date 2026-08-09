@@ -184,7 +184,8 @@ export async function validateCompleteRelease(
   );
   const macIntelDmg = asset("macOS x64 DMG", `setup-darwin-x64-${version}.dmg`);
   const macIntelZip = asset("macOS x64 ZIP", `setup-darwin-x64-${version}.zip`);
-  const linuxDeb = asset("Linux x64 DEB", `setup-linux-x64-${version}.deb`);
+  // electron-builder maps Electron's x64 architecture to Debian's amd64 name.
+  const linuxDeb = asset("Linux amd64 DEB", `setup-linux-amd64-${version}.deb`);
 
   const manifestAssets = new Map<string, string[]>([
     [`${validation.channel}.yml`, [windowsInstaller]],

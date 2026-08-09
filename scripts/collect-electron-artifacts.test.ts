@@ -39,6 +39,7 @@ test("collects and validates a complete cross-platform release", async (t) => {
     names,
     names.toSorted((left, right) => left.localeCompare(right)),
   );
+  assert.ok(names.includes("mediago-community-setup-linux-amd64-3.6.0.deb"));
   assert.ok(!names.some((name) => name.startsWith("builder-")));
   await assert.rejects(readFile(path.join(output, "stale.txt")), {
     code: "ENOENT",
@@ -298,7 +299,7 @@ async function createCompleteRelease(
   const macArmZip = `${prefix}-setup-darwin-arm64-${version}.zip`;
   const macIntelDmg = `${prefix}-setup-darwin-x64-${version}.dmg`;
   const macIntelZip = `${prefix}-setup-darwin-x64-${version}.zip`;
-  const linuxDeb = `${prefix}-setup-linux-x64-${version}.deb`;
+  const linuxDeb = `${prefix}-setup-linux-amd64-${version}.deb`;
 
   const windowsEntry = await writeReleaseAsset(windows, windowsInstaller, true);
   await writeReleaseAsset(windows, windowsPortable, false);
