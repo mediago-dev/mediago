@@ -16,14 +16,14 @@
   },
   "N_m3u8DL-RE": {
     "repo": "nilaoda/N_m3u8DL-RE",
-    "version": "v0.3.0-beta",
+    "version": "v0.6.0-beta",
     "assets": {
-      "darwin-x64": "N_m3u8DL-RE_v0.3.0-beta_osx-x64_20241203.tar.gz",
-      "darwin-arm64": "N_m3u8DL-RE_v0.3.0-beta_osx-arm64_20241203.tar.gz",
-      "linux-x64": "N_m3u8DL-RE_v0.3.0-beta_linux-x64_20241203.tar.gz",
-      "linux-arm64": "N_m3u8DL-RE_v0.3.0-beta_linux-arm64_20241203.tar.gz",
-      "win32-x64": "N_m3u8DL-RE_v0.3.0-beta_win-x64_20241203.zip",
-      "win32-arm64": "N_m3u8DL-RE_v0.3.0-beta_win-arm64_20241203.zip"
+      "darwin-x64": "N_m3u8DL-RE_v0.6.0-beta_osx-x64_20260629.tar.gz",
+      "darwin-arm64": "N_m3u8DL-RE_v0.6.0-beta_osx-arm64_20260629.tar.gz",
+      "linux-x64": "N_m3u8DL-RE_v0.6.0-beta_linux-x64_20260629.tar.gz",
+      "linux-arm64": "N_m3u8DL-RE_v0.6.0-beta_linux-arm64_20260629.tar.gz",
+      "win32-x64": "N_m3u8DL-RE_v0.6.0-beta_win-x64_20260629.zip",
+      "win32-arm64": "N_m3u8DL-RE_v0.6.0-beta_win-arm64_20260629.zip"
     },
     "binaryName": {
       "default": "N_m3u8DL-RE",
@@ -55,8 +55,16 @@
     }
   },
   "aria2": {
-    "source": "local",
-    "path": "extra/aria2",
+    "repo": "AnInsomniacy/aria2-next",
+    "version": "v2.5.5",
+    "assets": {
+      "darwin-x64": "aria2-next-2.5.5-macos-x86_64",
+      "darwin-arm64": "aria2-next-2.5.5-macos-arm64",
+      "linux-x64": "aria2-next-2.5.5-linux-x86_64",
+      "linux-arm64": "aria2-next-2.5.5-linux-aarch64",
+      "win32-x64": "aria2-next-2.5.5-windows-x86_64.exe",
+      "win32-arm64": "aria2-next-2.5.5-windows-arm64.exe"
+    },
     "binaryName": {
       "default": "aria2c",
       "win32": "aria2c.exe"
@@ -64,14 +72,14 @@
   },
   "yt-dlp": {
     "repo": "yt-dlp/yt-dlp",
-    "version": "2026.03.17",
+    "version": "2026.07.04",
     "assets": {
       "darwin-x64": "yt-dlp_macos",
       "darwin-arm64": "yt-dlp_macos",
       "linux-x64": "yt-dlp_linux",
       "linux-arm64": "yt-dlp_linux_aarch64",
       "win32-x64": "yt-dlp.exe",
-      "win32-arm64": "yt-dlp.exe"
+      "win32-arm64": "yt-dlp_arm64.exe"
     },
     "binaryName": {
       "default": "yt-dlp",

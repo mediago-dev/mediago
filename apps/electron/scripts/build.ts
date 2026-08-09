@@ -106,6 +106,10 @@ function getReleaseConfig(): Configuration {
         from: "./app/build/extension",
         to: "extension",
       },
+      {
+        from: "../../THIRD_PARTY_NOTICES.md",
+        to: "THIRD_PARTY_NOTICES.md",
+      },
     ],
     win: {
       icon: "../assets/icon.ico",

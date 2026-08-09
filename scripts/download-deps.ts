@@ -3,12 +3,8 @@
  *
  * Provisions third-party tool binaries for the current (or all) platform(s).
  *
- * Two source types are supported:
- *   - `source: "github"` (default) — fetch from a GitHub Release.
- *   - `source: "local"` — copy from a repo-tracked directory (e.g. `extra/<tool>/`).
- *     Used for tools we can't reliably fetch from a single upstream (aria2's
- *     static builds are scattered across different repos per-platform), so we
- *     vendor them in-tree instead.
+ * Tools are fetched from pinned GitHub Releases. A per-platform version
+ * manifest keeps local caches in sync with the configured release assets.
  *
  * Tools: ffmpeg, N_m3u8DL-RE, BBDown, aria2, yt-dlp, mediago.
  *
@@ -20,19 +16,24 @@
 import {
   createWriteStream,
   createReadStream,
-  existsSync,
   chmodSync,
-  copyFileSync,
   mkdirSync,
   readFileSync,
-  statSync,
 } from "node:fs";
-import { rename, unlink, readdir, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rename,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,22 +48,26 @@ const depsVersions = JSON.parse(
 // ============================================================
 
 interface ToolDef {
-  /**
-   * Where to fetch the binary from.
-   * - "github" (default): download from a GitHub Release using `repo`, `version`, `assets`.
-   * - "local": copy from a repo-tracked directory at `path/<os>/<arch>/<binaryName>`.
-   */
-  source?: "github" | "local";
-  /** Repo-relative directory holding vendored binaries. Required for `source: "local"`. */
-  path?: string;
-  /** GitHub repo in `owner/name` form. Required for `source: "github"`. */
+  /** GitHub repo in `owner/name` form. */
   repo?: string;
-  /** Release tag (e.g. `v1.6.5`). Required for `source: "github"`. */
+  /** Pinned Release tag (e.g. `v1.6.5`). */
   version?: string;
-  /** Per-platform asset filename on the GitHub release. Required for `source: "github"`. */
+  /** Per-platform asset filename on the GitHub Release. */
   assets?: Record<string, string>;
   binaryName: { default: string; win32?: string };
   extractBinary?: { default: string; win32?: string };
+}
+
+interface ToolVersionRecord {
+  repo: string;
+  version: string;
+  asset: string;
+  binaryName: string;
+}
+
+interface VersionManifest {
+  schemaVersion: 1;
+  tools: Record<string, ToolVersionRecord>;
 }
 
 // ============================================================
@@ -124,6 +129,89 @@ function getExtractBinaryName(
 // ============================================================
 
 const DEPS_DIR = path.resolve(__dirname, "..", ".deps");
+const VERSION_STATE_DIR = path.join(DEPS_DIR, ".state");
+
+function createVersionManifest(): VersionManifest {
+  return { schemaVersion: 1, tools: {} };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getVersionManifestPath(platformKey: string): string {
+  return path.join(VERSION_STATE_DIR, platformKey + ".json");
+}
+
+async function loadVersionManifest(
+  platformKey: string,
+): Promise<VersionManifest> {
+  const manifestPath = getVersionManifestPath(platformKey);
+  try {
+    const parsed: unknown = JSON.parse(await readFile(manifestPath, "utf-8"));
+    if (
+      isRecord(parsed) &&
+      parsed.schemaVersion === 1 &&
+      isRecord(parsed.tools)
+    ) {
+      return {
+        schemaVersion: 1,
+        tools: parsed.tools as Record<string, ToolVersionRecord>,
+      };
+    }
+    console.warn("  ⚠ Ignoring invalid version state for " + platformKey);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn("  ⚠ Could not read version state for " + platformKey);
+    }
+  }
+  return createVersionManifest();
+}
+
+async function saveVersionManifest(
+  platformKey: string,
+  manifest: VersionManifest,
+): Promise<void> {
+  mkdirSync(VERSION_STATE_DIR, { recursive: true });
+  const workDir = await mkdtemp(
+    path.join(VERSION_STATE_DIR, "." + platformKey + "-"),
+  );
+  const tempFile = path.join(workDir, "manifest.json");
+  try {
+    await writeFile(
+      tempFile,
+      JSON.stringify(manifest, null, 2) + "\n",
+      "utf-8",
+    );
+    await rename(tempFile, getVersionManifestPath(platformKey));
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
+function matchesVersion(
+  actual: ToolVersionRecord | undefined,
+  expected: ToolVersionRecord,
+): boolean {
+  return (
+    actual?.repo === expected.repo &&
+    actual.version === expected.version &&
+    actual.asset === expected.asset &&
+    actual.binaryName === expected.binaryName
+  );
+}
+
+async function isNonEmptyFile(filePath: string): Promise<boolean> {
+  try {
+    const fileStat = await stat(filePath);
+    return fileStat.isFile() && fileStat.size > 0;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw err;
+  }
+}
 
 async function downloadFile(url: string, dest: string): Promise<void> {
   const response = await fetch(url, {
@@ -153,12 +241,28 @@ async function extractGz(filePath: string, outputPath: string): Promise<void> {
 
 async function extractZip(zipPath: string, outputDir: string): Promise<void> {
   if (process.platform === "win32") {
-    const psCommand = `Add-Type -AssemblyName System.IO.Compression.FileSystem; if (Test-Path -LiteralPath '${outputDir}') { Remove-Item -LiteralPath '${outputDir}' -Recurse -Force }; [System.IO.Compression.ZipFile]::ExtractToDirectory('${zipPath}', '${outputDir}')`;
-    execSync(`powershell -NoProfile -Command "${psCommand}"`, {
+    const psCommand =
+      "Add-Type -AssemblyName System.IO.Compression.FileSystem; " +
+      "if (Test-Path -LiteralPath $env:MEDIAGO_DEPS_OUTPUT_DIR) { " +
+      "Remove-Item -LiteralPath $env:MEDIAGO_DEPS_OUTPUT_DIR -Recurse -Force }; " +
+      "[System.IO.Compression.ZipFile]::ExtractToDirectory(" +
+      "$env:MEDIAGO_DEPS_ZIP_PATH, $env:MEDIAGO_DEPS_OUTPUT_DIR)";
+    execFileSync(
+      "powershell",
+      ["-NoProfile", "-NonInteractive", "-Command", psCommand],
+      {
+        stdio: "pipe",
+        env: {
+          ...process.env,
+          MEDIAGO_DEPS_OUTPUT_DIR: outputDir,
+          MEDIAGO_DEPS_ZIP_PATH: zipPath,
+        },
+      },
+    );
+  } else {
+    execFileSync("unzip", ["-o", zipPath, "-d", outputDir], {
       stdio: "pipe",
     });
-  } else {
-    execSync(`unzip -o "${zipPath}" -d "${outputDir}"`, { stdio: "pipe" });
   }
 }
 
@@ -166,86 +270,17 @@ async function extractTarGz(
   tarGzPath: string,
   outputDir: string,
 ): Promise<void> {
-  execSync(`tar -xzf "${tarGzPath}" -C "${outputDir}"`, { stdio: "pipe" });
-}
-
-/**
- * Copy a vendored (repo-tracked) binary from `<repoRoot>/<tool.path>/<os>/<arch>/<binaryName>`
- * into `.deps/<os>-<arch>/<binaryName>`. Used for tools whose per-platform
- * static builds live in the repo rather than upstream releases.
- *
- * The layout intentionally diverges from `.deps/`:
- *   - source:  `<tool.path>/<os>/<arch>/...`  (two-level `os/arch`)
- *   - dest:    `.deps/<os>-<arch>/...`        (flat `os-arch`)
- * which keeps the vendored tree navigable in a file browser while letting
- * binaryResolver.ts keep its single-directory-per-platform convention.
- */
-function copyLocalTool(
-  toolName: string,
-  tool: ToolDef,
-  platformKey: string,
-): void {
-  if (!tool.path) {
-    console.log(`  ⚠ ${toolName} has source:"local" but no path; skipping`);
-    return;
-  }
-
-  const [os, arch] = platformKey.split("-");
-  const binaryName = getBinaryName(tool, platformKey);
-  const srcFile = path.resolve(
-    __dirname,
-    "..",
-    tool.path,
-    os,
-    arch,
-    binaryName,
-  );
-  const destDir = path.join(DEPS_DIR, platformKey);
-  const destFile = path.join(destDir, binaryName);
-
-  if (!existsSync(srcFile)) {
-    console.log(
-      `  ⚠ No vendored ${toolName} at ${path.relative(process.cwd(), srcFile)}, skipping`,
-    );
-    return;
-  }
-
-  // Skip if destination already matches source (size-based heuristic —
-  // cheap and catches the common case of "already provisioned once").
-  if (existsSync(destFile)) {
-    const srcSize = statSync(srcFile).size;
-    const destSize = statSync(destFile).size;
-    if (srcSize === destSize) {
-      console.log(`  ✓ ${toolName} already exists for ${platformKey}`);
-      return;
-    }
-  }
-
-  mkdirSync(destDir, { recursive: true });
-  copyFileSync(srcFile, destFile);
-
-  if (!platformKey.startsWith("win32")) {
-    try {
-      chmodSync(destFile, 0o755);
-    } catch {
-      // Ignore permission errors on Windows host
-    }
-  }
-
-  console.log(`  ✓ ${toolName} ready for ${platformKey} (local)`);
+  execFileSync("tar", ["-xzf", tarGzPath, "-C", outputDir], {
+    stdio: "pipe",
+  });
 }
 
 async function downloadTool(
   toolName: string,
   tool: ToolDef,
   platformKey: string,
+  versionManifest: VersionManifest,
 ): Promise<void> {
-  // Vendored tools: bypass the GitHub release path entirely.
-  if (tool.source === "local") {
-    copyLocalTool(toolName, tool, platformKey);
-    return;
-  }
-
   if (!tool.assets) {
     console.log(`  ⚠ ${toolName} has no assets defined; skipping`);
     return;
@@ -255,7 +290,9 @@ async function downloadTool(
     console.log(`  ⚠ No asset for ${toolName} on ${platformKey}, skipping`);
     return;
   }
-  if (!tool.repo || !tool.version) {
+  const repo = tool.repo;
+  const version = tool.version;
+  if (!repo || !version) {
     console.log(`  ⚠ ${toolName} missing repo/version; skipping`);
     return;
   }
@@ -265,83 +302,102 @@ async function downloadTool(
 
   const binaryName = getBinaryName(tool, platformKey);
   const binaryPath = path.join(destDir, binaryName);
+  const expectedVersion: ToolVersionRecord = {
+    repo,
+    version,
+    asset: assetName,
+    binaryName,
+  };
+  const binaryIsUsable = await isNonEmptyFile(binaryPath);
 
-  // Skip if already downloaded
-  if (existsSync(binaryPath)) {
-    console.log(`  ✓ ${toolName} already exists for ${platformKey}`);
+  if (
+    binaryIsUsable &&
+    matchesVersion(versionManifest.tools[toolName], expectedVersion)
+  ) {
+    console.log("  ✓ " + toolName + " already exists for " + platformKey);
     return;
   }
-
-  const url = `https://github.com/${tool.repo}/releases/download/${tool.version}/${assetName}`;
-  const tempFile = path.join(destDir, assetName);
+  if (binaryIsUsable) {
+    console.log("  ↻ Refreshing stale " + toolName + " for " + platformKey);
+  }
+  const url = `https://github.com/${repo}/releases/download/${version}/${assetName}`;
+  const workDir = await mkdtemp(path.join(destDir, ".download-"));
+  const tempFile = path.join(workDir, assetName);
+  const extractedFile = path.join(workDir, binaryName);
+  const extractDir = path.join(workDir, "extract");
 
   console.log(`  ↓ Downloading ${toolName} for ${platformKey}...`);
-  await downloadFile(url, tempFile);
 
-  // Extract based on file type
-  const extractBinaryName = getExtractBinaryName(tool, platformKey);
+  try {
+    await downloadFile(url, tempFile);
 
-  if (assetName.endsWith(".gz") && !assetName.endsWith(".tar.gz")) {
-    // Simple gzip (e.g., ffmpeg-static)
-    await extractGz(tempFile, binaryPath);
-    await unlink(tempFile);
-  } else if (assetName.endsWith(".tar.gz")) {
-    // tar.gz archive
-    const extractDir = path.join(destDir, `_extract_${toolName}`);
-    mkdirSync(extractDir, { recursive: true });
-    await extractTarGz(tempFile, extractDir);
+    const extractBinaryName = getExtractBinaryName(tool, platformKey);
+    let candidateFile: string;
 
-    // Find the binary in extracted directory
-    const found = await findBinaryInDir(
-      extractDir,
-      extractBinaryName || binaryName,
-    );
-    if (found) {
-      await rename(found, binaryPath);
-    } else {
-      throw new Error(
-        `Could not find ${extractBinaryName || binaryName} in extracted archive`,
+    if (assetName.endsWith(".gz") && !assetName.endsWith(".tar.gz")) {
+      await extractGz(tempFile, extractedFile);
+      candidateFile = extractedFile;
+    } else if (assetName.endsWith(".tar.gz")) {
+      mkdirSync(extractDir, { recursive: true });
+      await extractTarGz(tempFile, extractDir);
+
+      const found = await findBinaryInDir(
+        extractDir,
+        extractBinaryName || binaryName,
       );
-    }
+      if (!found) {
+        throw new Error(
+          `Could not find ${extractBinaryName || binaryName} in extracted archive`,
+        );
+      }
+      candidateFile = found;
+    } else if (assetName.endsWith(".zip")) {
+      mkdirSync(extractDir, { recursive: true });
+      await extractZip(tempFile, extractDir);
 
-    await rm(extractDir, { recursive: true, force: true });
-    await unlink(tempFile);
-  } else if (assetName.endsWith(".zip")) {
-    // zip archive
-    const extractDir = path.join(destDir, `_extract_${toolName}`);
-    mkdirSync(extractDir, { recursive: true });
-    await extractZip(tempFile, extractDir);
-
-    // Find the binary in extracted directory
-    const found = await findBinaryInDir(
-      extractDir,
-      extractBinaryName || binaryName,
-    );
-    if (found) {
-      await rename(found, binaryPath);
-    } else {
-      throw new Error(
-        `Could not find ${extractBinaryName || binaryName} in extracted archive`,
+      const found = await findBinaryInDir(
+        extractDir,
+        extractBinaryName || binaryName,
       );
+      if (!found) {
+        throw new Error(
+          `Could not find ${extractBinaryName || binaryName} in extracted archive`,
+        );
+      }
+      candidateFile = found;
+    } else {
+      candidateFile = tempFile;
     }
 
-    await rm(extractDir, { recursive: true, force: true });
-    await unlink(tempFile);
-  } else {
-    // Direct binary
-    await rename(tempFile, binaryPath);
-  }
-
-  // Set executable permission on non-Windows
-  if (!platformKey.startsWith("win32")) {
-    try {
-      chmodSync(binaryPath, 0o755);
-    } catch {
-      // Ignore permission errors on Windows host
+    if (!(await isNonEmptyFile(candidateFile))) {
+      throw new Error(`Downloaded ${toolName} binary is empty or not a file`);
     }
-  }
 
-  console.log(`  ✓ ${toolName} ready for ${platformKey}`);
+    // Node's rename replaces an existing file. Keeping the old binary in place
+    // until this point means a failed download or extraction never removes it.
+    await rename(candidateFile, binaryPath);
+
+    if (!platformKey.startsWith("win32")) {
+      try {
+        chmodSync(binaryPath, 0o755);
+      } catch {
+        // Ignore permission errors on Windows host
+      }
+    }
+
+    const updatedVersionManifest: VersionManifest = {
+      schemaVersion: 1,
+      tools: {
+        ...versionManifest.tools,
+        [toolName]: expectedVersion,
+      },
+    };
+    await saveVersionManifest(platformKey, updatedVersionManifest);
+    versionManifest.tools = updatedVersionManifest.tools;
+    console.log(`  ✓ ${toolName} ready for ${platformKey}`);
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
 }
 
 async function findBinaryInDir(
@@ -381,13 +437,16 @@ async function main() {
   );
 
   const tools = depsVersions as Record<string, ToolDef>;
+  let failureCount = 0;
 
   for (const platformKey of platforms) {
     console.log(`\n📦 Platform: ${platformKey}`);
+    const versionManifest = await loadVersionManifest(platformKey);
     for (const [toolName, tool] of Object.entries(tools)) {
       try {
-        await downloadTool(toolName, tool, platformKey);
+        await downloadTool(toolName, tool, platformKey, versionManifest);
       } catch (err) {
+        failureCount += 1;
         console.error(
           `  ✗ Failed to download ${toolName} for ${platformKey}: ${err}`,
         );
@@ -395,10 +454,14 @@ async function main() {
     }
   }
 
+  if (failureCount > 0) {
+    throw new Error(`${failureCount} dependency operation(s) failed`);
+  }
+
   console.log("\n✅ Done!");
 }
 
 main().catch((err) => {
   console.error("Fatal error:", err);
-  process.exit(1);
+  process.exitCode = 1;
 });

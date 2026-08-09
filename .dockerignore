@@ -7,6 +7,7 @@
 **/.claude
 **/.deps
 *.md
+!THIRD_PARTY_NOTICES.md
 
 # Go build artifacts
 apps/core/bin/

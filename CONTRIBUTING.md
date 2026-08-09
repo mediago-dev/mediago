@@ -37,7 +37,6 @@ packages/
   electron-preload/
   mediago-extension/  Browser extension (Chrome / Edge)
 docs/              VitePress site (zh / en / jp)
-extra/             Vendored binaries (e.g. aria2)
 scripts/           Dep downloaders, extension packager, etc.
 ```
 
@@ -47,7 +46,7 @@ Deeper architecture notes live in [`CLAUDE.md`](./CLAUDE.md).
 
 ```shell
 # Download third-party binaries (ffmpeg, yt-dlp, N_m3u8DL-RE, BBDown,
-# aria2, mediago-core) for the current platform — run once per clone
+# aria2-next, mediago-core) for the current platform — run once per clone
 pnpm deps:download
 
 # Run the Electron desktop app in dev mode (HMR)
