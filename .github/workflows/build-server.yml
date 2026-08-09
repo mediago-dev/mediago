@@ -1,44 +1,112 @@
 name: Build & Push Docker Image
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      tag:
-        description: "Image tag to publish under (e.g. 3.5.0 to rebuild a released version, or 3.5.0-fix.1 for a side-by-side). Leave blank for dev-<run_id>."
+      run_mode:
+        description: "Build mode: test publishes an isolated preview; release publishes a versioned image."
+        required: true
+        type: string
+      version:
+        description: "SemVer to embed and publish."
+        required: true
+        type: string
+      release_channel:
+        description: "Release channel: latest, alpha, or beta."
+        required: true
+        type: string
+      source_sha:
+        description: "Full commit SHA to build. Defaults to the caller commit."
         required: false
         type: string
-      push_latest:
-        description: "Also tag the resulting image as `latest` (use when rebuilding a stable release)."
+        default: ""
+    outputs:
+      image:
+        description: "Primary GHCR image name without a tag."
+        value: ${{ jobs.docker.outputs.image }}
+      tag:
+        description: "Primary image tag produced by this run."
+        value: ${{ jobs.docker.outputs.tag }}
+      image_ref:
+        description: "Primary GHCR image reference including its tag."
+        value: ${{ jobs.docker.outputs.image_ref }}
+      digest:
+        description: "Published multi-architecture image digest."
+        value: ${{ jobs.docker.outputs.digest }}
+      source_sha:
+        description: "Resolved commit SHA used for the build."
+        value: ${{ jobs.docker.outputs.source_sha }}
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: "Optional Docker Hub username used only for release builds."
         required: false
-        type: boolean
-        default: false
-  push:
-    tags:
-      - "v*"
+      DOCKERHUB_TOKEN:
+        description: "Optional Docker Hub access token used only for release builds."
+        required: false
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  # Docker Hub mirror — same image, different registry. Credentials
-  # come from the DOCKERHUB_USERNAME / DOCKERHUB_TOKEN secrets (token,
-  # not account password). If either secret is empty, the Docker Hub
-  # login step is skipped and only GHCR gets pushed.
   DOCKERHUB_IMAGE: caorushizi/mediago
+
+concurrency:
+  group: docker-${{ inputs.run_mode }}-${{ inputs.run_mode == 'release' && inputs.version || inputs.source_sha || github.sha }}
+  cancel-in-progress: ${{ inputs.run_mode == 'test' }}
 
 jobs:
   docker:
     name: Build and push multi-arch image
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.parameters.outputs.image }}
+      tag: ${{ steps.parameters.outputs.tag }}
+      image_ref: ${{ steps.parameters.outputs.image_ref }}
+      digest: ${{ steps.build.outputs.digest }}
+      source_sha: ${{ steps.parameters.outputs.source_sha }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+      - name: Checkout source commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Validate inputs
+        env:
+          RUN_MODE: ${{ inputs.run_mode }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node scripts/ci/docker-workflow.ts validate-inputs
+
+      - name: Resolve source, version, image, and tag
+        id: parameters
+        env:
+          RUN_MODE: ${{ inputs.run_mode }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: node scripts/ci/docker-workflow.ts resolve-parameters
+
+      - name: Verify preview package is private
+        if: inputs.run_mode == 'test'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: node scripts/ci/docker-workflow.ts verify-preview-private
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -46,108 +114,67 @@ jobs:
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GitHub Actions forbids `secrets.*` inside `if:` expressions
-      # directly — it fails with `Unrecognized named-value: 'secrets'`.
-      # The blessed workaround: pull the secret through `env:` (which
-      # IS allowed) inside a single check step, write a boolean to
-      # step outputs, and have every downstream step guard on the
-      # output instead of the raw secret.
-      - name: Detect Docker Hub credentials
+      - name: Detect Docker Hub credentials for release
         id: dockerhub
+        if: inputs.run_mode == 'release'
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: node scripts/ci/docker-workflow.ts detect-dockerhub
 
-      # Only log in (and later push) to Docker Hub when both secrets are
-      # configured. Lets forks / trial runs without Docker Hub
-      # credentials still build-and-push to GHCR.
-      - name: Login to Docker Hub
+      - name: Login to Docker Hub for release
         if: steps.dockerhub.outputs.enabled == 'true'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Compose the list of target images based on which registries we
-      # actually have credentials for. Without this, metadata-action
-      # would always generate Docker Hub tags and build-push-action
-      # would then fail with 401 on forks that haven't set the secrets.
       - name: Resolve image targets
         id: targets
-        run: |
-          {
-            echo "images<<EOF"
-            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-            if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
-              echo "${{ env.DOCKERHUB_IMAGE }}"
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+        env:
+          PRIMARY_IMAGE: ${{ steps.parameters.outputs.image }}
+          DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled || 'false' }}
+          DOCKERHUB_IMAGE: ${{ steps.parameters.outputs.dockerhub_image }}
+        run: node scripts/ci/docker-workflow.ts resolve-targets
 
-      - name: Docker meta
-        id: meta
+      - name: Generate image metadata
+        id: metadata
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.targets.outputs.images }}
+          flavor: latest=false
           tags: |
-            # 1. Manual rebuild with an explicit tag (e.g. `3.5.0`, `3.5.0-fix.1`)
-            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
-            # 2. Tag push: v1.0.0 → 1.0.0
-            type=semver,pattern={{version}}
-            # 3. `latest`: on stable semver tag pushes, or when the manual
-            #    rebuild explicitly asks for it
-            type=raw,value=latest,enable=${{ (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'beta')) || inputs.push_latest }}
-            # 4. Fallback for manual triggers with no custom tag
-            type=raw,value=dev-${{ github.run_id }},enable=${{ !startsWith(github.ref, 'refs/tags/') && inputs.tag == '' }}
+            type=raw,value=${{ steps.parameters.outputs.tag }}
+            type=raw,value=latest,enable=${{ inputs.run_mode == 'release' && inputs.release_channel == 'latest' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.revision=${{ steps.parameters.outputs.source_sha }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          # `metadata-action` already emits the standard OCI labels
-          # (image.title / description / source / licenses / version /
-          # revision / created). `revision` uses github.sha, so two
-          # builds that re-use a tag are distinguishable via
-          # `docker inspect`.
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha,scope=mediago-${{ inputs.run_mode }}
+          cache-to: type=gha,mode=max,scope=mediago-${{ inputs.run_mode }}
 
-      - name: Build Summary
-        run: |
-          echo "### 🎉 Docker Image Published" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Registries:**" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
-            echo "- \`docker.io/${{ env.DOCKERHUB_IMAGE }}\`" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "**Platforms:** linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** \`${{ steps.meta.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" | while read tag; do
-            echo "- \`${tag}\`" >> $GITHUB_STEP_SUMMARY
-          done
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Pull:**" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
-            echo "docker pull ${{ env.DOCKERHUB_IMAGE }}:${{ steps.meta.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      - name: Build summary
+        env:
+          RUN_MODE: ${{ inputs.run_mode }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          RESOLVED_SOURCE_SHA: ${{ steps.parameters.outputs.source_sha }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          PUBLISHED_TAGS: ${{ steps.metadata.outputs.tags }}
+          IMAGE_REF: ${{ steps.parameters.outputs.image_ref }}
+        run: node scripts/ci/docker-workflow.ts write-summary

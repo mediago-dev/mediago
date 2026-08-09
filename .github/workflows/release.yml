@@ -1,0 +1,276 @@
+name: Build & Release MediaGo
+run-name: ${{ inputs.run_mode == 'release' && 'Release' || 'Test' }} ${{ inputs.build_target }} (${{ inputs.release_channel }}, ${{ inputs.version_increment }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_mode:
+        description: "Test creates private/downloadable outputs; release publishes an official version"
+        required: true
+        type: choice
+        options:
+          - test
+          - release
+        default: test
+      build_target:
+        description: "What to build"
+        required: true
+        type: choice
+        options:
+          - all
+          - desktop
+          - docker
+        default: all
+      release_channel:
+        description: "Official release channel (ignored when run mode is test)"
+        required: true
+        type: choice
+        options:
+          - alpha
+          - beta
+          - latest
+        default: beta
+      version_increment:
+        description: "Base version increment for a new official release line"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+permissions: {}
+
+concurrency:
+  group: mediago-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve and commit version
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      release_type: ${{ steps.version.outputs.release_type }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      pending: ${{ steps.version.outputs.pending }}
+      build_desktop: ${{ steps.targets.outputs.build_desktop }}
+      build_docker: ${{ steps.targets.outputs.build_docker }}
+    steps:
+      - name: Check out selected source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.run_mode == 'release' && 'master' || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.0"
+
+      - name: Validate source and targets
+        id: targets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_MODE: ${{ inputs.run_mode }}
+          BUILD_TARGET: ${{ inputs.build_target }}
+          SELECTED_REF: ${{ github.ref }}
+          SELECTED_SHA: ${{ github.sha }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: node scripts/ci/release-workflow.ts validate-request
+
+      - name: Detect unfinished GitHub Release
+        id: release_state
+        if: inputs.run_mode == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TARGET: ${{ inputs.build_target }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          REPOSITORY: ${{ github.repository }}
+        run: node scripts/ci/release-workflow.ts detect-release-state
+
+      - name: Calculate version
+        id: version
+        shell: bash
+        env:
+          RUN_MODE: ${{ inputs.run_mode }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          VERSION_INCREMENT: ${{ inputs.version_increment }}
+          RESUME_CURRENT: ${{ steps.release_state.outputs.resume || 'false' }}
+        run: node scripts/ci/release-workflow.ts calculate-version
+
+      - name: Commit official version
+        if: inputs.run_mode == 'release' && steps.version.outputs.written == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TARGET: ${{ inputs.build_target }}
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_FILE: ${{ steps.version.outputs.version_file }}
+        run: node scripts/ci/release-workflow.ts commit-version
+
+      - name: Resolve build commit
+        id: source
+        shell: bash
+        env:
+          RUN_MODE: ${{ inputs.run_mode }}
+          BUILD_TARGET: ${{ inputs.build_target }}
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_FILE: ${{ steps.version.outputs.version_file }}
+          PENDING: ${{ steps.version.outputs.pending }}
+          RESUME_DRAFT: ${{ steps.release_state.outputs.resume }}
+          DRAFT_TARGET: ${{ steps.release_state.outputs.target_commitish }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: node scripts/ci/release-workflow.ts resolve-source
+
+      - name: Version summary
+        shell: bash
+        env:
+          RUN_MODE: ${{ inputs.run_mode }}
+          BUILD_TARGET: ${{ inputs.build_target }}
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          PENDING: ${{ steps.version.outputs.pending }}
+        run: node scripts/ci/release-workflow.ts write-prepare-summary
+
+  desktop:
+    name: Desktop builds
+    needs: prepare
+    if: needs.prepare.outputs.build_desktop == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-electron.yml
+    with:
+      run_mode: ${{ inputs.run_mode }}
+      version: ${{ needs.prepare.outputs.version }}
+      release_channel: ${{ inputs.release_channel }}
+      source_sha: ${{ needs.prepare.outputs.source_sha }}
+    secrets:
+      APP_TD_APPID: ${{ secrets.APP_TD_APPID }}
+
+  docker:
+    name: Docker build
+    needs: prepare
+    if: needs.prepare.outputs.build_docker == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-server.yml
+    with:
+      run_mode: ${{ inputs.run_mode }}
+      version: ${{ needs.prepare.outputs.version }}
+      release_channel: ${{ inputs.release_channel }}
+      source_sha: ${{ needs.prepare.outputs.source_sha }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  publish_desktop:
+    name: Publish desktop result
+    needs:
+      - prepare
+      - desktop
+      - docker
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.desktop.result == 'success' &&
+      (needs.prepare.outputs.build_docker != 'true' || needs.docker.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Check out build source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.0"
+
+      - name: Download platform artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ needs.desktop.outputs.artifact_prefix }}-*
+          path: electron-artifacts
+
+      - name: Collect and validate release files
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          UPDATER_CHANNEL: ${{ inputs.run_mode == 'test' && 'test' || inputs.release_channel }}
+        run: node scripts/collect-electron-artifacts.ts electron-artifacts release-files "$VERSION" "$UPDATER_CHANNEL"
+
+      - name: Create or update GitHub Release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_MODE: ${{ inputs.run_mode }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          OFFICIAL_TAG: ${{ needs.prepare.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          SERVER_URL: ${{ github.server_url }}
+        run: node scripts/ci/release-workflow.ts publish-desktop
+
+      - name: Release summary
+        shell: bash
+        env:
+          RUN_MODE: ${{ inputs.run_mode }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          URL: ${{ steps.release.outputs.url }}
+        run: node scripts/ci/release-workflow.ts write-desktop-summary
+
+  tag_docker_release:
+    name: Tag Docker-only release
+    needs:
+      - prepare
+      - docker
+    if: >-
+      inputs.run_mode == 'release' &&
+      inputs.build_target == 'docker' &&
+      needs.prepare.result == 'success' &&
+      needs.docker.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.0"
+
+      - name: Create version tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: node scripts/ci/release-workflow.ts tag-docker-release

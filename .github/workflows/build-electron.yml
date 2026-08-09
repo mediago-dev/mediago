@@ -1,34 +1,122 @@
-# build.yml
+name: Build MediaGo Desktop
 
-# Workflow's name
-name: Build MediaGo App
-
-# Workflow's trigger
 on:
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      run_mode:
+        description: "Build mode: test only produces artifacts; release validates a committed version."
+        required: true
+        type: string
+      version:
+        description: "SemVer to embed in the desktop app and artifact names."
+        required: true
+        type: string
+      release_channel:
+        description: "Release channel: alpha, beta, or latest."
+        required: true
+        type: string
+      source_sha:
+        description: "Full commit SHA to build."
+        required: true
+        type: string
+    secrets:
+      APP_TD_APPID:
+        description: "Optional application telemetry identifier."
+        required: false
+    outputs:
+      artifact_prefix:
+        description: "Prefix shared by all four uploaded desktop artifacts."
+        value: ${{ jobs.prepare.outputs.artifact_prefix }}
+      source_sha:
+        description: "Verified commit SHA that was built."
+        value: ${{ jobs.prepare.outputs.source_sha }}
+      version:
+        description: "Version embedded in the build artifacts."
+        value: ${{ jobs.prepare.outputs.version }}
 
-# Workflow's jobs
+# This workflow only builds. Tagging and GitHub Release publication belong to
+# the top-level release workflow after every requested target succeeds.
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-build-${{ inputs.run_mode }}-${{ inputs.version }}-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
 jobs:
-  # job's id
-  release:
-    # job's name
-    name: build and release electron app
+  prepare:
+    name: Validate desktop build request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      artifact_prefix: ${{ steps.metadata.outputs.artifact_prefix }}
+      source_sha: ${{ steps.verify.outputs.source_sha }}
+      version: ${{ inputs.version }}
+    steps:
+      - name: Check out requested commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
-    # the type of machine to run the job on
-    runs-on: ${{ matrix.os }}
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.0"
 
-    # create a build matrix for jobs
+      - name: Validate inputs
+        env:
+          REQUESTED_RUN_MODE: ${{ inputs.run_mode }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_CHANNEL: ${{ inputs.release_channel }}
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node scripts/ci/desktop-workflow.ts validate-request
+
+      - name: Verify source and committed release version
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_RUN_MODE: ${{ inputs.run_mode }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_CHANNEL: ${{ inputs.release_channel }}
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node scripts/ci/desktop-workflow.ts verify-source
+
+      - name: Resolve artifact prefix
+        id: metadata
+        env:
+          REQUESTED_RUN_MODE: ${{ inputs.run_mode }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          VERIFIED_SOURCE_SHA: ${{ steps.verify.outputs.source_sha }}
+        run: node scripts/ci/desktop-workflow.ts artifact-prefix
+
+  build:
+    name: Build desktop (${{ matrix.runner }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, macos-15-intel, ubuntu-latest]
-
-    # create steps
+        runner:
+          - windows-latest
+          - macos-15
+          - macos-15-intel
+          - ubuntu-latest
     steps:
-      - name: Check out git repository
-        uses: actions/checkout@v6
+      - name: Check out verified source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         with:
           version: "10.15.0"
           run_install: false
@@ -39,34 +127,50 @@ jobs:
           node-version: "24.14.0"
           cache: "pnpm"
 
+      - name: Apply build version
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+          RUN_MODE: ${{ inputs.run_mode }}
+        run: node scripts/ci/desktop-workflow.ts apply-version
+
       - name: Install Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: "1.25.0"
-          cache-dependency-path: |
-            apps/core/go.sum
+          cache-dependency-path: apps/core/go.sum
 
       - name: Install swag
         run: go install github.com/swaggo/swag/cmd/swag@latest
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Download third-party deps
+      - name: Download third-party dependencies
         run: pnpm deps:download
 
-      - name: Build  & release app
+      - name: Build desktop artifacts
         run: pnpm release:electron
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          APP_TD_APPID: ${{ secrets.APP_TD_APPID }}
+          APP_TD_APPID: ${{ inputs.run_mode == 'release' && secrets.APP_TD_APPID || '' }}
 
-      - uses: actions/upload-artifact@v6
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v7
         with:
-          name: mediago-${{ matrix.os }}
-          path: apps/electron/release/mediago-*
+          name: ${{ needs.prepare.outputs.artifact_prefix }}-${{ matrix.runner }}
+          path: |
+            apps/electron/release/*.exe
+            apps/electron/release/*.dmg
+            apps/electron/release/*.zip
+            apps/electron/release/*.deb
+            apps/electron/release/*.blockmap
+            apps/electron/release/*.yml
+            !apps/electron/release/builder-*.yml
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          include-hidden-files: false

@@ -16,6 +16,15 @@ const __dirname = dirname(__filename);
 const projectRoot = path.resolve(__dirname, "../../..");
 const appRoot = path.resolve(__dirname, "..");
 const arch = process.arch === "arm64" ? "arm64" : "x64";
+const [repositoryOwner, repositoryName] = (
+  process.env.GITHUB_REPOSITORY ?? "mediago-dev/mediago"
+).split("/");
+
+if (!repositoryOwner || !repositoryName) {
+  throw new Error(
+    `Invalid GITHUB_REPOSITORY value: ${process.env.GITHUB_REPOSITORY}`,
+  );
+}
 
 // Resolve electron-builder's bundled `app-builder` native helper
 // (wraps rcedit, ships inside `app-builder-bin`). We use it from
@@ -38,6 +47,27 @@ dotenvFlow.config({
 });
 
 const pkg = JSON.parse(await fs.readFile("./app/package.json", "utf-8"));
+
+function getUpdateChannel(
+  version: unknown,
+): "alpha" | "beta" | "latest" | "test" {
+  if (typeof version !== "string") {
+    throw new Error("Electron application version must be a string");
+  }
+  if (/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
+    return "latest";
+  }
+  const prerelease =
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(alpha|beta|test)\.(0|[1-9]\d*)$/.exec(
+      version,
+    );
+  if (!prerelease) {
+    throw new Error(`Unsupported Electron release version: ${version}`);
+  }
+  return prerelease[4] as "alpha" | "beta" | "test";
+}
+
+const updateChannel = getUpdateChannel(pkg.version);
 
 function getReleaseConfig(): Configuration {
   return {
@@ -64,6 +94,16 @@ function getReleaseConfig(): Configuration {
     npmRebuild: true,
     directories: {
       output: "./release",
+    },
+    // Always generate updater metadata, but never let the platform matrix
+    // publish on its own. The release workflow uploads every platform from a
+    // single job after all required builds have succeeded.
+    publish: {
+      provider: "github",
+      owner: repositoryOwner,
+      repo: repositoryName,
+      channel: updateChannel,
+      releaseType: "draft",
     },
     files: [
       {
@@ -145,10 +185,15 @@ function getReleaseConfig(): Configuration {
     },
     mac: {
       icon: "../assets/icon.icns",
-      identity: null,
       target: [
         {
           target: "dmg",
+          arch,
+        },
+        // electron-updater's macOS updater downloads ZIP archives. Keep the
+        // DMG for manual installs and publish both architectures' ZIP files.
+        {
+          target: "zip",
           arch,
         },
       ],
@@ -202,29 +247,38 @@ function getReleaseConfig(): Configuration {
     // such default, so we post-process the artifact with the same
     // `app-builder rcedit` call electron-builder itself uses on
     // `mediago.exe` (see winPackager.js around line 185).
-    afterAllArtifactBuild: async ({ artifactPaths }) => {
+    artifactBuildCompleted: async (event) => {
       // rcedit crashes when executed through Wine (per electron-builder's
       // own note in winPackager.js:183); skip on Linux. Windows installer
       // artifacts aren't produced on Linux builds anyway.
       if (process.platform !== "win32" && process.platform !== "darwin") {
-        return [];
+        return;
       }
-      const installers = artifactPaths.filter((p) =>
-        /-setup-win32-.*\.exe$/i.test(path.basename(p)),
+      const installer = event.file;
+      if (!/-setup-win32-.*\.exe$/i.test(path.basename(installer))) {
+        return;
+      }
+
+      await execFileAsync(appBuilderPath, [
+        "rcedit",
+        "--args",
+        JSON.stringify([
+          installer,
+          "--set-version-string",
+          "FileDescription",
+          `${process.env.APP_NAME} installer`,
+        ]),
+      ]);
+
+      // NSIS created its blockmap before this hook. rcedit changes the final
+      // executable bytes, so rebuild both the blockmap and update metadata
+      // before electron-builder emits the updater manifest.
+      const { stdout } = await execFileAsync(
+        appBuilderPath,
+        ["blockmap", "--input", installer, "--output", `${installer}.blockmap`],
+        { encoding: "utf8" },
       );
-      for (const installer of installers) {
-        await execFileAsync(appBuilderPath, [
-          "rcedit",
-          "--args",
-          JSON.stringify([
-            installer,
-            "--set-version-string",
-            "FileDescription",
-            `${process.env.APP_NAME} installer`,
-          ]),
-        ]);
-      }
-      return [];
+      event.updateInfo = JSON.parse(stdout);
     },
   };
 }
@@ -292,16 +346,9 @@ try {
 }
 
 const config = getReleaseConfig();
-if (process.env.GH_TOKEN) {
-  config.publish = {
-    provider: "github",
-    repo: "mediago",
-    owner: "caorushizi",
-    releaseType: "draft",
-  };
-}
 await build({
   config,
   dir: isDir,
+  publish: "never",
   // targets: Platform.WINDOWS.createTarget(["nsis", "portable"], Arch.x64),
 });

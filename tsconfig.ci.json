@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "MediaGo CI Workflow TypeScript Config",
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
+  },
+  "include": [
+    "scripts/ci/**/*.ts",
+    "scripts/electron-artifacts/**/*.ts",
+    "scripts/release-version/**/*.ts",
+    "scripts/release-version.ts",
+    "scripts/release-version.test.ts",
+    "scripts/collect-electron-artifacts.ts",
+    "scripts/collect-electron-artifacts.test.ts"
+  ],
+  "exclude": []
+}
