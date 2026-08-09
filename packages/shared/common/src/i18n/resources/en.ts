@@ -91,6 +91,7 @@ export const en = {
   binPath: "Executable path",
   localDir: "Download directory",
   extensionDir: "Browser extension directory",
+  extensionGuide: "Extension setup guide",
   currentVersion: "Version",
   selectFolder: "Select folder",
   selectFile: "Select file",

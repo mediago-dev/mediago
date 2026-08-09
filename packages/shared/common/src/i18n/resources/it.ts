@@ -91,6 +91,7 @@ export const it = {
   binPath: "Percorso esecuzione",
   localDir: "Cartella download",
   extensionDir: "Cartella estensione browser",
+  extensionGuide: "Guida installazione estensione",
   currentVersion: "Versione",
   selectFolder: "Seleziona cartella",
   selectFile: "Seleziona file",
@@ -139,7 +140,8 @@ export const it = {
   audioMuted: "Audio OFF",
   openBrowser: "Apri browser",
   privacy: "Navigazione in incognito",
-  privacyTooltip: "Quando abilitato, il browser non salverà alcun dato di navigazione",
+  privacyTooltip:
+    "Quando abilitato, il browser non salverà alcun dato di navigazione",
   converter: "Conversione",
   addFile: "Aggiungi file",
   convertAll: "Converti tutto",
@@ -203,7 +205,8 @@ export const it = {
   videoNotExists: "Video non trovato",
   unknownError: "Errore sconosciuto",
   unsupportedDownloadType: "Tipo download non supportato",
-  captureVideoLinkInWindow: "Collegamento video catturato nella finestra: {{url}}",
+  captureVideoLinkInWindow:
+    "Collegamento video catturato nella finestra: {{url}}",
   browserViewNotFound: "Vista browser non trovata",
   currentWindowNotFound: "Finestra attuale non trovata",
   proxyNotAllowEmpty: "[Proxy] L'indirizzo non può essere vuoto",
@@ -235,7 +238,8 @@ export const it = {
   enableMobilePlayer: "Abilita riproduttore mobile",
   adminPassword: "Password amministratore",
   forgotPassword: "Password dimenticata?",
-  forgetPasswordDescription: "Se hai dimenticato la password dell'amministratore, puoi reimpostarla:\n1. Trova la cartella di archiviazione di MediaGo.\n2. Apri la cartella '.store' e modifica 'config.json'.\n3. Cancella il valore del campo apiKey.",
+  forgetPasswordDescription:
+    "Se hai dimenticato la password dell'amministratore, puoi reimpostarla:\n1. Trova la cartella di archiviazione di MediaGo.\n2. Apri la cartella '.store' e modifica 'config.json'.\n3. Cancella il valore del campo apiKey.",
   signin: "Accedi",
   signinMediaGoServer: "Accedi al server MediaGo",
   initializeMediaGoServer: "Imposta server MediaGo",

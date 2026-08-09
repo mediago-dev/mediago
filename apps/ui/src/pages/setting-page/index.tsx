@@ -1,4 +1,5 @@
 import {
+  ChromeOutlined,
   ClearOutlined,
   CopyOutlined,
   DownloadOutlined,
@@ -44,6 +45,7 @@ import { isWeb, tdApp } from "@/utils";
 import { AppLanguage, AppStore, AppTheme } from "@mediago/shared-common";
 
 const version = import.meta.env.APP_VERSION;
+const EXTENSION_GUIDE_URL = "https://downloader.caorushizi.cn/extension.html";
 
 const SettingPage: React.FC = () => {
   const { dialog, shell, browser, contextMenu, update, on, off, app } =
@@ -569,6 +571,12 @@ const SettingPage: React.FC = () => {
                     icon={<FolderOpenOutlined />}
                   >
                     {t("extensionDir")}
+                  </Button>
+                  <Button
+                    onClick={() => shell.open(EXTENSION_GUIDE_URL)}
+                    icon={<ChromeOutlined />}
+                  >
+                    {t("extensionGuide")}
                   </Button>
                 </Space>
               </Form.Item>
