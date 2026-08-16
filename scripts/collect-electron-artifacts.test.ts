@@ -1,9 +1,8 @@
-import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { expect, onTestFinished, test } from "vitest";
 import { collectElectronArtifacts } from "./collect-electron-artifacts.ts";
 
 type ManifestEntry = {
@@ -13,11 +12,11 @@ type ManifestEntry = {
   blockMapSize?: number;
 };
 
-test("collects and validates a complete cross-platform release", async (t) => {
+test("collects and validates a complete cross-platform release", async () => {
   const root = await mkdtemp(
     path.join(tmpdir(), "mediago-electron-artifacts-"),
   );
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const output = path.join(root, "output");
@@ -33,51 +32,53 @@ test("collects and validates a complete cross-platform release", async (t) => {
     version: "3.6.0",
     channel: "latest",
   });
-  assert.equal(files.length, 15);
+  expect(files.length).toBe(15);
   const names = files.map((file) => path.basename(file));
-  assert.deepEqual(
-    names,
+  expect(names).toStrictEqual(
     names.toSorted((left, right) => left.localeCompare(right)),
   );
-  assert.ok(names.includes("mediago-community-setup-linux-amd64-3.6.0.deb"));
-  assert.ok(!names.some((name) => name.startsWith("builder-")));
-  await assert.rejects(readFile(path.join(output, "stale.txt")), {
+  expect(
+    names.includes("mediago-community-setup-linux-amd64-3.6.0.deb"),
+  ).toBeTruthy();
+  expect(!names.some((name) => name.startsWith("builder-"))).toBeTruthy();
+  await expect(readFile(path.join(output, "stale.txt"))).rejects.toMatchObject({
     code: "ENOENT",
   });
 
   const merged = await readFile(path.join(output, "latest-mac.yml"), "utf8");
-  assert.match(
-    merged,
+  expect(merged).toMatch(
     /url: mediago-community-setup-darwin-arm64-3\.6\.0\.dmg/,
   );
-  assert.match(
-    merged,
+  expect(merged).toMatch(
     /url: mediago-community-setup-darwin-arm64-3\.6\.0\.zip/,
   );
-  assert.match(merged, /url: mediago-community-setup-darwin-x64-3\.6\.0\.dmg/);
-  assert.match(merged, /url: mediago-community-setup-darwin-x64-3\.6\.0\.zip/);
+  expect(merged).toMatch(
+    /url: mediago-community-setup-darwin-x64-3\.6\.0\.dmg/,
+  );
+  expect(merged).toMatch(
+    /url: mediago-community-setup-darwin-x64-3\.6\.0\.zip/,
+  );
 });
 
-test("rejects an incomplete platform inventory", async (t) => {
+test("rejects an incomplete platform inventory", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "mediago-electron-missing-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const release = await createCompleteRelease(input, "3.6.0-beta.1", "beta");
   await rm(path.join(release.intel, `${release.macIntelZip}.blockmap`));
 
-  await assert.rejects(
+  await expect(
     collectElectronArtifacts(input, path.join(root, "output"), {
       version: "3.6.0-beta.1",
       channel: "beta",
     }),
-    /Electron release inventory mismatch/,
-  );
+  ).rejects.toThrow(/Electron release inventory mismatch/);
 });
 
-test("rejects incorrect updater hashes", async (t) => {
+test("rejects incorrect updater hashes", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "mediago-electron-hash-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const release = await createCompleteRelease(input, "3.6.0", "latest");
@@ -86,18 +87,17 @@ test("rejects incorrect updater hashes", async (t) => {
     manifest([{ ...release.linuxEntry, sha512: "incorrect" }], "3.6.0"),
   );
 
-  await assert.rejects(
+  await expect(
     collectElectronArtifacts(input, path.join(root, "output"), {
       version: "3.6.0",
       channel: "latest",
     }),
-    /wrong sha512/,
-  );
+  ).rejects.toThrow(/wrong sha512/);
 });
 
-test("rejects updater manifests for another version", async (t) => {
+test("rejects updater manifests for another version", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "mediago-electron-version-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const release = await createCompleteRelease(input, "3.6.0", "latest");
@@ -106,18 +106,17 @@ test("rejects updater manifests for another version", async (t) => {
     manifest([release.windowsEntry], "3.6.1"),
   );
 
-  await assert.rejects(
+  await expect(
     collectElectronArtifacts(input, path.join(root, "output"), {
       version: "3.6.0",
       channel: "latest",
     }),
-    /contains version 3\.6\.1, expected 3\.6\.0/,
-  );
+  ).rejects.toThrow(/contains version 3\.6\.1, expected 3\.6\.0/);
 });
 
-test("rejects conflicting non-manifest filenames", async (t) => {
+test("rejects conflicting non-manifest filenames", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "mediago-electron-conflict-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const first = path.join(root, "input", "first");
   const second = path.join(root, "input", "second");
@@ -126,20 +125,19 @@ test("rejects conflicting non-manifest filenames", async (t) => {
   await writeFile(path.join(first, "mediago.exe"), "first");
   await writeFile(path.join(second, "mediago.exe"), "second");
 
-  await assert.rejects(
+  await expect(
     collectElectronArtifacts(
       path.join(root, "input"),
       path.join(root, "output"),
     ),
-    /Conflicting Electron release files/,
-  );
+  ).rejects.toThrow(/Conflicting Electron release files/);
 });
 
-test("deduplicates identical non-manifest filenames", async (t) => {
+test("deduplicates identical non-manifest filenames", async () => {
   const root = await mkdtemp(
     path.join(tmpdir(), "mediago-electron-duplicate-"),
   );
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const first = path.join(root, "input", "first");
   const second = path.join(root, "input", "second");
@@ -157,15 +155,15 @@ test("deduplicates identical non-manifest filenames", async (t) => {
     path.join(root, "input"),
     output,
   );
-  assert.deepEqual(files, [path.join(output, "mediago.exe")]);
-  assert.equal(await readFile(files[0], "utf8"), "same");
+  expect(files).toStrictEqual([path.join(output, "mediago.exe")]);
+  expect(await readFile(files[0], "utf8")).toBe("same");
 });
 
-test("defers optional manifest validation when no contract is requested", async (t) => {
+test("defers optional manifest validation when no contract is requested", async () => {
   const root = await mkdtemp(
     path.join(tmpdir(), "mediago-electron-unvalidated-manifest-"),
   );
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const first = path.join(input, "first");
@@ -180,17 +178,17 @@ test("defers optional manifest validation when no contract is requested", async 
 
   const output = path.join(root, "output");
   const files = await collectElectronArtifacts(input, output);
-  assert.deepEqual(files, [path.join(output, "latest-mac.yml")]);
+  expect(files).toStrictEqual([path.join(output, "latest-mac.yml")]);
   const merged = await readFile(files[0], "utf8");
-  assert.match(merged, /url: arm\.zip/);
-  assert.match(merged, /url: x64\.zip/);
+  expect(merged).toMatch(/url: arm\.zip/);
+  expect(merged).toMatch(/url: x64\.zip/);
 });
 
-test("rejects macOS manifests for different versions", async (t) => {
+test("rejects macOS manifests for different versions", async () => {
   const root = await mkdtemp(
     path.join(tmpdir(), "mediago-electron-mac-version-"),
   );
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const release = await createCompleteRelease(input, "3.6.0", "latest");
@@ -199,20 +197,21 @@ test("rejects macOS manifests for different versions", async (t) => {
     manifest(release.intelEntries, "3.6.1"),
   );
 
-  await assert.rejects(
+  await expect(
     collectElectronArtifacts(input, path.join(root, "output"), {
       version: "3.6.0",
       channel: "latest",
     }),
+  ).rejects.toThrow(
     /Cannot merge macOS updater manifests for 3\.6\.0 and 3\.6\.1/,
   );
 });
 
-test("rejects conflicting macOS entries with the same URL", async (t) => {
+test("rejects conflicting macOS entries with the same URL", async () => {
   const root = await mkdtemp(
     path.join(tmpdir(), "mediago-electron-mac-conflict-"),
   );
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const release = await createCompleteRelease(input, "3.6.0", "latest");
@@ -222,18 +221,17 @@ test("rejects conflicting macOS entries with the same URL", async (t) => {
     manifest([conflict, ...release.intelEntries], "3.6.0"),
   );
 
-  await assert.rejects(
+  await expect(
     collectElectronArtifacts(input, path.join(root, "output"), {
       version: "3.6.0",
       channel: "latest",
     }),
-    /Conflicting macOS updater entries/,
-  );
+  ).rejects.toThrow(/Conflicting macOS updater entries/);
 });
 
-test("rejects updater URLs that are not release filenames", async (t) => {
+test("rejects updater URLs that are not release filenames", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "mediago-electron-url-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const release = await createCompleteRelease(input, "3.6.0", "latest");
@@ -245,18 +243,17 @@ test("rejects updater URLs that are not release filenames", async (t) => {
     ),
   );
 
-  await assert.rejects(
+  await expect(
     collectElectronArtifacts(input, path.join(root, "output"), {
       version: "3.6.0",
       channel: "latest",
     }),
-    /updater URL must be a release asset filename/,
-  );
+  ).rejects.toThrow(/updater URL must be a release asset filename/);
 });
 
-test("rejects incorrect declared asset sizes", async (t) => {
+test("rejects incorrect declared asset sizes", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "mediago-electron-size-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
 
   const input = path.join(root, "input");
   const release = await createCompleteRelease(input, "3.6.0", "latest");
@@ -268,13 +265,12 @@ test("rejects incorrect declared asset sizes", async (t) => {
     ),
   );
 
-  await assert.rejects(
+  await expect(
     collectElectronArtifacts(input, path.join(root, "output"), {
       version: "3.6.0",
       channel: "latest",
     }),
-    /contains the wrong size/,
-  );
+  ).rejects.toThrow(/contains the wrong size/);
 });
 
 async function createCompleteRelease(

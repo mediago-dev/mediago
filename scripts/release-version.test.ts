@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
@@ -10,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import test, { type TestContext } from "node:test";
+import { expect, onTestFinished, test } from "vitest";
 import {
   assertTagAvailable,
   compareSemVer,
@@ -28,14 +27,14 @@ const WORKSPACE_ROOT = resolve(dirname(SCRIPT_FILE), "..");
 
 test("strictly parses and compares SemVer", () => {
   const parsed = parseSemVer("3.6.0-beta.2+sha.abc");
-  assert.equal(formatSemVer(parsed), "3.6.0-beta.2+sha.abc");
-  assert.ok(
+  expect(formatSemVer(parsed)).toBe("3.6.0-beta.2+sha.abc");
+  expect(
     compareSemVer(parseSemVer("3.6.0-alpha.9"), parseSemVer("3.6.0-beta.0")) <
       0,
-  );
-  assert.ok(
+  ).toBeTruthy();
+  expect(
     compareSemVer(parseSemVer("3.6.0-beta.9"), parseSemVer("3.6.0")) < 0,
-  );
+  ).toBeTruthy();
 
   for (const invalid of [
     "",
@@ -49,7 +48,7 @@ test("strictly parses and compares SemVer", () => {
     "1.2.3-+build",
     "v1.2.3",
   ]) {
-    assert.throws(() => parseSemVer(invalid), /Invalid SemVer|leading zeroes/);
+    expect(() => parseSemVer(invalid)).toThrow(/Invalid SemVer|leading zeroes/);
   }
 });
 
@@ -67,42 +66,39 @@ test("calculates stable patch, minor, and major versions", () => {
       channel: "latest",
       increment,
     });
-    assert.equal(plan.version, expected);
-    assert.equal(plan.tag, `v${expected}`);
-    assert.equal(plan.pending, false);
+    expect(plan.version).toBe(expected);
+    expect(plan.tag).toBe(`v${expected}`);
+    expect(plan.pending).toBe(false);
   }
 });
 
 test("increments prereleases and supports alpha to beta promotion", () => {
   const alphaTags = ["v3.5.0", "v3.6.0-alpha.0", "v3.6.0-alpha.2"];
 
-  assert.equal(
+  expect(
     planRelease({
       currentVersion: "3.6.0-alpha.2",
       tags: alphaTags,
       channel: "alpha",
       increment: "minor",
     }).version,
-    "3.6.0-alpha.3",
-  );
-  assert.equal(
+  ).toBe("3.6.0-alpha.3");
+  expect(
     planRelease({
       currentVersion: "3.6.0-alpha.2",
       tags: alphaTags,
       channel: "beta",
       increment: "patch",
     }).version,
-    "3.6.0-beta.0",
-  );
-  assert.equal(
+  ).toBe("3.6.0-beta.0");
+  expect(
     planRelease({
       currentVersion: "3.6.0-beta.1",
       tags: [...alphaTags, "v3.6.0-beta.0", "v3.6.0-beta.1"],
       channel: "beta",
       increment: "patch",
     }).version,
-    "3.6.0-beta.2",
-  );
+  ).toBe("3.6.0-beta.2");
 });
 
 test("promotes a prerelease to the matching stable version", () => {
@@ -112,59 +108,52 @@ test("promotes a prerelease to the matching stable version", () => {
     channel: "latest",
     increment: "patch",
   });
-  assert.equal(plan.version, "3.6.0");
+  expect(plan.version).toBe("3.6.0");
 });
 
 test("rejects stale, non-monotonic, and duplicate versions", () => {
-  assert.throws(
-    () =>
-      planRelease({
-        currentVersion: "3.5.0",
-        tags: ["v3.6.0"],
-        channel: "latest",
-        increment: "patch",
-      }),
-    /behind highest tag/,
-  );
-  assert.throws(
-    () =>
-      planRelease({
-        currentVersion: "3.6.0-beta.0",
-        tags: ["v3.5.0", "v3.6.0-beta.0"],
-        channel: "alpha",
-        increment: "minor",
-      }),
-    /not newer than highest tag/,
-  );
-  assert.throws(
-    () => assertTagAvailable("3.5.0", ["v3.5.0+existing-build"]),
+  expect(() =>
+    planRelease({
+      currentVersion: "3.5.0",
+      tags: ["v3.6.0"],
+      channel: "latest",
+      increment: "patch",
+    }),
+  ).toThrow(/behind highest tag/);
+  expect(() =>
+    planRelease({
+      currentVersion: "3.6.0-beta.0",
+      tags: ["v3.5.0", "v3.6.0-beta.0"],
+      channel: "alpha",
+      increment: "minor",
+    }),
+  ).toThrow(/not newer than highest tag/);
+  expect(() => assertTagAvailable("3.5.0", ["v3.5.0+existing-build"])).toThrow(
     /conflicts with existing tag/,
   );
 });
 
 test("pending retries retain their channel and ignore a changed increment", () => {
-  assert.throws(
-    () =>
-      planRelease({
-        currentVersion: "3.6.0-beta.0",
-        tags: ["v3.5.0"],
-        channel: "alpha",
-        increment: "minor",
-      }),
-    /must use alpha\.N/,
-  );
+  expect(() =>
+    planRelease({
+      currentVersion: "3.6.0-beta.0",
+      tags: ["v3.5.0"],
+      channel: "alpha",
+      increment: "minor",
+    }),
+  ).toThrow(/must use alpha\.N/);
   const retry = planRelease({
     currentVersion: "3.6.0-beta.0",
     tags: ["v3.5.0"],
     channel: "beta",
     increment: "patch",
   });
-  assert.equal(retry.version, "3.6.0-beta.0");
-  assert.equal(retry.pending, true);
+  expect(retry.version).toBe("3.6.0-beta.0");
+  expect(retry.pending).toBe(true);
 });
 
-test("test mode is read-only and release retries are idempotent", (t) => {
-  const root = createRepository(t, "3.5.0", ["v3.5.0"]);
+test("test mode is read-only and release retries are idempotent", () => {
+  const root = createRepository("3.5.0", ["v3.5.0"]);
   const versionFile = join(root, "apps", "electron", "app", "package.json");
   const githubOutput = join(root, "github-output.txt");
   const originalPackage = readFileSync(versionFile, "utf8");
@@ -177,10 +166,10 @@ test("test mode is read-only and release retries are idempotent", (t) => {
     increment: "minor",
     runNumber: "42",
   });
-  assert.equal(preview.version, "3.5.0-test.42");
-  assert.equal(preview.written, false);
-  assert.equal(readPackageVersion(versionFile), "3.5.0");
-  assert.match(readFileSync(githubOutput, "utf8"), /^release_type=draft$/m);
+  expect(preview.version).toBe("3.5.0-test.42");
+  expect(preview.written).toBe(false);
+  expect(readPackageVersion(versionFile)).toBe("3.5.0");
+  expect(readFileSync(githubOutput, "utf8")).toMatch(/^release_type=draft$/m);
 
   const release = executeReleaseVersion({
     workspaceRoot: root,
@@ -188,11 +177,10 @@ test("test mode is read-only and release retries are idempotent", (t) => {
     channel: "beta",
     increment: "minor",
   });
-  assert.equal(release.version, "3.6.0-beta.0");
-  assert.equal(release.written, true);
-  assert.equal(readPackageVersion(versionFile), "3.6.0-beta.0");
-  assert.equal(
-    readFileSync(versionFile, "utf8"),
+  expect(release.version).toBe("3.6.0-beta.0");
+  expect(release.written).toBe(true);
+  expect(readPackageVersion(versionFile)).toBe("3.6.0-beta.0");
+  expect(readFileSync(versionFile, "utf8")).toBe(
     originalPackage.replace('"version": "3.5.0"', '"version": "3.6.0-beta.0"'),
   );
 
@@ -202,14 +190,14 @@ test("test mode is read-only and release retries are idempotent", (t) => {
     channel: "beta",
     increment: "minor",
   });
-  assert.equal(retry.version, "3.6.0-beta.0");
-  assert.equal(retry.pending, true);
-  assert.equal(retry.written, false);
+  expect(retry.version).toBe("3.6.0-beta.0");
+  expect(retry.pending).toBe(true);
+  expect(retry.written).toBe(false);
 });
 
-test("CLI is cwd-independent and preserves GitHub output order", (t) => {
+test("CLI is cwd-independent and preserves GitHub output order", () => {
   const externalCwd = mkdtempSync(join(tmpdir(), "mediago-release-cli-"));
-  t.after(() => rmSync(externalCwd, { recursive: true, force: true }));
+  onTestFinished(() => rmSync(externalCwd, { recursive: true, force: true }));
 
   const productVersion = readPackageVersion(
     join(WORKSPACE_ROOT, "apps", "electron", "app", "package.json"),
@@ -236,39 +224,37 @@ test("CLI is cwd-independent and preserves GitHub output order", (t) => {
     },
   );
 
-  assert.match(
-    stdout,
+  expect(stdout).toMatch(
     new RegExp(
       `^version=${parsed.major}\\.${parsed.minor}\\.${parsed.patch}-test\\.4242$`,
       "m",
     ),
   );
-  assert.deepEqual(
+  expect(
     stdout
       .trim()
       .split(/\r?\n/)
       .map((line) => line.slice(0, line.indexOf("="))),
-    [
-      "version",
-      "tag",
-      "current_version",
-      "base_version",
-      "channel",
-      "increment",
-      "mode",
-      "release_type",
-      "prerelease",
-      "changed",
-      "written",
-      "pending",
-      "resumed",
-      "version_file",
-    ],
-  );
+  ).toStrictEqual([
+    "version",
+    "tag",
+    "current_version",
+    "base_version",
+    "channel",
+    "increment",
+    "mode",
+    "release_type",
+    "prerelease",
+    "changed",
+    "written",
+    "pending",
+    "resumed",
+    "version_file",
+  ]);
 });
 
-test("explicitly resumes a current version even when its tag exists", (t) => {
-  const root = createRepository(t, "3.6.0-beta.0", ["v3.5.0", "v3.6.0-beta.0"]);
+test("explicitly resumes a current version even when its tag exists", () => {
+  const root = createRepository("3.6.0-beta.0", ["v3.5.0", "v3.6.0-beta.0"]);
   const resumed = executeReleaseVersion({
     workspaceRoot: root,
     mode: "release",
@@ -277,35 +263,29 @@ test("explicitly resumes a current version even when its tag exists", (t) => {
     resumeCurrent: true,
   });
 
-  assert.equal(resumed.version, "3.6.0-beta.0");
-  assert.equal(resumed.pending, true);
-  assert.equal(resumed.written, false);
-  assert.equal(resumed.outputs.resumed, "true");
+  expect(resumed.version).toBe("3.6.0-beta.0");
+  expect(resumed.pending).toBe(true);
+  expect(resumed.written).toBe(false);
+  expect(resumed.outputs.resumed).toBe("true");
 });
 
-test("rejects resume-current in test mode", (t) => {
-  const root = createRepository(t, "3.6.0-beta.0", ["v3.5.0"]);
-  assert.throws(
-    () =>
-      executeReleaseVersion({
-        workspaceRoot: root,
-        mode: "test",
-        channel: "beta",
-        increment: "patch",
-        runNumber: "42",
-        resumeCurrent: true,
-      }),
-    /only valid in release mode/,
-  );
+test("rejects resume-current in test mode", () => {
+  const root = createRepository("3.6.0-beta.0", ["v3.5.0"]);
+  expect(() =>
+    executeReleaseVersion({
+      workspaceRoot: root,
+      mode: "test",
+      channel: "beta",
+      increment: "patch",
+      runNumber: "42",
+      resumeCurrent: true,
+    }),
+  ).toThrow(/only valid in release mode/);
 });
 
-function createRepository(
-  t: TestContext,
-  version: string,
-  tags: string[],
-): string {
+function createRepository(version: string, tags: string[]): string {
   const root = mkdtempSync(join(tmpdir(), "mediago-release-version-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 
   const appDirectory = join(root, "apps", "electron", "app");
   mkdirSync(appDirectory, { recursive: true });
