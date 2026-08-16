@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "MediaGo Media Integration TypeScript Config",
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@mediago/core-sdk": ["./packages/core-sdk/src/index.ts"]
+    },
+    "noEmit": true,
+    "strict": true
+  },
+  "include": [
+    "packages/core-sdk/src/**/*.ts",
+    "tests/media-service/**/*.ts",
+    "tests/integration/**/*.ts",
+    "vitest.integration.config.ts"
+  ],
+  "exclude": []
+}

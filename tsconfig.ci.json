@@ -11,6 +11,9 @@
   "include": [
     "scripts/ci/**/*.ts",
     "scripts/electron-artifacts/**/*.ts",
+    "scripts/download-deps.ts",
+    "scripts/download-deps-args.ts",
+    "scripts/download-deps-args.test.ts",
     "scripts/release-version/**/*.ts",
     "scripts/release-version.ts",
     "scripts/release-version.test.ts",
