@@ -1,7 +1,8 @@
 import { chmodSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { config, devConfig } from "./config";
-import { copyFile, getExeExt, mkdir, rmrf, runCommand } from "./utils";
+import { replacePlayerAssets } from "./player-assets";
+import { getExeExt, mkdir, runCommand } from "./utils";
 
 const appVersion = (
   JSON.parse(
@@ -49,8 +50,7 @@ export async function buildPlayerUI() {
     );
   }
 
-  rmrf(config.PLAYER_ASSETS_DIR);
-  copyFile(playerUiDist, config.PLAYER_ASSETS_DIR);
+  replacePlayerAssets(playerUiDist, config.PLAYER_ASSETS_DIR);
 
   console.log(`✅ Player UI copied to ${config.PLAYER_ASSETS_DIR}`);
 }

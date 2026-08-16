@@ -36,6 +36,6 @@ swagger.yaml
 
 # Embedded player UI assets (populated by build)
 assets/player/*
-!assets/player/.gitkeep
+!assets/player/placeholder.txt
 
 /server
