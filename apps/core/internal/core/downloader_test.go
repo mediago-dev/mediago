@@ -100,6 +100,9 @@ func TestRedactSensitiveArgs(t *testing.T) {
 		"--proxy=http://malformed-user:malformed-proxy-%zz-secret@proxy.example:8080",
 		"--add-header", "malformed-add-header-secret",
 		"--header", "malformed-built-in-header-secret",
+		"--add-header", " : malformed-header-secret",
+		"--header=Authorization Bearer: malformed-header-secret",
+		"--proxy", "http:////user:malformed-proxy-secret@host",
 		"--add-header", "User-Agent: MediaGo-Visible",
 		"--header=User-Agent: BuiltIn-Visible",
 		"--proxy", "https://proxy.example:8443",
@@ -129,14 +132,25 @@ func TestRedactSensitiveArgs(t *testing.T) {
 	if containsSubstring(redacted, "secret") {
 		t.Fatal("sensitive argument remained visible")
 	}
-	if got := countSubstring(redacted, "[REDACTED]"); got != 23 {
+	if got := countSubstring(redacted, "[REDACTED]"); got != 26 {
 		t.Fatal("sensitive arguments were not redacted exactly once")
 	}
-	for _, malformedHeader := range []string{"malformed-add-header-secret", "malformed-built-in-header-secret"} {
+	for _, malformedHeader := range []string{
+		"malformed-add-header-secret",
+		"malformed-built-in-header-secret",
+		" : malformed-header-secret",
+	} {
 		index := slices.Index(original, malformedHeader)
 		if index == -1 || redacted[index] != "[REDACTED]" {
 			t.Fatal("malformed header was not fully redacted")
 		}
+	}
+	if !slices.Contains(redacted, "--header=[REDACTED]") {
+		t.Fatal("malformed inline header was not fully redacted")
+	}
+	malformedProxyIndex := slices.Index(original, "http:////user:malformed-proxy-secret@host")
+	if malformedProxyIndex == -1 || redacted[malformedProxyIndex] != "[REDACTED]" {
+		t.Fatal("malformed proxy was not fully redacted")
 	}
 	if !slices.Contains(redacted, "User-Agent: MediaGo-Visible") {
 		t.Fatal("ordinary header was unexpectedly redacted")

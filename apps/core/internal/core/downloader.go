@@ -209,13 +209,24 @@ func redactSensitiveArgs(args []string) []string {
 
 func redactHeader(header string) string {
 	name, _, found := strings.Cut(header, ":")
-	if !found {
+	name = strings.TrimSpace(name)
+	if !found || name == "" {
+		return "[REDACTED]"
+	}
+	for i := 0; i < len(name); i++ {
+		char := name[i]
+		if (char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			strings.ContainsRune("!#$%&'*+-.^_`|~", rune(char)) {
+			continue
+		}
 		return "[REDACTED]"
 	}
 
-	switch strings.ToLower(strings.TrimSpace(name)) {
+	switch strings.ToLower(name) {
 	case "cookie", "authorization", "proxy-authorization":
-		return strings.TrimSpace(name) + ": [REDACTED]"
+		return name + ": [REDACTED]"
 	default:
 		return header
 	}
@@ -226,7 +237,7 @@ func proxyContainsCredentials(proxy string) bool {
 		proxy = "http://" + proxy
 	}
 	parsed, err := url.Parse(proxy)
-	if err != nil {
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Opaque != "" {
 		return true
 	}
 	return parsed.User != nil
