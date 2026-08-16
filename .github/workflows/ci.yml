@@ -59,7 +59,7 @@ jobs:
         working-directory: apps/core
 
   test-media-integration:
-    name: Test public media integration
+    name: Test local media integration
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -86,31 +86,6 @@ jobs:
         run: pnpm test:integration:media:setup
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: Resolve public media base URL
-        env:
-          CONFIGURED_MEDIA_BASE_URL: ${{ vars.MEDIAGO_TEST_MEDIA_BASE_URL }}
-        run: |
-          if [ -n "$CONFIGURED_MEDIA_BASE_URL" ]; then
-            media_base_url="$CONFIGURED_MEDIA_BASE_URL"
-            while [ "${media_base_url%/}" != "$media_base_url" ]; do
-              media_base_url="${media_base_url%/}"
-            done
-            echo "Using configured public media base URL"
-          else
-            media_base_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/tests/media-service/public/v1"
-            echo "Using public media fixture from the checked-out commit"
-          fi
-          if [ -z "${media_base_url//[[:space:]]/}" ]; then
-            echo "::error::Public media base URL must not be empty"
-            exit 1
-          fi
-          case "$media_base_url" in
-            *$'\n'* | *$'\r'*)
-              echo "::error::Public media base URL must be a single line"
-              exit 1
-              ;;
-          esac
-          printf 'MEDIAGO_TEST_MEDIA_BASE_URL=%s\n' "$media_base_url" >> "$GITHUB_ENV"
       - run: pnpm test:integration:media:run
 
   pr-gate:
