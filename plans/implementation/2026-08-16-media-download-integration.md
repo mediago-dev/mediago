@@ -256,7 +256,7 @@ Expected: every command exits 0. Existing non-blocking lint warnings may remain,
 
 Review against every acceptance criterion in the design spec, with special attention to process cleanup, localhost isolation, Range behavior, and keeping the fast suite offline.
 
-- [ ] **Step 3: Commit intentionally on the current branch**
+- [x] **Step 3: Commit intentionally on the current branch**
 
 ```bash
 git add plans tests scripts vitest.config.ts vitest.integration.config.ts tsconfig.integration.json tsconfig.ci.json package.json .github/workflows .gitignore
@@ -265,7 +265,7 @@ git commit -m "test(integration): add owned media download coverage"
 
 Confirm the author/committer is `caorushizi <84996057@qq.com>`.
 
-- [ ] **Step 4: Push without merging**
+- [x] **Step 4: Push without merging**
 
 ```bash
 git push origin codex/automated-testing
