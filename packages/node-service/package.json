@@ -30,7 +30,7 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "test": "vitest",
+    "test": "pnpm --dir ../.. exec vitest run packages/node-service",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

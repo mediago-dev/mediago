@@ -30,7 +30,7 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "test": "vitest",
+    "test": "pnpm --dir ../.. exec vitest run packages/core-sdk",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -39,7 +39,7 @@
     "bumpp": "^10.3.1",
     "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
-    "vitest": "^4.0.1"
+    "vitest": "^4.1.2"
   },
   "dependencies": {
     "axios": "^1.15.0",
