@@ -58,23 +58,80 @@ jobs:
       - run: go test ./...
         working-directory: apps/core
 
+  test-media-integration:
+    name: Test public media integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: "10.15.0"
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.14.0"
+          cache: pnpm
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.0"
+          cache-dependency-path: apps/core/go.sum
+      - run: pnpm install --frozen-lockfile
+      - name: Cache media integration dependencies
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: media-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps-versions.json') }}
+      - name: Set up media integration dependencies
+        run: pnpm test:integration:media:setup
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Resolve public media base URL
+        env:
+          CONFIGURED_MEDIA_BASE_URL: ${{ vars.MEDIAGO_TEST_MEDIA_BASE_URL }}
+        run: |
+          if [ -n "$CONFIGURED_MEDIA_BASE_URL" ]; then
+            media_base_url="$CONFIGURED_MEDIA_BASE_URL"
+            while [ "${media_base_url%/}" != "$media_base_url" ]; do
+              media_base_url="${media_base_url%/}"
+            done
+            echo "Using configured public media base URL"
+          else
+            media_base_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/tests/media-service/public/v1"
+            echo "Using public media fixture from the checked-out commit"
+          fi
+          if [ -z "${media_base_url//[[:space:]]/}" ]; then
+            echo "::error::Public media base URL must not be empty"
+            exit 1
+          fi
+          case "$media_base_url" in
+            *$'\n'* | *$'\r'*)
+              echo "::error::Public media base URL must be a single line"
+              exit 1
+              ;;
+          esac
+          printf 'MEDIAGO_TEST_MEDIA_BASE_URL=%s\n' "$media_base_url" >> "$GITHUB_ENV"
+      - run: pnpm test:integration:media:run
+
   pr-gate:
     name: PR gate
     if: ${{ always() }}
-    needs: [quality, test-ts, test-go]
+    needs: [quality, test-ts, test-go, test-media-integration]
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
       QUALITY_RESULT: ${{ needs.quality.result }}
       TYPESCRIPT_RESULT: ${{ needs.test-ts.result }}
       GO_RESULT: ${{ needs.test-go.result }}
+      MEDIA_INTEGRATION_RESULT: ${{ needs.test-media-integration.result }}
     steps:
       - run: |
           failed=0
           for result in \
             "quality:$QUALITY_RESULT" \
             "test-ts:$TYPESCRIPT_RESULT" \
-            "test-go:$GO_RESULT"
+            "test-go:$GO_RESULT" \
+            "media-integration:$MEDIA_INTEGRATION_RESULT"
           do
             job="${result%%:*}"
             status="${result#*:}"
