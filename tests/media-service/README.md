@@ -15,9 +15,8 @@ no-op; different output fails without overwriting the committed version, so use
 a new version instead.
 
 `startMediaServer()` in `server.ts` exposes the committed allowlist as a
-read-only loopback HTTP service for tests. A published copy should remain
-read-only and can be checked against the committed manifest with:
+read-only loopback HTTP service for tests. `server.test.ts` starts it on a
+random port and checks it with `verifyMediaService()`.
 
-```sh
-pnpm exec tsx tests/media-service/verify.ts https://example.test/v1
-```
+CI uses the same localhost service. Test media is not published or uploaded to
+an external service.
