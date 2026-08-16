@@ -1,7 +1,9 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -90,6 +92,110 @@ func assertAdjacentArgCount(t *testing.T, tool, field string, args []string, exp
 	}
 	if actual != expected {
 		t.Fatalf("%s %s occurrence count: expected %d, actual %d", tool, field, expected, actual)
+	}
+}
+
+func TestExternalRunnerBoundary(t *testing.T) {
+	ensureTestLogger()
+
+	const (
+		downloadURL    = "https://example.test/watch?v=runner-boundary"
+		downloadName   = "runner-boundary-output"
+		downloadFolder = "runner-boundary-folder"
+	)
+
+	tests := []struct {
+		name           string
+		downloadType   DownloadType
+		fixture        string
+		expectedBinary string
+		outputDirFlag  string
+		outputNameFlag string
+	}{
+		{
+			name:           "BBDown",
+			downloadType:   TypeBilibili,
+			fixture:        "bbdown-failure.json",
+			expectedBinary: "BBDown",
+			outputDirFlag:  "--work-dir",
+			outputNameFlag: "--file-pattern",
+		},
+		{
+			name:           "yt-dlp",
+			downloadType:   TypeYoutube,
+			fixture:        "yt-dlp-error.json",
+			expectedBinary: "yt-dlp",
+			outputDirFlag:  "-P",
+			outputNameFlag: "-o",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chunks := loadContractFixture(t, tt.fixture)
+			depsDir := t.TempDir()
+			binaryName := BinaryNames[tt.downloadType]
+			binaryPath := filepath.Join(depsDir, binaryName)
+			if err := os.WriteFile(binaryPath, []byte("placeholder"), 0o700); err != nil {
+				t.Fatalf("write %s placeholder binary: %v", tt.name, err)
+			}
+
+			sentinel := errors.New("synthetic runner failure")
+			var (
+				runnerCalls int
+				gotBin      string
+				gotArgs     []string
+				gotMessages []string
+			)
+			d := NewDownloader(
+				map[DownloadType]string{tt.downloadType: binaryPath},
+				runnerFunc(func(_ context.Context, bin string, args []string, onLine func(string)) error {
+					runnerCalls++
+					gotBin = bin
+					gotArgs = append([]string(nil), args...)
+					for _, chunk := range chunks {
+						onLine(chunk)
+					}
+					return sentinel
+				}),
+				schema.DefaultSchemas(),
+				testDownloaderConfig{localDir: depsDir},
+			)
+
+			err := d.Download(context.Background(), DownloadParams{
+				ID:     TaskID("runner-boundary"),
+				Type:   tt.downloadType,
+				URL:    downloadURL,
+				Name:   downloadName,
+				Folder: downloadFolder,
+			}, Callbacks{
+				OnMessage: func(event MessageEvent) {
+					gotMessages = append(gotMessages, event.Message)
+				},
+			})
+
+			if runnerCalls != 1 {
+				t.Fatalf("%s runner call count: expected 1, actual %d", tt.name, runnerCalls)
+			}
+			if got := filepath.Base(gotBin); got != tt.expectedBinary {
+				t.Fatalf("%s binary basename: expected %q, actual %q", tt.name, tt.expectedBinary, got)
+			}
+			assertStandaloneArgCount(t, tt.name, "URL", gotArgs, 1, downloadURL)
+			assertAdjacentArgCount(t, tt.name, "output directory", gotArgs, 1, tt.outputDirFlag, filepath.Join(depsDir, downloadFolder))
+			assertAdjacentArgCount(t, tt.name, "output name", gotArgs, 1, tt.outputNameFlag, downloadName)
+
+			if len(gotMessages) != len(chunks) {
+				t.Fatalf("%s OnMessage count: expected %d, actual %d", tt.name, len(chunks), len(gotMessages))
+			}
+			for i, chunk := range chunks {
+				if expected := strings.TrimSpace(chunk); gotMessages[i] != expected {
+					t.Fatalf("%s OnMessage[%d]: expected %q, actual %q", tt.name, i, expected, gotMessages[i])
+				}
+			}
+			if !errors.Is(err, sentinel) {
+				t.Fatalf("%s Download() error = %v, want runner sentinel", tt.name, err)
+			}
+		})
 	}
 }
 
