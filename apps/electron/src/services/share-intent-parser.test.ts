@@ -1,6 +1,5 @@
-import assert from "node:assert/strict";
-import test from "node:test";
 import { DownloadType } from "@mediago/shared-common";
+import { expect, test } from "vitest";
 import { parseShareIntentProtocolUrl } from "./share-intent-parser";
 
 const SCHEME = "mediago-community";
@@ -20,30 +19,32 @@ test("parses canonical share links without losing nested query parameters", () =
     SCHEME,
   );
 
-  assert.equal(result.handled, true);
-  assert.ok(result.intent);
-  assert.equal(result.intent.source, "electron");
-  assert.equal(result.intent.url, mediaUrl);
-  assert.equal(result.intent.name, "Episode 1");
-  assert.equal(result.intent.type, DownloadType.m3u8);
-  assert.equal("headers" in result.intent, false);
+  expect(result.handled).toBe(true);
+  if (!result.intent) {
+    throw new Error("Expected a share intent");
+  }
+  expect(result.intent.source).toBe("electron");
+  expect(result.intent.url).toBe(mediaUrl);
+  expect(result.intent.name).toBe("Episode 1");
+  expect(result.intent.type).toBe(DownloadType.m3u8);
+  expect("headers" in result.intent).toBe(false);
 });
 
 test("handles focus-only and unsupported-version links without an intent", () => {
-  assert.deepEqual(parseShareIntentProtocolUrl(`${SCHEME}://open`, SCHEME), {
-    handled: true,
-  });
-  assert.deepEqual(
-    parseShareIntentProtocolUrl(`${SCHEME}://index.html/`, SCHEME),
-    { handled: true },
+  expect(parseShareIntentProtocolUrl(`${SCHEME}://open`, SCHEME)).toStrictEqual(
+    {
+      handled: true,
+    },
   );
-  assert.deepEqual(
+  expect(
+    parseShareIntentProtocolUrl(`${SCHEME}://index.html/`, SCHEME),
+  ).toStrictEqual({ handled: true });
+  expect(
     parseShareIntentProtocolUrl(
       `${SCHEME}://share?v=2&url=https%3A%2F%2Fexample.com%2Fvideo.mp4`,
       SCHEME,
     ),
-    { handled: true },
-  );
+  ).toStrictEqual({ handled: true });
 });
 
 test("maps legacy automatic-action flags to a warning instead of executing them", () => {
@@ -61,29 +62,31 @@ test("maps legacy automatic-action flags to a warning instead of executing them"
     SCHEME,
   );
 
-  assert.equal(result.handled, true);
-  assert.ok(result.intent);
-  assert.equal(result.intent.source, "legacy-electron");
-  assert.equal(result.intent.url, mediaUrl);
-  assert.equal(result.intent.warning, "legacy-auto-action-disabled");
+  expect(result.handled).toBe(true);
+  if (!result.intent) {
+    throw new Error("Expected a legacy share intent");
+  }
+  expect(result.intent.source).toBe("legacy-electron");
+  expect(result.intent.url).toBe(mediaUrl);
+  expect(result.intent.warning).toBe("legacy-auto-action-disabled");
 });
 
 test("rejects unrelated targets and unsafe payloads", () => {
-  assert.deepEqual(
+  expect(
     parseShareIntentProtocolUrl(
       "other://share?url=https://example.com",
       SCHEME,
     ),
-    { handled: false },
-  );
-  assert.deepEqual(parseShareIntentProtocolUrl(`${SCHEME}://unknown`, SCHEME), {
+  ).toStrictEqual({ handled: false });
+  expect(
+    parseShareIntentProtocolUrl(`${SCHEME}://unknown`, SCHEME),
+  ).toStrictEqual({
     handled: false,
   });
-  assert.deepEqual(
+  expect(
     parseShareIntentProtocolUrl(
       `${SCHEME}://share?v=1&url=javascript%3Aalert(1)`,
       SCHEME,
     ),
-    { handled: true, intent: undefined },
-  );
+  ).toStrictEqual({ handled: true, intent: undefined });
 });

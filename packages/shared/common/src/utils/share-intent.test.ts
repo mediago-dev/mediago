@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import { DownloadType } from "../types";
 import {
   ELECTRON_SHARE_PROTOCOLS,
@@ -11,22 +10,18 @@ import {
 } from "./share-intent";
 
 test("infers download types from parsed hostnames and paths", () => {
-  assert.equal(
-    inferDownloadType("https://www.bilibili.com/video/BV1"),
+  expect(inferDownloadType("https://www.bilibili.com/video/BV1")).toBe(
     DownloadType.bilibili,
   );
-  assert.equal(
-    inferDownloadType("https://youtu.be/example"),
+  expect(inferDownloadType("https://youtu.be/example")).toBe(
     DownloadType.youtube,
   );
-  assert.equal(
+  expect(
     inferDownloadType("https://media.example/live/index.m3u8?token=abc"),
-    DownloadType.m3u8,
-  );
-  assert.equal(
+  ).toBe(DownloadType.m3u8);
+  expect(
     inferDownloadType("https://example.com/video.mp4?next=bilibili.com"),
-    DownloadType.direct,
-  );
+  ).toBe(DownloadType.direct);
 });
 
 test("normalizes supported share intents and rejects unsafe web protocols", () => {
@@ -42,7 +37,7 @@ test("normalizes supported share intents and rejects unsafe web protocols", () =
     { allowedProtocols: WEB_SHARE_PROTOCOLS, now: 100 },
   );
 
-  assert.deepEqual(intent, {
+  expect(intent).toStrictEqual({
     id: "intent-1",
     version: 1,
     source: "web",
@@ -52,27 +47,24 @@ test("normalizes supported share intents and rejects unsafe web protocols", () =
     type: DownloadType.m3u8,
     warning: undefined,
   });
-  assert.equal(
+  expect(
     normalizeShareIntent(
       { source: "web", url: "file:///C:/private/video.mp4" },
       { allowedProtocols: WEB_SHARE_PROTOCOLS },
     ),
-    null,
-  );
-  assert.notEqual(
+  ).toBe(null);
+  expect(
     normalizeShareIntent(
       { source: "electron", url: "file:///C:/video.mp4" },
       { allowedProtocols: ELECTRON_SHARE_PROTOCOLS },
     ),
-    null,
-  );
+  ).not.toBe(null);
 });
 
 test("extracts shared URLs and expires stale intents", () => {
-  assert.equal(
+  expect(
     extractFirstHttpUrl("Watch this: https://example.com/video.m3u8)."),
-    "https://example.com/video.m3u8",
-  );
+  ).toBe("https://example.com/video.m3u8");
 
   const intent = normalizeShareIntent(
     {
@@ -83,7 +75,9 @@ test("extracts shared URLs and expires stale intents", () => {
     },
     { now: 1_000 },
   );
-  assert.ok(intent);
-  assert.equal(isFreshShareIntent(intent, 1_001), true);
-  assert.equal(isFreshShareIntent(intent, 1_000 + 16 * 60 * 1_000), false);
+  if (!intent) {
+    throw new Error("Expected a normalized share intent");
+  }
+  expect(isFreshShareIntent(intent, 1_001)).toBe(true);
+  expect(isFreshShareIntent(intent, 1_000 + 16 * 60 * 1_000)).toBe(false);
 });

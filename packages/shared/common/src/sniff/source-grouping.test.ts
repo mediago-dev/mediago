@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import type { HLSMediaInfo } from "../types";
 import { mergeSniffedSource } from "./source-grouping";
 
@@ -27,7 +26,7 @@ test("replaces the pending copy of the same source", () => {
     mediaInfo: mediaInfo({ playlistType: "master", maxQuality: "1080p" }),
   };
 
-  assert.deepEqual(mergeSniffedSource([pending], ready), [ready]);
+  expect(mergeSniffedSource([pending], ready)).toStrictEqual([ready]);
 });
 
 test("collapses child playlists when their master arrives later", () => {
@@ -49,8 +48,8 @@ test("collapses child playlists when their master arrives later", () => {
     }),
   };
 
-  assert.deepEqual(mergeSniffedSource([child], master), [master]);
-  assert.deepEqual(mergeSniffedSource([master], child), [master]);
+  expect(mergeSniffedSource([child], master)).toStrictEqual([master]);
+  expect(mergeSniffedSource([master], child)).toStrictEqual([master]);
 });
 
 test("keeps unrelated playlists separate", () => {
@@ -63,5 +62,5 @@ test("keeps unrelated playlists separate", () => {
     url: "https://media.example/second.m3u8",
   };
 
-  assert.deepEqual(mergeSniffedSource([first], second), [first, second]);
+  expect(mergeSniffedSource([first], second)).toStrictEqual([first, second]);
 });
