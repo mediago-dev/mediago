@@ -312,6 +312,23 @@ async function reserveLoopbackPort(): Promise<number> {
   return address.port;
 }
 
+function buildCoreEnvironment(port: number): NodeJS.ProcessEnv {
+  const environment = { ...process.env };
+  for (const key of Object.keys(environment)) {
+    if (/^(?:http|https|all|ftp)_proxy$/i.test(key)) {
+      delete environment[key];
+    }
+  }
+  return {
+    ...environment,
+    HOST: "127.0.0.1",
+    PORT: String(port),
+    NO_PROXY: "127.0.0.1,localhost",
+    no_proxy: "127.0.0.1,localhost",
+    HOME: temporaryRoot,
+  };
+}
+
 function spawnCore(port: number): CoreProcessState {
   const child = spawn(
     coreBinaryPath,
@@ -334,7 +351,7 @@ function spawnCore(port: number): CoreProcessState {
     {
       cwd: CORE_SOURCE_DIR,
       detached: true,
-      env: { ...process.env, HOST: "127.0.0.1" },
+      env: buildCoreEnvironment(port),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -460,6 +477,7 @@ async function startCoreWithOneRetry(): Promise<void> {
     const client = new MediaGoClient({
       baseURL: `http://127.0.0.1:${port}`,
     });
+    client.api.defaults.proxy = false;
     client.api.defaults.timeout = 1_000;
     try {
       await waitForHealthy(client, state);
