@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
@@ -9,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test, { type TestContext } from "node:test";
+import { expect, onTestFinished, test } from "vitest";
 import {
   applyDesktopBuildVersion,
   createDesktopArtifactPrefix,
@@ -33,40 +32,34 @@ test("validates desktop build requests and release channels", () => {
     sourceSha: SOURCE_SHA.toUpperCase(),
   });
 
-  assert.throws(
-    () =>
-      validateDesktopBuildRequest({
-        runMode: "publish",
-        version: "3.6.0",
-        releaseChannel: "latest",
-        sourceSha: SOURCE_SHA,
-      }),
-    /Unsupported run_mode/,
-  );
-  assert.throws(
-    () =>
-      validateDesktopBuildRequest({
-        runMode: "release",
-        version: "3.6.0-beta.2",
-        releaseChannel: "latest",
-        sourceSha: SOURCE_SHA,
-      }),
-    /does not match release channel/,
-  );
-  assert.throws(
-    () =>
-      validateDesktopBuildRequest({
-        runMode: "test",
-        version: "3.6.0+build.1",
-        releaseChannel: "beta",
-        sourceSha: "abc",
-      }),
-    /source_sha/,
-  );
+  expect(() =>
+    validateDesktopBuildRequest({
+      runMode: "publish",
+      version: "3.6.0",
+      releaseChannel: "latest",
+      sourceSha: SOURCE_SHA,
+    }),
+  ).toThrow(/Unsupported run_mode/);
+  expect(() =>
+    validateDesktopBuildRequest({
+      runMode: "release",
+      version: "3.6.0-beta.2",
+      releaseChannel: "latest",
+      sourceSha: SOURCE_SHA,
+    }),
+  ).toThrow(/does not match release channel/);
+  expect(() =>
+    validateDesktopBuildRequest({
+      runMode: "test",
+      version: "3.6.0+build.1",
+      releaseChannel: "beta",
+      sourceSha: "abc",
+    }),
+  ).toThrow(/source_sha/);
 });
 
-test("creates the existing desktop artifact prefix and output", (t) => {
-  const root = createWorkspace(t, "3.5.0");
+test("creates the existing desktop artifact prefix and output", () => {
+  const root = createWorkspace("3.5.0");
   const output = join(root, "github-output.txt");
   const prefix = createDesktopArtifactPrefix({
     runMode: "test",
@@ -77,12 +70,12 @@ test("creates the existing desktop artifact prefix and output", (t) => {
     githubOutput: output,
   });
 
-  assert.equal(prefix, "mediago-test-3.5.0-test.42-0123456789ab-12345-2");
-  assert.equal(readFileSync(output, "utf8"), `artifact_prefix=${prefix}\n`);
+  expect(prefix).toBe("mediago-test-3.5.0-test.42-0123456789ab-12345-2");
+  expect(readFileSync(output, "utf8")).toBe(`artifact_prefix=${prefix}\n`);
 });
 
-test("applies test versions but protects committed release versions", (t) => {
-  const root = createWorkspace(t, "3.5.0");
+test("applies test versions but protects committed release versions", () => {
+  const root = createWorkspace("3.5.0");
   const versionFile = join(root, "apps", "electron", "app", "package.json");
 
   applyDesktopBuildVersion({
@@ -90,25 +83,23 @@ test("applies test versions but protects committed release versions", (t) => {
     version: "3.5.0-test.42",
     workspaceRoot: root,
   });
-  assert.equal(readPackageVersion(versionFile), "3.5.0-test.42");
+  expect(readPackageVersion(versionFile)).toBe("3.5.0-test.42");
 
-  assert.throws(
-    () =>
-      applyDesktopBuildVersion({
-        runMode: "release",
-        version: "3.5.1",
-        workspaceRoot: root,
-      }),
-    /does not match/,
-  );
+  expect(() =>
+    applyDesktopBuildVersion({
+      runMode: "release",
+      version: "3.5.1",
+      workspaceRoot: root,
+    }),
+  ).toThrow(/does not match/);
 });
 
-test("verifies that the checked-out test source has the requested SHA", (t) => {
-  const root = createWorkspace(t, "3.5.0", true);
+test("verifies that the checked-out test source has the requested SHA", () => {
+  const root = createWorkspace("3.5.0", true);
   const actualSha = runGit(root, ["rev-parse", "HEAD"]);
   const output = join(root, "github-output.txt");
 
-  assert.equal(
+  expect(
     verifyDesktopSource({
       runMode: "test",
       version: "3.5.0-test.42",
@@ -116,30 +107,23 @@ test("verifies that the checked-out test source has the requested SHA", (t) => {
       workspaceRoot: root,
       githubOutput: output,
     }),
-    actualSha,
-  );
-  assert.equal(readFileSync(output, "utf8"), `source_sha=${actualSha}\n`);
+  ).toBe(actualSha);
+  expect(readFileSync(output, "utf8")).toBe(`source_sha=${actualSha}\n`);
 
-  assert.throws(
-    () =>
-      verifyDesktopSource({
-        runMode: "test",
-        version: "3.5.0-test.42",
-        sourceSha: SOURCE_SHA,
-        workspaceRoot: root,
-        githubOutput: output,
-      }),
-    /instead of requested SHA/,
-  );
+  expect(() =>
+    verifyDesktopSource({
+      runMode: "test",
+      version: "3.5.0-test.42",
+      sourceSha: SOURCE_SHA,
+      workspaceRoot: root,
+      githubOutput: output,
+    }),
+  ).toThrow(/instead of requested SHA/);
 });
 
-function createWorkspace(
-  t: TestContext,
-  version: string,
-  initializeGit = false,
-): string {
+function createWorkspace(version: string, initializeGit = false): string {
   const root = mkdtempSync(join(tmpdir(), "mediago-desktop-workflow-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   const appDirectory = join(root, "apps", "electron", "app");
   mkdirSync(appDirectory, { recursive: true });
   writeFileSync(

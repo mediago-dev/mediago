@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import {
   buildDockerSummary,
   dockerHubCredentialsEnabled,
@@ -34,33 +33,29 @@ test("validates versions against the selected Docker release mode and channel", 
       sourceSha: SHA.toUpperCase(),
     },
   ]) {
-    assert.doesNotThrow(() => validateDockerWorkflowInputs(input));
+    expect(() => validateDockerWorkflowInputs(input)).not.toThrow();
   }
 
-  assert.throws(
-    () =>
-      validateDockerWorkflowInputs({
-        runMode: "release",
-        version: "3.6.0-beta.1",
-        releaseChannel: "latest",
-        sourceSha: SHA,
-      }),
-    /latest version must look like 3\.6\.0/,
-  );
-  assert.throws(
-    () =>
-      validateDockerWorkflowInputs({
-        runMode: "test",
-        version: "3.6.0",
-        releaseChannel: "beta",
-        sourceSha: "short",
-      }),
-    /source_sha must be a full 40-character commit SHA/,
-  );
+  expect(() =>
+    validateDockerWorkflowInputs({
+      runMode: "release",
+      version: "3.6.0-beta.1",
+      releaseChannel: "latest",
+      sourceSha: SHA,
+    }),
+  ).toThrow(/latest version must look like 3\.6\.0/);
+  expect(() =>
+    validateDockerWorkflowInputs({
+      runMode: "test",
+      version: "3.6.0",
+      releaseChannel: "beta",
+      sourceSha: "short",
+    }),
+  ).toThrow(/source_sha must be a full 40-character commit SHA/);
 });
 
 test("resolves isolated test and versioned release image parameters", () => {
-  assert.deepEqual(
+  expect(
     resolveDockerParameters({
       runMode: "test",
       version: "3.6.0-test.123",
@@ -72,14 +67,13 @@ test("resolves isolated test and versioned release image parameters", () => {
       currentVersion: "3.5.0",
       dockerHubImage: "caorushizi/mediago",
     }),
-    {
-      image: "ghcr.io/mediago-dev/mediago-preview",
-      tag: "test-98765-0123456789ab",
-      imageRef: "ghcr.io/mediago-dev/mediago-preview:test-98765-0123456789ab",
-      sourceSha: SHA,
-      dockerHubImage: "docker.io/caorushizi/mediago",
-    },
-  );
+  ).toStrictEqual({
+    image: "ghcr.io/mediago-dev/mediago-preview",
+    tag: "test-98765-0123456789ab",
+    imageRef: "ghcr.io/mediago-dev/mediago-preview:test-98765-0123456789ab",
+    sourceSha: SHA,
+    dockerHubImage: "docker.io/caorushizi/mediago",
+  });
 
   const release = resolveDockerParameters({
     runMode: "release",
@@ -92,46 +86,45 @@ test("resolves isolated test and versioned release image parameters", () => {
     currentVersion: "3.6.0-beta.1",
     dockerHubImage: "caorushizi/mediago",
   });
-  assert.equal(release.image, "ghcr.io/mediago-dev/mediago");
-  assert.equal(release.tag, "3.6.0-beta.1");
+  expect(release.image).toBe("ghcr.io/mediago-dev/mediago");
+  expect(release.tag).toBe("3.6.0-beta.1");
 
-  assert.throws(
-    () =>
-      resolveDockerParameters({
-        runMode: "release",
-        version: "3.6.0",
-        releaseChannel: "latest",
-        sourceSha: SHA,
-        repositoryOwner: "mediago-dev",
-        runId: "98765",
-        resolvedSha: SHA,
-        currentVersion: "3.5.0",
-        dockerHubImage: "caorushizi/mediago",
-      }),
-    /contains '3\.5\.0', but release version '3\.6\.0' was requested/,
-  );
+  expect(() =>
+    resolveDockerParameters({
+      runMode: "release",
+      version: "3.6.0",
+      releaseChannel: "latest",
+      sourceSha: SHA,
+      repositoryOwner: "mediago-dev",
+      runId: "98765",
+      resolvedSha: SHA,
+      currentVersion: "3.5.0",
+      dockerHubImage: "caorushizi/mediago",
+    }),
+  ).toThrow(/contains '3\.5\.0', but release version '3\.6\.0' was requested/);
 });
 
 test("enables Docker Hub only when both credentials are present", () => {
-  assert.equal(dockerHubCredentialsEnabled("user", "token"), true);
-  assert.equal(dockerHubCredentialsEnabled("user", ""), false);
-  assert.equal(dockerHubCredentialsEnabled("", "token"), false);
-  assert.deepEqual(
+  expect(dockerHubCredentialsEnabled("user", "token")).toBe(true);
+  expect(dockerHubCredentialsEnabled("user", "")).toBe(false);
+  expect(dockerHubCredentialsEnabled("", "token")).toBe(false);
+  expect(
     resolveImageTargets(
       "ghcr.io/mediago-dev/mediago",
       true,
       "docker.io/caorushizi/mediago",
     ),
-    ["ghcr.io/mediago-dev/mediago", "docker.io/caorushizi/mediago"],
-  );
-  assert.deepEqual(
+  ).toStrictEqual([
+    "ghcr.io/mediago-dev/mediago",
+    "docker.io/caorushizi/mediago",
+  ]);
+  expect(
     resolveImageTargets(
       "ghcr.io/mediago-dev/mediago-preview",
       false,
       "docker.io/caorushizi/mediago",
     ),
-    ["ghcr.io/mediago-dev/mediago-preview"],
-  );
+  ).toStrictEqual(["ghcr.io/mediago-dev/mediago-preview"]);
 });
 
 test("accepts only a private or explicitly missing preview package", async () => {
@@ -142,11 +135,10 @@ test("accepts only a private or explicitly missing preview package", async () =>
       ? response(200, { type: "Organization" })
       : response(200, { visibility: "private" });
   };
-  assert.equal(
-    await verifyPreviewPackagePrivate("mediago-dev", privateRequest),
+  expect(await verifyPreviewPackagePrivate("mediago-dev", privateRequest)).toBe(
     "private",
   );
-  assert.deepEqual(requestedPaths, [
+  expect(requestedPaths).toStrictEqual([
     "/users/mediago-dev",
     "/orgs/mediago-dev/packages/container/mediago-preview",
   ]);
@@ -155,8 +147,7 @@ test("accepts only a private or explicitly missing preview package", async () =>
     path.includes("/packages/")
       ? response(404, { message: "Not Found" })
       : response(200, { type: "User" });
-  assert.equal(
-    await verifyPreviewPackagePrivate("caorushizi", missingRequest),
+  expect(await verifyPreviewPackagePrivate("caorushizi", missingRequest)).toBe(
     "missing",
   );
 
@@ -164,19 +155,17 @@ test("accepts only a private or explicitly missing preview package", async () =>
     path.startsWith("/users/")
       ? response(200, { type: "Organization" })
       : response(200, { visibility: "public" });
-  await assert.rejects(
+  await expect(
     verifyPreviewPackagePrivate("mediago-dev", publicRequest),
-    /not private/,
-  );
+  ).rejects.toThrow(/not private/);
 
   const forbiddenRequest: GitHubJsonRequest = async (path) =>
     path.startsWith("/users/")
       ? response(200, { type: "Organization" })
       : response(403, { message: "Forbidden" });
-  await assert.rejects(
+  await expect(
     verifyPreviewPackagePrivate("mediago-dev", forbiddenRequest),
-    /HTTP 403/,
-  );
+  ).rejects.toThrow(/HTTP 403/);
 });
 
 test("renders the Docker job summary including all published tags", () => {
@@ -189,10 +178,10 @@ test("renders the Docker job summary including all published tags", () => {
     tags: ["ghcr.io/mediago-dev/mediago-preview:test-1-0123456789ab", ""],
     imageRef: "ghcr.io/mediago-dev/mediago-preview:test-1-0123456789ab",
   });
-  assert.match(summary, /Docker image published/);
-  assert.match(summary, /sha256:abc/);
-  assert.match(summary, /mediago-preview:test-1-0123456789ab/);
-  assert.match(summary, /Keep the `mediago-preview` GHCR package private/);
+  expect(summary).toMatch(/Docker image published/);
+  expect(summary).toMatch(/sha256:abc/);
+  expect(summary).toMatch(/mediago-preview:test-1-0123456789ab/);
+  expect(summary).toMatch(/Keep the `mediago-preview` GHCR package private/);
 });
 
 function response(status: number, data: unknown): GitHubJsonResponse {
