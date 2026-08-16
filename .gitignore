@@ -9,6 +9,7 @@ log
 .claude
 .store
 release
+coverage/
 go.work.sum
 apps/core/bin/
 apps/electron/bin/
