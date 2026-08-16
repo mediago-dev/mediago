@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"caorushizi.cn/mediago/internal/core/schema"
@@ -15,12 +16,14 @@ import (
 
 type testDownloaderConfig struct {
 	localDir string
+	useProxy bool
+	proxy    string
 }
 
 func (c testDownloaderConfig) GetLocalDir() string   { return c.localDir }
 func (testDownloaderConfig) GetDeleteSegments() bool { return true }
-func (testDownloaderConfig) GetUseProxy() bool       { return false }
-func (testDownloaderConfig) GetProxy() string        { return "" }
+func (c testDownloaderConfig) GetUseProxy() bool     { return c.useProxy }
+func (c testDownloaderConfig) GetProxy() string      { return c.proxy }
 
 type runnerFunc func(context.Context, string, []string, func(string)) error
 
@@ -49,13 +52,13 @@ func TestBuildArgsUsesStoredBilibiliCookie(t *testing.T) {
 
 	cookieIndex := slices.Index(args, "--cookie")
 	if cookieIndex == -1 || cookieIndex+1 >= len(args) {
-		t.Fatalf("expected --cookie argument, got %v", args)
+		t.Fatal("expected --cookie argument")
 	}
 	if got := args[cookieIndex+1]; got != "SESSDATA=secret; bili_jct=csrf" {
-		t.Fatalf("unexpected cookie value %q", got)
+		t.Fatal("unexpected cookie value")
 	}
 	if slices.Contains(args, "--use-app-api") {
-		t.Fatalf("APP API must not be forced: %v", args)
+		t.Fatal("APP API must not be forced")
 	}
 }
 
@@ -67,27 +70,111 @@ func TestBuildArgsOmitsMissingCookie(t *testing.T) {
 
 	args := d.buildArgs(DownloadParams{Type: TypeBilibili}, s)
 	if slices.Contains(args, "--cookie") {
-		t.Fatalf("unexpected cookie argument: %v", args)
+		t.Fatal("unexpected cookie argument")
 	}
 }
 
 func TestRedactSensitiveArgs(t *testing.T) {
-	original := []string{"BV1xx", "--cookie", "SESSDATA=secret", "--cookie=other-secret"}
+	original := []string{
+		"BV1xx",
+		"--cookie", "cookie-separate-secret",
+		"--cookie=cookie-equal-secret",
+		"-c", "cookie-short-secret",
+		"--add-header", "cOoKiE : cookie-header-separate-secret",
+		"--add-header=Cookie: cookie-header-equal-secret",
+		"--add-header", "aUtHoRiZaTiOn: Bearer authorization-header-separate-secret",
+		"--add-header=Authorization : Bearer authorization-header-equal-secret",
+		"--add-header", "Proxy-Authorization : Basic proxy-authorization-header-separate-secret",
+		"--add-header=pRoXy-AuThOrIzAtIoN: Basic proxy-authorization-header-equal-secret",
+		"--header", "cOoKiE : built-in-cookie-header-separate-secret",
+		"--header=Cookie: built-in-cookie-header-equal-secret",
+		"--header", "aUtHoRiZaTiOn: Bearer built-in-authorization-header-separate-secret",
+		"--header=Authorization : Bearer built-in-authorization-header-equal-secret",
+		"--header", "Proxy-Authorization : Basic built-in-proxy-authorization-header-separate-secret",
+		"--header=pRoXy-AuThOrIzAtIoN: Basic built-in-proxy-authorization-header-equal-secret",
+		"--proxy", "https://proxy-user:proxy-separate-secret@proxy.example:8443",
+		"--proxy=http://proxy-user:proxy-equal-secret@proxy.example:8080",
+		"--custom-proxy", "https://custom-user:custom-proxy-separate-secret@proxy.example:8443",
+		"--custom-proxy=http://custom-user:custom-proxy-equal-secret@proxy.example:8080",
+		"--proxy", "scheme-user:schemeless-proxy-secret@proxy.example:8080",
+		"--proxy=http://malformed-user:malformed-proxy-%zz-secret@proxy.example:8080",
+		"--add-header", "malformed-add-header-secret",
+		"--header", "malformed-built-in-header-secret",
+		"--add-header", "User-Agent: MediaGo-Visible",
+		"--header=User-Agent: BuiltIn-Visible",
+		"--proxy", "https://proxy.example:8443",
+		"--proxy=https://proxy.example:8443/path@segment?email=user@example.com",
+	}
+	before := slices.Clone(original)
 	redacted := redactSensitiveArgs(original)
 
-	want := []string{"BV1xx", "--cookie", "[REDACTED]", "--cookie=[REDACTED]"}
-	if !slices.Equal(redacted, want) {
-		t.Fatalf("redacted args = %v, want %v", redacted, want)
+	containsSubstring := func(values []string, substring string) bool {
+		for _, value := range values {
+			if strings.Contains(value, substring) {
+				return true
+			}
+		}
+		return false
 	}
-	if original[2] != "SESSDATA=secret" {
+	countSubstring := func(values []string, substring string) int {
+		count := 0
+		for _, value := range values {
+			if strings.Contains(value, substring) {
+				count++
+			}
+		}
+		return count
+	}
+
+	if containsSubstring(redacted, "secret") {
+		t.Fatal("sensitive argument remained visible")
+	}
+	if got := countSubstring(redacted, "[REDACTED]"); got != 23 {
+		t.Fatal("sensitive arguments were not redacted exactly once")
+	}
+	for _, malformedHeader := range []string{"malformed-add-header-secret", "malformed-built-in-header-secret"} {
+		index := slices.Index(original, malformedHeader)
+		if index == -1 || redacted[index] != "[REDACTED]" {
+			t.Fatal("malformed header was not fully redacted")
+		}
+	}
+	if !slices.Contains(redacted, "User-Agent: MediaGo-Visible") {
+		t.Fatal("ordinary header was unexpectedly redacted")
+	}
+	if !slices.Contains(redacted, "--header=User-Agent: BuiltIn-Visible") {
+		t.Fatal("ordinary built-in header was unexpectedly redacted")
+	}
+	if !slices.Contains(redacted, "https://proxy.example:8443") {
+		t.Fatal("proxy without credentials was unexpectedly redacted")
+	}
+	if !slices.Contains(redacted, "--proxy=https://proxy.example:8443/path@segment?email=user@example.com") {
+		t.Fatal("proxy with at-sign outside userinfo was unexpectedly redacted")
+	}
+	if !slices.Equal(original, before) {
 		t.Fatal("redaction mutated executable arguments")
 	}
+
+	t.Run("scans immutable arguments", func(t *testing.T) {
+		malformed := []string{"--cookie", "--proxy", "http://scan-user:scan-proxy-secret@host"}
+		malformedBefore := slices.Clone(malformed)
+		malformedRedacted := redactSensitiveArgs(malformed)
+
+		if containsSubstring(malformedRedacted, "secret") {
+			t.Fatal("sensitive argument remained visible after overlapping flags")
+		}
+		if !slices.Equal(malformedRedacted, []string{"--cookie", "[REDACTED]", "[REDACTED]"}) {
+			t.Fatal("overlapping sensitive flags were not fully redacted")
+		}
+		if !slices.Equal(malformed, malformedBefore) {
+			t.Fatal("redaction mutated malformed executable arguments")
+		}
+	})
 }
 
 func TestHeaderValueIsCaseInsensitive(t *testing.T) {
 	headers := []string{"COOKIE : SESSDATA=value:with:colons"}
 	if got := headerValue(headers, "Cookie"); got != "SESSDATA=value:with:colons" {
-		t.Fatalf("headerValue() = %q", got)
+		t.Fatal("unexpected case-insensitive header value")
 	}
 }
 
@@ -106,7 +193,7 @@ func TestBuildArgsPassesSniffedM3U8Headers(t *testing.T) {
 	for _, header := range headerLines {
 		index := slices.Index(args, header)
 		if index < 1 || args[index-1] != "--header" {
-			t.Fatalf("expected --header %q in %v", header, args)
+			t.Fatal("expected header argument")
 		}
 	}
 }
@@ -122,7 +209,7 @@ func TestBuildArgsUsesBundledFFmpeg(t *testing.T) {
 	args := d.buildArgs(DownloadParams{Type: TypeM3U8}, s)
 	want := []string{"--ffmpeg-binary-path", "/opt/mediago/deps/ffmpeg"}
 	if !slices.Equal(args, want) {
-		t.Fatalf("buildArgs() = %v, want %v", args, want)
+		t.Fatal("unexpected ffmpeg binary arguments")
 	}
 }
 

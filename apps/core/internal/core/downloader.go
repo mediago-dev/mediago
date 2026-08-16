@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,7 +178,7 @@ func headerValue(headers []string, name string) string {
 
 func redactSensitiveArgs(args []string) []string {
 	redacted := append([]string(nil), args...)
-	for i, arg := range redacted {
+	for i, arg := range args {
 		switch {
 		case arg == "--cookie" || arg == "-c":
 			if i+1 < len(redacted) {
@@ -185,9 +186,50 @@ func redactSensitiveArgs(args []string) []string {
 			}
 		case strings.HasPrefix(arg, "--cookie="):
 			redacted[i] = "--cookie=[REDACTED]"
+		case arg == "--add-header" || arg == "--header":
+			if i+1 < len(redacted) {
+				redacted[i+1] = redactHeader(args[i+1])
+			}
+		case strings.HasPrefix(arg, "--add-header=") || strings.HasPrefix(arg, "--header="):
+			flag, header, _ := strings.Cut(arg, "=")
+			redacted[i] = flag + "=" + redactHeader(header)
+		case arg == "--proxy" || arg == "--custom-proxy":
+			if i+1 < len(redacted) && proxyContainsCredentials(args[i+1]) {
+				redacted[i+1] = "[REDACTED]"
+			}
+		case strings.HasPrefix(arg, "--proxy=") || strings.HasPrefix(arg, "--custom-proxy="):
+			flag, proxy, _ := strings.Cut(arg, "=")
+			if proxyContainsCredentials(proxy) {
+				redacted[i] = flag + "=[REDACTED]"
+			}
 		}
 	}
 	return redacted
+}
+
+func redactHeader(header string) string {
+	name, _, found := strings.Cut(header, ":")
+	if !found {
+		return "[REDACTED]"
+	}
+
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "cookie", "authorization", "proxy-authorization":
+		return strings.TrimSpace(name) + ": [REDACTED]"
+	default:
+		return header
+	}
+}
+
+func proxyContainsCredentials(proxy string) bool {
+	if !strings.Contains(proxy, "://") {
+		proxy = "http://" + proxy
+	}
+	parsed, err := url.Parse(proxy)
+	if err != nil {
+		return true
+	}
+	return parsed.User != nil
 }
 
 func (d *DownloaderSvc) outputDirectory(p DownloadParams) string {

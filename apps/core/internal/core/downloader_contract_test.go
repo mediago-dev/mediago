@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,129 @@ func defaultContractSchema(t *testing.T, downloadType string) schema.Schema {
 		t.Fatalf("default schema %q not found", downloadType)
 	}
 	return contractSchema
+}
+
+func assertStandaloneArgCount(t *testing.T, tool, field string, args []string, expected int, arg string) {
+	t.Helper()
+
+	actual := 0
+	for _, candidate := range args {
+		if candidate == arg {
+			actual++
+		}
+	}
+	if actual != expected {
+		t.Fatalf("%s %s occurrence count: expected %d, actual %d", tool, field, expected, actual)
+	}
+}
+
+func assertAdjacentArgCount(t *testing.T, tool, field string, args []string, expected int, flag, value string) {
+	t.Helper()
+
+	actual := 0
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == flag && args[i+1] == value {
+			actual++
+		}
+	}
+	if actual != expected {
+		t.Fatalf("%s %s occurrence count: expected %d, actual %d", tool, field, expected, actual)
+	}
+}
+
+func TestExternalInputContracts(t *testing.T) {
+	const (
+		unsafeName = "contract:video?"
+		safeName   = "contract_video_"
+	)
+
+	t.Run("BBDown", func(t *testing.T) {
+		const (
+			tool      = "BBDown"
+			url       = "https://www.bilibili.com/video/BV-contract"
+			localDir  = "/downloads"
+			folder    = "contracts"
+			cookie    = "session=test-only"
+			cookieHdr = "cookie : " + cookie
+		)
+		d := &DownloaderSvc{cfg: testDownloaderConfig{localDir: localDir}}
+		args := d.buildArgs(DownloadParams{
+			Type:    TypeBilibili,
+			URL:     url,
+			Name:    unsafeName,
+			Folder:  folder,
+			Headers: []string{cookieHdr},
+		}, defaultContractSchema(t, string(TypeBilibili)))
+
+		assertStandaloneArgCount(t, tool, "URL", args, 1, url)
+		assertStandaloneArgCount(t, tool, "work directory flag", args, 1, "--work-dir")
+		assertStandaloneArgCount(t, tool, "file pattern flag", args, 1, "--file-pattern")
+		assertStandaloneArgCount(t, tool, "cookie flag", args, 1, "--cookie")
+		assertStandaloneArgCount(t, tool, "encoding priority flag", args, 1, "--encoding-priority")
+		assertAdjacentArgCount(t, tool, "work directory", args, 1, "--work-dir", filepath.Join(localDir, folder))
+		assertAdjacentArgCount(t, tool, "file pattern", args, 1, "--file-pattern", safeName)
+		assertAdjacentArgCount(t, tool, "cookie", args, 1, "--cookie", cookie)
+		assertAdjacentArgCount(t, tool, "encoding priority", args, 1, "--encoding-priority", "avc,hevc,av1")
+
+		argsWithoutCookie := d.buildArgs(DownloadParams{
+			Type:    TypeBilibili,
+			URL:     url,
+			Name:    unsafeName,
+			Headers: []string{"User-Agent: MediaGo-Contract-Test"},
+		}, defaultContractSchema(t, string(TypeBilibili)))
+		assertStandaloneArgCount(t, tool, "cookie without Cookie header", argsWithoutCookie, 0, "--cookie")
+	})
+
+	t.Run("yt-dlp", func(t *testing.T) {
+		const (
+			tool     = "yt-dlp"
+			url      = "https://www.youtube.com/watch?v=contract"
+			localDir = "/downloads"
+			folder   = "contracts"
+			proxy    = "http://contract-user:contract-password@proxy.example:8080"
+		)
+		headers := []string{
+			"cookie : session=test-only",
+			"aUtHoRiZaTiOn: Bearer test-only",
+			"Proxy-Authorization : Basic test-only",
+			"User-Agent: MediaGo-Contract-Test",
+		}
+		d := &DownloaderSvc{cfg: testDownloaderConfig{localDir: localDir, useProxy: true, proxy: proxy}}
+		args := d.buildArgs(DownloadParams{
+			Type:    TypeYoutube,
+			URL:     url,
+			Name:    unsafeName,
+			Folder:  folder,
+			Headers: headers,
+		}, defaultContractSchema(t, string(TypeYoutube)))
+
+		assertStandaloneArgCount(t, tool, "URL", args, 1, url)
+		assertStandaloneArgCount(t, tool, "output directory flag", args, 1, "-P")
+		assertStandaloneArgCount(t, tool, "output template flag", args, 1, "-o")
+		assertStandaloneArgCount(t, tool, "header flags", args, len(headers), "--add-header")
+		assertStandaloneArgCount(t, tool, "proxy flag", args, 1, "--proxy")
+		assertAdjacentArgCount(t, tool, "output directory", args, 1, "-P", filepath.Join(localDir, folder))
+		assertAdjacentArgCount(t, tool, "output template", args, 1, "-o", safeName)
+		for i, header := range headers {
+			assertAdjacentArgCount(t, tool, fmt.Sprintf("header %d", i+1), args, 1, "--add-header", header)
+		}
+		assertAdjacentArgCount(t, tool, "proxy", args, 1, "--proxy", proxy)
+		for _, flag := range []string{"--no-mtime", "--progress", "--newline", "--no-colors"} {
+			assertStandaloneArgCount(t, tool, flag, args, 1, flag)
+		}
+
+		t.Run("disabled proxy with value", func(t *testing.T) {
+			disabled := &DownloaderSvc{cfg: testDownloaderConfig{localDir: localDir, proxy: proxy}}
+			disabledArgs := disabled.buildArgs(DownloadParams{Type: TypeYoutube, URL: url, Name: unsafeName}, defaultContractSchema(t, string(TypeYoutube)))
+			assertStandaloneArgCount(t, tool, "disabled proxy", disabledArgs, 0, "--proxy")
+		})
+
+		t.Run("enabled empty proxy", func(t *testing.T) {
+			empty := &DownloaderSvc{cfg: testDownloaderConfig{localDir: localDir, useProxy: true}}
+			emptyArgs := empty.buildArgs(DownloadParams{Type: TypeYoutube, URL: url, Name: unsafeName}, defaultContractSchema(t, string(TypeYoutube)))
+			assertStandaloneArgCount(t, tool, "empty proxy", emptyArgs, 0, "--proxy")
+		})
+	})
 }
 
 func TestExternalOutputContracts(t *testing.T) {
