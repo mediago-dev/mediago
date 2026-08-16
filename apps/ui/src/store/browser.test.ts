@@ -1,6 +1,5 @@
-import assert from "node:assert/strict";
-import test from "node:test";
 import { DownloadType } from "@mediago/shared-common";
+import { expect, test } from "vitest";
 import {
   browserSourcePanelSelector,
   type SourceData,
@@ -47,10 +46,10 @@ test("browser store updates inspections and collapses master variants", () => {
   );
 
   const sources = useBrowserStore.getState().sources;
-  assert.equal(sources.length, 1);
-  assert.equal(sources[0].url, "https://media.example/master.m3u8");
-  assert.equal(sources[0].mediaInfo?.maxQuality, "1080p");
-  assert.equal(typeof sources[0].id, "number");
+  expect(sources.length).toBe(1);
+  expect(sources[0].url).toBe("https://media.example/master.m3u8");
+  expect(sources[0].mediaInfo?.maxQuality).toBe("1080p");
+  expect(typeof sources[0].id).toBe("number");
   store.clearSources();
 });
 
@@ -60,14 +59,14 @@ test("browser source panel stays collapsed while its resource count updates", ()
   store.setBrowserStore({ sourcePanelCollapsed: true });
   store.addSource(source({}));
 
-  assert.deepEqual(browserSourcePanelSelector(useBrowserStore.getState()), {
+  expect(browserSourcePanelSelector(useBrowserStore.getState())).toStrictEqual({
     hasSources: true,
     sourceCount: 1,
     sourcePanelCollapsed: true,
   });
 
   store.startNavigation("https://example.com/next");
-  assert.deepEqual(browserSourcePanelSelector(useBrowserStore.getState()), {
+  expect(browserSourcePanelSelector(useBrowserStore.getState())).toStrictEqual({
     hasSources: false,
     sourceCount: 0,
     sourcePanelCollapsed: true,

@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import { registerPwaServiceWorker } from "./pwa";
 
 function serviceWorker(register: () => void) {
@@ -20,11 +19,11 @@ test("registers immediately after the page has loaded", () => {
       registrations += 1;
     }),
     addLoadListener() {
-      assert.fail("load listener should not be used");
+      throw new Error("load listener should not be used");
     },
   });
 
-  assert.equal(registrations, 1);
+  expect(registrations).toBe(1);
 });
 
 test("defers registration until load without adding duplicate work", () => {
@@ -41,10 +40,12 @@ test("defers registration until load without adding duplicate work", () => {
     },
   });
 
-  assert.equal(registrations, 0);
-  assert.ok(loadListener);
+  expect(registrations).toBe(0);
+  if (!loadListener) {
+    throw new Error("Expected registration to install a load listener");
+  }
   loadListener();
-  assert.equal(registrations, 1);
+  expect(registrations).toBe(1);
 });
 
 test("skips registration outside a secure service-worker environment", () => {
@@ -53,12 +54,12 @@ test("skips registration outside a secure service-worker environment", () => {
     isSecureContext: false,
     readyState: "complete",
     serviceWorker: serviceWorker(() => {
-      assert.fail("service worker should not be registered");
+      throw new Error("service worker should not be registered");
     }),
     addLoadListener() {
       listenerAdded = true;
     },
   });
 
-  assert.equal(listenerAdded, false);
+  expect(listenerAdded).toBe(false);
 });

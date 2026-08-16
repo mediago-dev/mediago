@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import {
   createConfigWriteCoordinator,
   shouldApplyPersistedValue,
@@ -24,8 +23,8 @@ test("coalesces same-tick values into one latest-only batch", async () => {
     writer.enqueue("enabled", true),
   ]);
 
-  assert.deepEqual(writes, [{ proxy: "abc", enabled: true }]);
-  assert.deepEqual(persistedValues, ["abc", "abc", true]);
+  expect(writes).toStrictEqual([{ proxy: "abc", enabled: true }]);
+  expect(persistedValues).toStrictEqual(["abc", "abc", true]);
 });
 
 test("serializes batches and recognizes every local pending echo", async () => {
@@ -42,27 +41,27 @@ test("serializes batches and recognizes every local pending echo", async () => {
 
   const first = writer.enqueue("enabled", true);
   await nextTask();
-  assert.deepEqual(writes, [{ enabled: true }]);
+  expect(writes).toStrictEqual([{ enabled: true }]);
 
   const second = writer.enqueue("enabled", false);
-  assert.equal(writer.matchesPendingValue("enabled", true), true);
-  assert.equal(writer.acknowledgeInFlightValue("enabled", false), false);
-  assert.equal(writer.acknowledgeInFlightValue("enabled", true), true);
-  assert.equal(writer.matchesPendingValue("enabled", false), true);
-  assert.equal(writer.matchesPendingValue("proxy", "remote"), false);
-  assert.equal(writes.length, 1);
+  expect(writer.matchesPendingValue("enabled", true)).toBe(true);
+  expect(writer.acknowledgeInFlightValue("enabled", false)).toBe(false);
+  expect(writer.acknowledgeInFlightValue("enabled", true)).toBe(true);
+  expect(writer.matchesPendingValue("enabled", false)).toBe(true);
+  expect(writer.matchesPendingValue("proxy", "remote")).toBe(false);
+  expect(writes.length).toBe(1);
 
   const flushing = writer.flush();
   releases[0]();
   const firstPersistedValue = await first;
-  assert.equal(firstPersistedValue, true);
+  expect(firstPersistedValue).toBe(true);
   await nextTask();
-  assert.deepEqual(writes, [{ enabled: true }, { enabled: false }]);
+  expect(writes).toStrictEqual([{ enabled: true }, { enabled: false }]);
 
   releases[1]();
   const [secondPersistedValue] = await Promise.all([second, flushing]);
-  assert.equal(secondPersistedValue, false);
-  assert.deepEqual(writer.getPending("enabled"), { pending: false });
+  expect(secondPersistedValue).toBe(false);
+  expect(writer.getPending("enabled")).toStrictEqual({ pending: false });
 });
 
 test("continues with a newer batch after a failed write", async () => {
@@ -80,15 +79,17 @@ test("continues with a newer batch after a failed write", async () => {
     return Promise.resolve();
   }, 0);
 
-  const first = assert.rejects(writer.enqueue("proxy", "old"), /disk full/);
+  const first = expect(writer.enqueue("proxy", "old")).rejects.toThrow(
+    /disk full/,
+  );
   await nextTask();
   const second = writer.enqueue("proxy", "latest");
   rejectFirst?.(new Error("disk full"));
 
   await first;
   const persistedValue = await second;
-  assert.equal(persistedValue, "latest");
-  assert.deepEqual(writes, [{ proxy: "old" }, { proxy: "latest" }]);
+  expect(persistedValue).toBe("latest");
+  expect(writes).toStrictEqual([{ proxy: "old" }, { proxy: "latest" }]);
 });
 
 test("clears pending before resolving a successful enqueue", async () => {
@@ -105,13 +106,13 @@ test("clears pending before resolving a successful enqueue", async () => {
     .enqueue("enabled", true)
     .then(() => writer.getPending("enabled"));
   await nextTask();
-  assert.deepEqual(writer.getPending("enabled"), {
+  expect(writer.getPending("enabled")).toStrictEqual({
     pending: true,
     value: true,
   });
 
   release?.();
-  assert.deepEqual(await pendingWhenSettled, { pending: false });
+  expect(await pendingWhenSettled).toStrictEqual({ pending: false });
 });
 
 test("clears pending before rejecting a failed enqueue", async () => {
@@ -125,17 +126,19 @@ test("clears pending before rejecting a failed enqueue", async () => {
   );
 
   const pendingWhenSettled = writer.enqueue("enabled", true).then(
-    () => assert.fail("write unexpectedly succeeded"),
+    () => {
+      throw new Error("write unexpectedly succeeded");
+    },
     () => writer.getPending("enabled"),
   );
   await nextTask();
-  assert.deepEqual(writer.getPending("enabled"), {
+  expect(writer.getPending("enabled")).toStrictEqual({
     pending: true,
     value: true,
   });
 
   fail?.(new Error("disk full"));
-  assert.deepEqual(await pendingWhenSettled, { pending: false });
+  expect(await pendingWhenSettled).toStrictEqual({ pending: false });
 });
 
 test("keeps a newer pending batch when its value matches the failed batch", async () => {
@@ -154,7 +157,9 @@ test("keeps a newer pending batch when its value matches the failed batch", asyn
   }, 0);
 
   const pendingAfterFailure = writer.enqueue("enabled", true).then(
-    () => assert.fail("write unexpectedly succeeded"),
+    () => {
+      throw new Error("write unexpectedly succeeded");
+    },
     () => writer.getPending("enabled"),
   );
   await nextTask();
@@ -163,13 +168,13 @@ test("keeps a newer pending batch when its value matches the failed batch", asyn
   const latest = writer.enqueue("enabled", true);
   failFirst?.(new Error("disk full"));
 
-  assert.deepEqual(await pendingAfterFailure, {
+  expect(await pendingAfterFailure).toStrictEqual({
     pending: true,
     value: true,
   });
   const persisted = await Promise.all([intermediate, latest]);
-  assert.deepEqual(persisted, [true, true]);
-  assert.deepEqual(writes, [{ enabled: true }, { enabled: true }]);
+  expect(persisted).toStrictEqual([true, true]);
+  expect(writes).toStrictEqual([{ enabled: true }, { enabled: true }]);
 });
 
 test("treats an in-flight SSE acknowledgement as a committed write", async () => {
@@ -187,8 +192,8 @@ test("treats an in-flight SSE acknowledgement as a committed write", async () =>
   writer.recordRemoteValue("enabled", true);
   loseResponse?.(new Error("response interrupted"));
 
-  assert.equal(await persisted, true);
-  assert.deepEqual(writer.getPending("enabled"), { pending: false });
+  expect(await persisted).toBe(true);
+  expect(writer.getPending("enabled")).toStrictEqual({ pending: false });
 });
 
 test("a newer conflicting remote value wins over a delayed local response", () => {
@@ -196,22 +201,20 @@ test("a newer conflicting remote value wins over a delayed local response", () =
   const versionAtWrite = writer.getRemoteValue("proxy").version;
 
   writer.recordRemoteValue("proxy", "local");
-  assert.equal(
+  expect(
     shouldApplyPersistedValue(
       versionAtWrite,
       writer.getRemoteValue("proxy"),
       "local",
     ),
-    true,
-  );
+  ).toBe(true);
 
   writer.recordRemoteValue("proxy", "newer-remote");
-  assert.equal(
+  expect(
     shouldApplyPersistedValue(
       versionAtWrite,
       writer.getRemoteValue("proxy"),
       "local",
     ),
-    false,
-  );
+  ).toBe(false);
 });

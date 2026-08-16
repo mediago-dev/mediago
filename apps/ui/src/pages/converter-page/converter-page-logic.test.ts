@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import {
   appendStagedMediaFiles,
   createStagedMediaFile,
@@ -11,64 +10,61 @@ import {
 } from "./converter-page-logic";
 
 test("extracts file names and extensions from Windows and POSIX paths", () => {
-  assert.equal(getPathFileName("C:\\Media\\demo.MP4"), "demo.MP4");
-  assert.equal(getPathFileName("/media/episode.wav"), "episode.wav");
-  assert.equal(getPathExtension("C:\\Media\\demo.MP4"), "mp4");
+  expect(getPathFileName("C:\\Media\\demo.MP4")).toBe("demo.MP4");
+  expect(getPathFileName("/media/episode.wav")).toBe("episode.wav");
+  expect(getPathExtension("C:\\Media\\demo.MP4")).toBe("mp4");
 });
 
 test("classifies supported video and audio files", () => {
-  assert.deepEqual(createStagedMediaFile("C:\\Media\\demo.mp4"), {
+  expect(createStagedMediaFile("C:\\Media\\demo.mp4")).toStrictEqual({
     path: "C:\\Media\\demo.mp4",
     name: "demo.mp4",
     extension: "mp4",
     kind: "video",
   });
-  assert.equal(createStagedMediaFile("C:\\Media\\notes.txt"), null);
-  assert.equal(createStagedMediaFile(""), null);
+  expect(createStagedMediaFile("C:\\Media\\notes.txt")).toBe(null);
+  expect(createStagedMediaFile("")).toBe(null);
 });
 
 test("adds unique media files while reporting duplicates and invalid files", () => {
   const first = createStagedMediaFile("C:\\Media\\demo.mp4");
-  assert.ok(first);
+  if (!first) {
+    throw new Error("Expected demo.mp4 to produce a staged media file");
+  }
 
   const result = appendStagedMediaFiles(
     [first],
     ["c:/media/DEMO.mp4", "C:\\Media\\episode.wav", "C:\\Media\\notes.txt"],
   );
 
-  assert.equal(result.added, 1);
-  assert.equal(result.duplicates, 1);
-  assert.equal(result.rejected, 1);
-  assert.equal(result.files.length, 2);
+  expect(result.added).toBe(1);
+  expect(result.duplicates).toBe(1);
+  expect(result.rejected).toBe(1);
+  expect(result.files.length).toBe(2);
 });
 
 test("maps backend conversion statuses to converter-specific labels", () => {
-  assert.equal(getConversionStatusKey("pending"), "conversionStatusPending");
-  assert.equal(getConversionStatusKey("done"), "conversionStatusDone");
-  assert.equal(getConversionStatusKey("unexpected"), "conversionStatusUnknown");
-  assert.equal(
-    getConversionStatusKey("failed", "conversion cancelled"),
+  expect(getConversionStatusKey("pending")).toBe("conversionStatusPending");
+  expect(getConversionStatusKey("done")).toBe("conversionStatusDone");
+  expect(getConversionStatusKey("unexpected")).toBe("conversionStatusUnknown");
+  expect(getConversionStatusKey("failed", "conversion cancelled")).toBe(
     "conversionStatusCancelled",
   );
 });
 
 test("normalizes backend conversion errors for localized presentation", () => {
-  assert.equal(isConversionCancelled("cancelled by user"), true);
-  assert.equal(isConversionCancelled("conversion cancelled"), true);
-  assert.equal(
-    getConversionErrorKey("ffmpeg binary path not configured"),
+  expect(isConversionCancelled("cancelled by user")).toBe(true);
+  expect(isConversionCancelled("conversion cancelled")).toBe(true);
+  expect(getConversionErrorKey("ffmpeg binary path not configured")).toBe(
     "conversionErrorUnavailable",
   );
-  assert.equal(
-    getConversionErrorKey("failed to start ffmpeg: access denied"),
+  expect(getConversionErrorKey("failed to start ffmpeg: access denied")).toBe(
     "conversionErrorStartFailed",
   );
-  assert.equal(
-    getConversionErrorKey("source file has no audio stream"),
+  expect(getConversionErrorKey("source file has no audio stream")).toBe(
     "conversionErrorNoAudioStream",
   );
-  assert.equal(
-    getConversionErrorKey("ffmpeg failed: exit status 1"),
+  expect(getConversionErrorKey("ffmpeg failed: exit status 1")).toBe(
     "conversionErrorUnknown",
   );
 });

@@ -1,6 +1,5 @@
-import assert from "node:assert/strict";
-import test from "node:test";
 import { DownloadType } from "@mediago/shared-common";
+import { expect, test } from "vitest";
 import {
   captureWebShareIntent,
   consumeStartupShareError,
@@ -42,29 +41,27 @@ test("captures a fragment share once and preserves nested query parameters", () 
     name: "Episode 1",
   });
 
-  assert.equal(
+  expect(
     captureWebShareIntent(
       { pathname: "/", search: "", hash: `#/share?${params}` },
       history,
       storage,
     ),
-    true,
-  );
-  assert.deepEqual(history.replacements, ["/"]);
+  ).toBe(true);
+  expect(history.replacements).toStrictEqual(["/"]);
 
   const [intent] = drainPendingWebShareIntents(storage);
-  assert.equal(intent.url, mediaUrl);
-  assert.equal(intent.name, "Episode 1");
-  assert.equal(intent.type, DownloadType.m3u8);
-  assert.deepEqual(drainPendingWebShareIntents(storage), []);
-  assert.equal(
+  expect(intent.url).toBe(mediaUrl);
+  expect(intent.name).toBe("Episode 1");
+  expect(intent.type).toBe(DownloadType.m3u8);
+  expect(drainPendingWebShareIntents(storage)).toStrictEqual([]);
+  expect(
     captureWebShareIntent(
       { pathname: "/", search: "", hash: `#/shared?${params}` },
       history,
       storage,
     ),
-    false,
-  );
+  ).toBe(false);
 });
 
 test("maps PWA title/text fields and rejects unsafe shared URLs", () => {
@@ -81,15 +78,15 @@ test("maps PWA title/text fields and rejects unsafe shared URLs", () => {
     storage,
   );
   const [intent] = drainPendingWebShareIntents(storage);
-  assert.equal(intent.source, "pwa");
-  assert.equal(intent.name, "Shared video");
-  assert.equal(intent.url, "https://example.com/video.mp4");
+  expect(intent.source).toBe("pwa");
+  expect(intent.name).toBe("Shared video");
+  expect(intent.url).toBe("https://example.com/video.mp4");
 
   captureWebShareIntent(
     { pathname: "/share", search: "?url=javascript%3Aalert(1)", hash: "" },
     history,
     storage,
   );
-  assert.equal(consumeStartupShareError(), true);
-  assert.deepEqual(drainPendingWebShareIntents(storage), []);
+  expect(consumeStartupShareError()).toBe(true);
+  expect(drainPendingWebShareIntents(storage)).toStrictEqual([]);
 });

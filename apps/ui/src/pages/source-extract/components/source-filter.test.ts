@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import { filterSources } from "./source-filter";
 
 const sources = [
@@ -18,15 +17,17 @@ const sources = [
 ];
 
 test("returns the original source list for a blank query", () => {
-  assert.equal(filterSources(sources, "   "), sources);
+  expect(filterSources(sources, "   ")).toBe(sources);
 });
 
 test("filters source names and URLs without case sensitivity", () => {
-  assert.deepEqual(filterSources(sources, "EPISODE"), [sources[0]]);
-  assert.deepEqual(filterSources(sources, "bonus.MP4"), [sources[1]]);
-  assert.deepEqual(filterSources(sources, " example.org/bonus "), [sources[1]]);
+  expect(filterSources(sources, "EPISODE")).toStrictEqual([sources[0]]);
+  expect(filterSources(sources, "bonus.MP4")).toStrictEqual([sources[1]]);
+  expect(filterSources(sources, " example.org/bonus ")).toStrictEqual([
+    sources[1],
+  ]);
 });
 
 test("returns an empty list when no source matches", () => {
-  assert.deepEqual(filterSources(sources, "trailer"), []);
+  expect(filterSources(sources, "trailer")).toStrictEqual([]);
 });

@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import {
   getPageItems,
   getPaginationState,
@@ -9,26 +8,26 @@ import {
 test("does not correct the requested page while its data is loading", () => {
   const { safeCurrent } = getPaginationState(2, 20, 0);
 
-  assert.equal(safeCurrent, 1);
-  assert.equal(shouldCorrectPage(2, safeCurrent, true), false);
+  expect(safeCurrent).toBe(1);
+  expect(shouldCorrectPage(2, safeCurrent, true)).toBe(false);
 });
 
 test("keeps a valid requested page after its data has loaded", () => {
   const { safeCurrent } = getPaginationState(2, 20, 45);
 
-  assert.equal(safeCurrent, 2);
-  assert.equal(shouldCorrectPage(2, safeCurrent, false), false);
+  expect(safeCurrent).toBe(2);
+  expect(shouldCorrectPage(2, safeCurrent, false)).toBe(false);
 });
 
 test("corrects an out-of-range page after its data has loaded", () => {
   const { safeCurrent } = getPaginationState(3, 20, 35);
 
-  assert.equal(safeCurrent, 2);
-  assert.equal(shouldCorrectPage(3, safeCurrent, false), true);
+  expect(safeCurrent).toBe(2);
+  expect(shouldCorrectPage(3, safeCurrent, false)).toBe(true);
 });
 
 test("builds stable page items around the current page", () => {
-  assert.deepEqual(getPageItems(6, 12), [
+  expect(getPageItems(6, 12)).toStrictEqual([
     1,
     "ellipsis-start",
     5,

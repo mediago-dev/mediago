@@ -1,15 +1,14 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import { normalizeDownloadPercent } from "./download-progress";
 
 test("keeps Go Core's 0-100 percent scale", () => {
-  assert.equal(normalizeDownloadPercent("0.5"), 0.5);
-  assert.equal(normalizeDownloadPercent("1"), 1);
-  assert.equal(normalizeDownloadPercent(99.5), 99.5);
+  expect(normalizeDownloadPercent("0.5")).toBe(0.5);
+  expect(normalizeDownloadPercent("1")).toBe(1);
+  expect(normalizeDownloadPercent(99.5)).toBe(99.5);
 });
 
 test("clamps and rejects invalid percent values", () => {
-  assert.equal(normalizeDownloadPercent(150), 100);
-  assert.equal(normalizeDownloadPercent(-1), null);
-  assert.equal(normalizeDownloadPercent(undefined), null);
+  expect(normalizeDownloadPercent(150)).toBe(100);
+  expect(normalizeDownloadPercent(-1)).toBe(null);
+  expect(normalizeDownloadPercent(undefined)).toBe(null);
 });

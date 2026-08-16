@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import {
   type ConfigChange,
   mergeDeferredConfigChanges,
@@ -16,8 +15,8 @@ test("a later acknowledgement removes an older snapshot conflict", () => {
     },
   );
 
-  assert.deepEqual(applied, [{ key: "apiKey", value: "new" }]);
-  assert.deepEqual(deferred, []);
+  expect(applied).toStrictEqual([{ key: "apiKey", value: "new" }]);
+  expect(deferred).toStrictEqual([]);
 });
 
 test("only the latest unresolved event for a key remains deferred", () => {
@@ -31,7 +30,7 @@ test("only the latest unresolved event for a key remains deferred", () => {
     (change) => change.key === "theme",
   );
 
-  assert.deepEqual(deferred, [{ key: "apiKey", value: "latest" }]);
+  expect(deferred).toStrictEqual([{ key: "apiKey", value: "latest" }]);
 });
 
 test("unrelated later events do not erase snapshot conflicts", () => {
@@ -41,5 +40,5 @@ test("unrelated later events do not erase snapshot conflicts", () => {
     () => true,
   );
 
-  assert.deepEqual(deferred, [{ key: "apiKey", value: "snapshot" }]);
+  expect(deferred).toStrictEqual([{ key: "apiKey", value: "snapshot" }]);
 });
