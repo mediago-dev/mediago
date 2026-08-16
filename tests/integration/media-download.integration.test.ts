@@ -235,69 +235,6 @@ async function loadCommittedManifest(): Promise<FixtureManifest> {
   return JSON.parse(await readFile(MANIFEST_PATH, "utf8")) as FixtureManifest;
 }
 
-function configuredRemoteBaseURL(): string | undefined {
-  const configured = process.env.MEDIAGO_TEST_MEDIA_BASE_URL?.trim();
-  if (!configured) return undefined;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(configured);
-  } catch {
-    throw new Error(
-      "MEDIAGO_TEST_MEDIA_BASE_URL must be an absolute public HTTP(S) URL ending in /v1 without credentials, query, or fragment",
-    );
-  }
-  if (
-    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
-    !parsed.pathname.endsWith("/v1") ||
-    parsed.username !== "" ||
-    parsed.password !== "" ||
-    parsed.search !== "" ||
-    parsed.hash !== ""
-  ) {
-    throw new Error(
-      "MEDIAGO_TEST_MEDIA_BASE_URL must be an absolute public HTTP(S) URL ending in /v1 without credentials, query, or fragment",
-    );
-  }
-  return configured;
-}
-
-async function verifyRemoteFixture(baseURL: string): Promise<void> {
-  const manifestResponse = await fetch(`${baseURL}/manifest.json`, {
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!manifestResponse.ok) {
-    throw new Error(
-      `Remote media manifest request returned HTTP ${manifestResponse.status}`,
-    );
-  }
-  const remoteManifest: unknown = await manifestResponse.json();
-  expect(remoteManifest).toEqual(fixtureManifest);
-
-  const sample = getManifestFile(fixtureManifest, "sample.mp4");
-  const rangeResponse = await fetch(`${baseURL}/sample.mp4`, {
-    headers: { Range: "bytes=0-15" },
-    signal: AbortSignal.timeout(8_000),
-  });
-  expect(rangeResponse.status).toBe(206);
-  expect(rangeResponse.headers.get("content-range")).toBe(
-    `bytes 0-15/${sample.size}`,
-  );
-  expect((await rangeResponse.arrayBuffer()).byteLength).toBe(16);
-}
-
-async function prepareMediaFixture(): Promise<void> {
-  const remoteBaseURL = configuredRemoteBaseURL();
-  if (remoteBaseURL) {
-    mediaBaseURL = remoteBaseURL;
-    await verifyRemoteFixture(remoteBaseURL);
-    return;
-  }
-
-  localMediaServer = await startMediaServer();
-  mediaBaseURL = localMediaServer.baseURL;
-}
-
 async function runExecutable(
   command: string,
   args: string[],
@@ -652,7 +589,8 @@ describe.sequential("real SDK to Core media downloads", () => {
     try {
       await assertDependencyPreconditions();
       fixtureManifest = await loadCommittedManifest();
-      await prepareMediaFixture();
+      localMediaServer = await startMediaServer();
+      mediaBaseURL = localMediaServer.baseURL;
       await createTemporaryLayoutAndBuildCore();
       await startCoreWithOneRetry();
     } catch (error) {
