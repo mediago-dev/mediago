@@ -82,9 +82,9 @@ func DefaultSchemas() SchemaList {
 				ConsoleReg: ConsoleReg{
 					Percent: `([\d.]+)%`,
 					Speed:   `([\d.]+\s[GMK]B/s)`,
-					Error:   "ERROR",
+					Error:   "",
 					Start:   "开始下载",
-					IsLive:  "检测到直播流",
+					IsLive:  "",
 				},
 			},
 			{
@@ -129,9 +129,9 @@ func DefaultSchemas() SchemaList {
 				ConsoleReg: ConsoleReg{
 					Percent: `([\d.]+)%`,
 					Speed:   `([\d.]+\s?[MKG]?i?B/s)`,
-					Error:   `ERROR`,
+					Error:   `(?m)^ERROR:`,
 					Start:   `\[download\] Destination:`,
-					IsLive:  `\[live\]`,
+					IsLive:  ``,
 				},
 			},
 			{
