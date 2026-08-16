@@ -11,6 +11,7 @@
  * Usage:
  *   tsx scripts/download-deps.ts           # Download for current platform only
  *   tsx scripts/download-deps.ts --all     # Download for all platforms
+ *   tsx scripts/download-deps.ts --tools aria2,N_m3u8DL-RE,ffmpeg
  */
 
 import {
@@ -34,6 +35,7 @@ import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import { execFileSync } from "node:child_process";
+import { selectToolsFromArgs } from "./download-deps-args.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -418,6 +420,15 @@ async function findBinaryInDir(
 // ============================================================
 
 async function main() {
+  const tools = depsVersions as Record<string, ToolDef>;
+  const selectedToolNames = selectToolsFromArgs(
+    process.argv.slice(2),
+    Object.keys(tools),
+  );
+  const selectedTools = selectedToolNames.map(
+    (toolName) => [toolName, tools[toolName]] as const,
+  );
+
   const isAll = process.argv.includes("--all");
   const platformIdx = process.argv.indexOf("--platform");
   const explicitPlatform =
@@ -436,13 +447,12 @@ async function main() {
     `Downloading third-party tools for ${isAll ? "all platforms" : platforms[0]}...`,
   );
 
-  const tools = depsVersions as Record<string, ToolDef>;
   let failureCount = 0;
 
   for (const platformKey of platforms) {
     console.log(`\n📦 Platform: ${platformKey}`);
     const versionManifest = await loadVersionManifest(platformKey);
-    for (const [toolName, tool] of Object.entries(tools)) {
+    for (const [toolName, tool] of selectedTools) {
       try {
         await downloadTool(toolName, tool, platformKey, versionManifest);
       } catch (err) {
