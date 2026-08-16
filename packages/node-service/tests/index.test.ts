@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { EventEmitter } from "node:events";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   afterAll,
@@ -10,13 +10,10 @@ import {
   beforeEach,
   describe,
   expect,
+  onTestFinished,
   test,
   vi,
 } from "vitest";
-
-const mockPortfinder = {
-  getPortPromise: vi.fn<(options?: { port?: number }) => Promise<number>>(),
-};
 
 const spawnMock =
   vi.fn<
@@ -36,10 +33,6 @@ const killMock =
     ) => void
   >();
 
-vi.mock("portfinder", () => ({
-  default: mockPortfinder,
-}));
-
 vi.mock("node:child_process", () => ({
   spawn: (...args: Parameters<typeof spawnMock>) => spawnMock(...args),
 }));
@@ -47,6 +40,20 @@ vi.mock("node:child_process", () => ({
 vi.mock("tree-kill", () => ({
   default: (...args: Parameters<typeof killMock>) => killMock(...args),
 }));
+
+async function loadServiceRunnerWithAvailablePort() {
+  const { ServiceRunner } = await import("../src/index");
+  const original = Reflect.get(ServiceRunner, "isPortFree");
+  Reflect.set(
+    ServiceRunner,
+    "isPortFree",
+    vi.fn(async () => true),
+  );
+  onTestFinished(() => {
+    Reflect.set(ServiceRunner, "isPortFree", original);
+  });
+  return ServiceRunner;
+}
 
 const fetchMock =
   vi.fn<
@@ -93,16 +100,32 @@ async function createExecutableFixture() {
   return { dir, name: baseName };
 }
 
-const executableFixturePromise = createExecutableFixture();
+let executableFixture:
+  | Awaited<ReturnType<typeof createExecutableFixture>>
+  | undefined;
+
+beforeAll(async () => {
+  executableFixture = await createExecutableFixture();
+});
+
+afterAll(async () => {
+  if (executableFixture) {
+    await rm(executableFixture.dir, { recursive: true, force: true });
+  }
+});
+
+function getExecutableFixture() {
+  if (!executableFixture) {
+    throw new Error("Executable fixture setup did not complete");
+  }
+
+  return executableFixture;
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   lastSpawnedChild = null;
   nextPid = 4_000;
-
-  mockPortfinder.getPortPromise.mockImplementation(async (options) => {
-    return (options?.port ?? 0) || 5_000;
-  });
 
   spawnMock.mockImplementation(() => {
     const child = new MockChildProcess(nextPid++);
@@ -132,31 +155,30 @@ afterEach(() => {
 
 describe("ServiceRunner", () => {
   test("starts service, waits for healthy state, and stops gracefully", async () => {
-    const { ServiceRunner } = await import("../src/index");
-    const fixture = await executableFixturePromise;
-
-    mockPortfinder.getPortPromise.mockResolvedValueOnce(6_789);
+    const ServiceRunner = await loadServiceRunnerWithAvailablePort();
+    const fixture = getExecutableFixture();
 
     const runner = new ServiceRunner({
       executableDir: fixture.dir,
       executableName: fixture.name,
       preferredPort: 4_321,
     });
+    onTestFinished(() => runner.stop().catch(() => undefined));
 
     const initialState = await runner.start();
 
     expect(spawnMock).toHaveBeenCalledTimes(1);
     const [, , spawnOptions] = spawnMock.mock.calls[0];
     expect(spawnOptions?.env).toMatchObject({
-      PORT: "6789",
+      PORT: "4321",
       HOST: "127.0.0.1",
     });
 
     expect(fetchMock).toHaveBeenCalled();
     const requestURL = fetchMock.mock.calls[0][0];
-    expect(String(requestURL)).toBe("http://127.0.0.1:6789/healthy");
+    expect(String(requestURL)).toBe("http://127.0.0.1:4321/healthy");
 
-    expect(initialState.port).toBe(6_789);
+    expect(initialState.port).toBe(4_321);
     expect(initialState.host).toBe("127.0.0.1");
     expect(initialState.started).toBe(true);
     expect(runner.isRunning()).toBe(true);
@@ -166,7 +188,6 @@ describe("ServiceRunner", () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(secondStartState.port).toBe(initialState.port);
 
-    mockPortfinder.getPortPromise.mockResolvedValueOnce(9_001);
     const restartedState = await runner.restart({
       preferredPort: 9_000,
       extraEnv: { CUSTOM_FLAG: "1" },
@@ -175,11 +196,11 @@ describe("ServiceRunner", () => {
     expect(spawnMock).toHaveBeenCalledTimes(2);
     const [, , secondSpawnOptions] = spawnMock.mock.calls[1];
     expect(secondSpawnOptions?.env).toMatchObject({
-      PORT: "9001",
+      PORT: "9000",
       HOST: "127.0.0.1",
       CUSTOM_FLAG: "1",
     });
-    expect(restartedState.port).toBe(9_001);
+    expect(restartedState.port).toBe(9_000);
     expect(restartedState.started).toBe(true);
     expect(killMock).toHaveBeenCalledTimes(1);
     expect(runner.isRunning()).toBe(true);
@@ -190,8 +211,8 @@ describe("ServiceRunner", () => {
   });
 
   test("resolves host from LAN when internal flag is false", async () => {
-    const { ServiceRunner } = await import("../src/index");
-    const fixture = await executableFixturePromise;
+    const ServiceRunner = await loadServiceRunnerWithAvailablePort();
+    const fixture = getExecutableFixture();
 
     const originalFinder = Reflect.get(
       ServiceRunner as object,
@@ -204,12 +225,11 @@ describe("ServiceRunner", () => {
       vi.fn(() => "10.0.0.42"),
     );
 
-    mockPortfinder.getPortPromise.mockResolvedValueOnce(5_555);
-
     const runner = new ServiceRunner({
       executableDir: fixture.dir,
       executableName: fixture.name,
       internal: false,
+      preferredPort: 5_555,
     });
 
     try {
@@ -221,43 +241,43 @@ describe("ServiceRunner", () => {
       expect(String(requestURL)).toBe("http://10.0.0.42:5555/healthy");
     } finally {
       await runner.stop();
-      if (originalFinder) {
-        Reflect.set(
-          ServiceRunner as object,
-          "findLanIPv4Address",
-          originalFinder,
-        );
-      }
+      Reflect.set(ServiceRunner, "findLanIPv4Address", originalFinder);
     }
   });
 
   test("rejects when health checks do not pass within timeout", async () => {
-    const { ServiceRunner } = await import("../src/index");
-    const fixture = await executableFixturePromise;
+    const ServiceRunner = await loadServiceRunnerWithAvailablePort();
+    const fixture = getExecutableFixture();
 
-    mockPortfinder.getPortPromise.mockResolvedValueOnce(7_001);
     fetchMock.mockResolvedValue({
       ok: false,
       status: 503,
     });
 
+    vi.useFakeTimers();
+    onTestFinished(() => vi.useRealTimers());
+    const originalDelay = Reflect.get(ServiceRunner, "delay");
+    Reflect.set(
+      ServiceRunner,
+      "delay",
+      vi.fn(async (milliseconds: number) => {
+        await vi.advanceTimersByTimeAsync(milliseconds);
+      }),
+    );
+    onTestFinished(() => {
+      Reflect.set(ServiceRunner, "delay", originalDelay);
+    });
+
     const runner = new ServiceRunner({
       executableDir: fixture.dir,
       executableName: fixture.name,
-      healthCheckTimeoutMs: 100,
-      healthCheckIntervalMs: 10,
-      healthRequestTimeoutMs: 10,
+      healthCheckTimeoutMs: 30,
+      healthCheckIntervalMs: 5,
+      healthRequestTimeoutMs: 5,
     });
+    onTestFinished(() => runner.stop().catch(() => undefined));
 
-    vi.useFakeTimers();
-    const startPromise = runner.start();
-
-    await vi.runAllTimersAsync();
-
-    await expect(startPromise).rejects.toThrow(/failed health check/i);
+    await expect(runner.start()).rejects.toThrow(/failed health check/i);
     expect(runner.isRunning()).toBe(false);
-
-    await runner.stop().catch(() => undefined);
-    vi.useRealTimers();
   });
 });
