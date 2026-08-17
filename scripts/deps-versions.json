@@ -65,6 +65,9 @@
       "win32-x64": "aria2-next-2.5.5-windows-x86_64.exe",
       "win32-arm64": "aria2-next-2.5.5-windows-arm64.exe"
     },
+    "sha256": {
+      "linux-x64": "b6f2cdadcd34ba16dd7fcb29de4b84c36f893f9b223a9a05157d1892687a45a0"
+    },
     "binaryName": {
       "default": "aria2c",
       "win32": "aria2c.exe"

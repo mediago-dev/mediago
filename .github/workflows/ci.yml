@@ -88,10 +88,59 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - run: pnpm test:integration:media:run
 
+  test-e2e:
+    name: Test three-surface Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: "10.15.0"
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.14.0"
+          cache: pnpm
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.0"
+          cache-dependency-path: apps/core/go.sum
+      - run: pnpm install --frozen-lockfile
+      - name: Cache E2E dependencies
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: e2e-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps-versions.json') }}-${{ hashFiles('scripts/download-deps.ts', 'scripts/download-deps-args.ts', 'scripts/download-deps-integrity.ts') }}
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Set up E2E dependencies
+        run: pnpm test:e2e:setup:deps
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: pnpm exec playwright install-deps chromium
+      - run: pnpm exec playwright install chromium
+      - run: pnpm type:check:e2e
+      - run: pnpm test:e2e:build
+      - name: Run three-surface Playwright
+        run: xvfb-run -a pnpm test:e2e
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-artifacts
+          path: |
+            playwright-report
+            test-results
+          retention-days: 3
+
   pr-gate:
     name: PR gate
     if: ${{ always() }}
-    needs: [quality, test-ts, test-go, test-media-integration]
+    needs: [quality, test-ts, test-go, test-media-integration, test-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
@@ -99,6 +148,7 @@ jobs:
       TYPESCRIPT_RESULT: ${{ needs.test-ts.result }}
       GO_RESULT: ${{ needs.test-go.result }}
       MEDIA_INTEGRATION_RESULT: ${{ needs.test-media-integration.result }}
+      E2E_RESULT: ${{ needs.test-e2e.result }}
     steps:
       - run: |
           failed=0
@@ -106,7 +156,8 @@ jobs:
             "quality:$QUALITY_RESULT" \
             "test-ts:$TYPESCRIPT_RESULT" \
             "test-go:$GO_RESULT" \
-            "media-integration:$MEDIA_INTEGRATION_RESULT"
+            "media-integration:$MEDIA_INTEGRATION_RESULT" \
+            "test-e2e:$E2E_RESULT"
           do
             job="${result%%:*}"
             status="${result#*:}"

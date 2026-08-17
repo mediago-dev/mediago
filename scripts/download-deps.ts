@@ -27,7 +27,6 @@ import {
   rename,
   readdir,
   rm,
-  stat,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
@@ -36,6 +35,11 @@ import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { selectToolsFromArgs } from "./download-deps-args.ts";
+import {
+  assertDependencyFileIntegrity,
+  dependencyFileMatchesIntegrity,
+  resolveDependencySha256,
+} from "./download-deps-integrity.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,6 +60,8 @@ interface ToolDef {
   version?: string;
   /** Per-platform asset filename on the GitHub Release. */
   assets?: Record<string, string>;
+  /** Per-platform SHA-256 of the final executable. */
+  sha256?: Record<string, string>;
   binaryName: { default: string; win32?: string };
   extractBinary?: { default: string; win32?: string };
 }
@@ -203,18 +209,6 @@ function matchesVersion(
   );
 }
 
-async function isNonEmptyFile(filePath: string): Promise<boolean> {
-  try {
-    const fileStat = await stat(filePath);
-    return fileStat.isFile() && fileStat.size > 0;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
-    }
-    throw err;
-  }
-}
-
 async function downloadFile(url: string, dest: string): Promise<void> {
   const response = await fetch(url, {
     redirect: "follow",
@@ -304,22 +298,37 @@ async function downloadTool(
 
   const binaryName = getBinaryName(tool, platformKey);
   const binaryPath = path.join(destDir, binaryName);
+  const expectedSha256 = resolveDependencySha256(
+    toolName,
+    platformKey,
+    tool.sha256,
+  );
   const expectedVersion: ToolVersionRecord = {
     repo,
     version,
     asset: assetName,
     binaryName,
   };
-  const binaryIsUsable = await isNonEmptyFile(binaryPath);
+  const binaryIsUsable = await dependencyFileMatchesIntegrity(
+    binaryPath,
+    expectedSha256,
+  );
 
   if (
     binaryIsUsable &&
     matchesVersion(versionManifest.tools[toolName], expectedVersion)
   ) {
-    console.log("  ✓ " + toolName + " already exists for " + platformKey);
+    const integrityStatus = expectedSha256 ? " (SHA-256 verified)" : "";
+    console.log(
+      "  ✓ " +
+        toolName +
+        " already exists for " +
+        platformKey +
+        integrityStatus,
+    );
     return;
   }
-  if (binaryIsUsable) {
+  if (await dependencyFileMatchesIntegrity(binaryPath)) {
     console.log("  ↻ Refreshing stale " + toolName + " for " + platformKey);
   }
   const url = `https://github.com/${repo}/releases/download/${version}/${assetName}`;
@@ -371,9 +380,11 @@ async function downloadTool(
       candidateFile = tempFile;
     }
 
-    if (!(await isNonEmptyFile(candidateFile))) {
-      throw new Error(`Downloaded ${toolName} binary is empty or not a file`);
-    }
+    await assertDependencyFileIntegrity(
+      candidateFile,
+      expectedSha256,
+      `Downloaded ${toolName} binary`,
+    );
 
     // Node's rename replaces an existing file. Keeping the old binary in place
     // until this point means a failed download or extraction never removes it.
