@@ -26,11 +26,11 @@
 - Create: `apps/core/internal/core/downloader_contract_test.go`
 - Modify: `apps/core/internal/core/schema/loader.go`
 
-- [ ] **Step 1: Add pinned fixture provenance**
+- [x] **Step 1: Add pinned fixture provenance**
 
 Document BBDown 1.6.3 and yt-dlp 2026.07.04, matching `scripts/deps-versions.json`. Pin these official tagged sources and map each fixture to its source:
 
-- BBDown progress: `https://github.com/nilaoda/BBDown/blob/1.6.3/BBDown/ProgressBar.cs`
+- BBDown progress: `https://github.com/nilaoda/BBDown/blob/1.6.3/BBDown/ProgressBar.cs` and `https://github.com/nilaoda/BBDown/blob/1.6.3/BBDown/BBDownUtil.cs`
 - BBDown start/failure: `https://github.com/nilaoda/BBDown/blob/1.6.3/BBDown/Program.cs`
 - BBDown's lack of a stable text error prefix: `https://github.com/nilaoda/BBDown/blob/1.6.3/BBDown.Core/Logger.cs` and the tagged `Program.cs`
 - yt-dlp progress/destination: `https://github.com/yt-dlp/yt-dlp/blob/2026.07.04/yt_dlp/downloader/common.py`
@@ -38,12 +38,12 @@ Document BBDown 1.6.3 and yt-dlp 2026.07.04, matching `scripts/deps-versions.jso
 
 State that fixtures are JSON arrays where every element represents one Runner callback chunk, so escaped backspaces survive loading.
 
-- [ ] **Step 2: Add minimal captured fixtures**
+- [x] **Step 2: Add minimal captured fixtures**
 
 Use only synthetic identifiers and these stable shapes:
 
 ```json
-["开始下载P1", " 99%\b\b\b\b 50% - 1.5 MB/s"]
+["开始下载P1", " 99%\b\b\b\b 50% - 1.50 MB/s"]
 ```
 
 ```json
@@ -62,7 +62,7 @@ Use only synthetic identifiers and these stable shapes:
 ["ERROR: synthetic contract failure"]
 ```
 
-- [ ] **Step 3: Write focused failing parser/schema tests**
+- [x] **Step 3: Write focused failing parser/schema tests**
 
 Load every fixture as `[]string`. Every element is one Runner callback chunk: apply `strings.TrimSpace` exactly as `DownloaderSvc.Download` does, then call the real `parser.LineParser`. When parsing emits `"ready"`, explicitly set `state.Ready = true`. Do not join, split, or re-chunk elements; this phase fixes only the captured source fragment grouping and does not claim arbitrary-token cross-chunk support.
 
@@ -76,7 +76,7 @@ if got := strings.Count(bbdownProgress[1], "\b"); got != 4 {
 
 Assert:
 
-- BBDown becomes ready, finishes at 50%, reports 1.5 MB/s, and emits no parsed error.
+- BBDown becomes ready, finishes at 50%, reports 1.50 MB/s, and emits no parsed error.
 - BBDown's failure fixture also produces zero parsed errors because upstream has no stable text error prefix.
 - yt-dlp becomes ready, reports 42.1% and 2.50 MiB/s, and does not treat `ERROR-demo.webm` as an error.
 - yt-dlp's line-start `ERROR:` produces exactly one error.
@@ -92,7 +92,7 @@ go test ./internal/core -run 'Test(ExternalOutputContracts|ExternalSchemaContrac
 
 Expected: FAIL because the current BBDown error/live markers are unsupported and the yt-dlp error/live patterns are too broad.
 
-- [ ] **Step 4: Make the schema change minimal**
+- [x] **Step 4: Make the schema change minimal**
 
 In `schema/loader.go`:
 
@@ -101,7 +101,7 @@ In `schema/loader.go`:
 - Anchor yt-dlp Error to the start of a line, for example `(?m)^ERROR:`.
 - Set yt-dlp IsLive to an empty string.
 
-- [ ] **Step 5: Prove the focused and package suites are green**
+- [x] **Step 5: Prove the focused and package suites are green**
 
 Run `gofmt -w apps/core/internal/core/downloader_contract_test.go apps/core/internal/core/schema/loader.go`, then:
 
@@ -111,7 +111,7 @@ go test ./internal/core -run 'Test(ExternalOutputContracts|ExternalSchemaContrac
 go test ./internal/core/... -count=1
 ```
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```bash
 git add apps/core/internal/core/schema/loader.go apps/core/internal/core/downloader_contract_test.go apps/core/internal/core/testdata/contracts
@@ -126,11 +126,11 @@ git commit -m "test(core): add external downloader output contracts"
 - Modify: `apps/core/internal/core/downloader_test.go`
 - Modify: `apps/core/internal/core/downloader.go`
 
-- [ ] **Step 1: Make the test config express proxy settings**
+- [x] **Step 1: Make the test config express proxy settings**
 
 Extend `testDownloaderConfig` with `useProxy bool` and `proxy string`; return those fields from `GetUseProxy` and `GetProxy`. Preserve the existing zero-value behavior.
 
-- [ ] **Step 2: Add semantic argv helpers and tests**
+- [x] **Step 2: Add semantic argv helpers and tests**
 
 Assert adjacent flag/value pairs and required standalone flags with exact occurrence counts, without asserting whole-array order. Repeated `--add-header` values must each occur exactly once; do not use a first-match-only helper such as `slices.Index`. URLs and standalone common flags must also occur exactly once.
 
@@ -147,7 +147,7 @@ User-Agent: MediaGo-Contract-Test
 
 Assert the actual argv still contains the original values, but assertion failures must report only the tool, flag/header name, expected occurrence count, and actual occurrence count. Never print raw argv, sensitive expected values, or call `redactSensitiveArgs` to format a failure while testing redaction.
 
-- [ ] **Step 3: Write failing redaction tests**
+- [x] **Step 3: Write failing redaction tests**
 
 Cover separate and `--flag=value` forms for:
 
@@ -157,7 +157,7 @@ Cover separate and `--flag=value` forms for:
 
 Also retain a separate regression case for the existing `-c <value>` shorthand.
 
-Assert ordinary headers and a proxy without credentials remain visible. Assert the input slice is unchanged.
+Also cover the built-in `--header` and `--custom-proxy` aliases, scheme-less proxies, malformed proxy URLs, overlapping/missing argument values, and malformed header names. These cases must fail closed without hiding valid ordinary headers or a valid proxy without credentials. Assert the input slice is unchanged.
 
 Redaction assertions must use boolean presence/count checks with fixed messages such as `authorization header remained visible`; do not include the sensitive input, complete redacted slice, or expected slice in failure output.
 
@@ -170,18 +170,18 @@ go test ./internal/core -run 'Test(ExternalInputContracts|RedactSensitiveArgs)' 
 
 Expected: FAIL because the current redactor only protects cookie arguments.
 
-- [ ] **Step 4: Implement narrow redaction helpers**
+- [x] **Step 4: Implement narrow redaction helpers**
 
 Add small helpers in `downloader.go`:
 
 ```go
-func redactHeader(header string) (string, bool)
+func redactHeader(header string) string
 func proxyContainsCredentials(raw string) bool
 ```
 
-Use `strings.Cut`, `strings.TrimSpace`, and a lowercase name comparison for Cookie, Authorization, and Proxy-Authorization. Redact credential-bearing proxies while keeping non-credential proxies readable. Handle separate and equals forms without mutating the executed argv.
+Use `strings.Cut`, `strings.TrimSpace`, an ASCII HTTP-token check, and a lowercase name comparison for Cookie, Authorization, and Proxy-Authorization. Redact credential-bearing proxies while keeping valid non-credential proxies readable; malformed headers and proxies fail closed. Handle separate and equals forms by reading the immutable input slice and writing only its clone.
 
-- [ ] **Step 5: Re-run focused and package tests**
+- [x] **Step 5: Re-run focused and package tests**
 
 Run `gofmt -w apps/core/internal/core/downloader.go apps/core/internal/core/downloader_test.go apps/core/internal/core/downloader_contract_test.go`, then:
 
@@ -191,7 +191,7 @@ go test ./internal/core -run 'Test(ExternalInputContracts|RedactSensitiveArgs)' 
 go test ./internal/core/... -count=1
 ```
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```bash
 git add apps/core/internal/core/downloader.go apps/core/internal/core/downloader_test.go apps/core/internal/core/downloader_contract_test.go
@@ -208,7 +208,7 @@ git commit -m "fix(core): redact downloader credentials"
 
 - Modify: `apps/core/internal/core/downloader_contract_test.go`
 
-- [ ] **Step 1: Add a table-driven fake-runner boundary test**
+- [x] **Step 1: Add a table-driven fake-runner boundary test**
 
 For BBDown and yt-dlp:
 
@@ -219,7 +219,7 @@ For BBDown and yt-dlp:
 - Capture `OnMessage` output.
 - Call the real `DownloaderSvc.Download`.
 
-- [ ] **Step 2: Assert the complete boundary contract**
+- [x] **Step 2: Assert the complete boundary contract**
 
 Assert:
 
@@ -228,7 +228,7 @@ Assert:
 - Every replayed chunk reaches `OnMessage` once and in order after the same per-element `strings.TrimSpace` applied by `Download`.
 - `Download` returns the same sentinel error, verified with `errors.Is`.
 
-- [ ] **Step 3: Record a meaningful RED signal**
+- [x] **Step 3: Record a meaningful RED signal**
 
 The error propagation behavior is characterization and may already pass. Before accepting green, temporarily make the fake runner return `nil`; run the focused test and confirm its sentinel assertion fails. Restore the sentinel return immediately. Do not modify production code solely to manufacture a failure.
 
@@ -237,7 +237,7 @@ cd apps/core
 go test ./internal/core -run TestExternalRunnerBoundary -count=1
 ```
 
-- [ ] **Step 4: Prove the restored test is green**
+- [x] **Step 4: Prove the restored test is green**
 
 Run `gofmt -w apps/core/internal/core/downloader_contract_test.go`, then:
 
@@ -247,7 +247,7 @@ go test ./internal/core -run TestExternalRunnerBoundary -count=1
 go test ./internal/core/... -count=1
 ```
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```bash
 git add apps/core/internal/core/downloader_contract_test.go
@@ -260,7 +260,7 @@ git commit -m "test(core): cover downloader failure contracts"
 
 - Modify: `plans/implementation/2026-08-16-external-downloader-contracts.md`
 
-- [ ] **Step 1: Run the repository verification matrix**
+- [x] **Step 1: Run the repository verification matrix**
 
 ```bash
 test "$(git branch --show-current)" = "codex/automated-testing"
@@ -275,7 +275,7 @@ git status --short
 
 If sandbox restrictions block loopback or subprocess tests, rerun the unchanged command with the required approval and record both outcomes.
 
-- [ ] **Step 2: Audit scope**
+- [x] **Step 2: Audit scope**
 
 ```bash
 git diff --stat 28b73edf..HEAD
@@ -284,15 +284,15 @@ git diff --name-only 28b73edf..HEAD
 
 Confirm there are no workflow, package dependency, downloader download-script, UI, or media-network changes. Confirm fixture versions still match `scripts/deps-versions.json`.
 
-- [ ] **Step 3: Request final code review**
+- [x] **Step 3: Request final code review**
 
 Use an independent reviewer against base `28b73edf`. Address Critical and Important findings, rerun affected tests, and request re-review until approved.
 
-- [ ] **Step 4: Mark this plan complete**
+- [x] **Step 4: Mark this plan complete**
 
 Change every completed checkbox in this file to `[x]`. Do not edit the approved design document unless implementation materially diverged.
 
-- [ ] **Step 5: Commit the completed plan**
+- [x] **Step 5: Commit the completed plan**
 
 ```bash
 git add plans/implementation/2026-08-16-external-downloader-contracts.md
@@ -308,7 +308,7 @@ git log --format='%h %an <%ae> | %cn <%ce> | %s' 28b73edf..HEAD
 
 Every author and committer must be `caorushizi <84996057@qq.com>`.
 
-- [ ] **Step 6: Push only the current branch**
+- [x] **Step 6: Push only the current branch**
 
 ```bash
 git push origin codex/automated-testing
@@ -316,6 +316,6 @@ git push origin codex/automated-testing
 
 Do not merge or create another branch.
 
-- [ ] **Step 7: Monitor PR #718**
+- [x] **Step 7: Monitor PR #718**
 
 Verify all required gates, including the local media integration job, complete successfully and the total PR workflow remains under ten minutes. Report any unrelated failure separately rather than broadening this phase.
