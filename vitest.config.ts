@@ -30,6 +30,7 @@ export default defineConfig({
       "apps/**/*.test.ts",
       "packages/**/*.test.ts",
       "scripts/**/*.test.ts",
+      "tests/e2e/support/**/*.test.ts",
       "tests/media-service/**/*.test.ts",
     ],
     exclude: [
