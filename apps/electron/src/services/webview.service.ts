@@ -25,6 +25,7 @@ import GoConfigCache from "./go-config-cache";
 import BrowserWindow from "../windows/browser.window";
 import MainWindow from "../windows/main.window";
 import { SniffingHelper, type SourceParams } from "./sniffing-helper.service";
+import { enableSessionProxy } from "./webview-proxy";
 
 const require = createRequire(import.meta.url);
 
@@ -269,19 +270,7 @@ export default class WebviewService {
   }
 
   private enableProxy(proxy: string) {
-    if (!proxy) {
-      this.logger.error(`[Proxy] proxy address is empty`);
-      return;
-    }
-
-    // Process the validity of the proxy address
-    // Support http/https/socks5 proxies; default to http if no scheme provided
-    if (!/^(https?|socks5):\/\//i.test(proxy)) {
-      proxy = `http://${proxy}`;
-    }
-
-    this.session.setProxy({ proxyRules: proxy });
-    this.logger.info(`[Proxy] enable proxy: ${proxy}`);
+    enableSessionProxy(this.session, this.logger, proxy);
   }
 
   private disableProxy() {
