@@ -27,7 +27,7 @@
 - Modify: `pnpm-lock.yaml`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Write the failing toolchain contract**
+- [x] **Step 1: Write the failing toolchain contract**
 
 Create `scripts/ci/e2e-toolchain.test.ts`. Resolve the repository root from `import.meta.url`, parse `package.json`, and assert:
 
@@ -46,7 +46,7 @@ expect(await readFile(path.join(root, ".gitignore"), "utf8")).toContain(
 
 Also assert the focused commands select `web`, `electron`, and `extension` by project name and that setup does not mention `N_m3u8DL-RE` or `ffmpeg`.
 
-- [ ] **Step 2: Run the contract and verify RED**
+- [x] **Step 2: Run the contract and verify RED**
 
 Run:
 
@@ -56,7 +56,7 @@ pnpm exec vitest run scripts/ci/e2e-toolchain.test.ts
 
 Expected: FAIL because Playwright dependencies, scripts, and ignore entries do not exist.
 
-- [ ] **Step 3: Install exact dependencies and add scripts**
+- [x] **Step 3: Install exact dependencies and add scripts**
 
 Run:
 
@@ -84,7 +84,7 @@ Add these root scripts without changing the existing media-integration scripts:
 
 Add `playwright-report/` and `test-results/` to `.gitignore`.
 
-- [ ] **Step 4: Add the root Playwright configuration**
+- [x] **Step 4: Add the root Playwright configuration**
 
 Create `playwright.config.ts` with these exact behavioral settings:
 
@@ -121,7 +121,7 @@ export default defineConfig({
 
 Do not add top-level `webServer` entries; focused extension runs must not start either UI renderer.
 
-- [ ] **Step 5: Add the dedicated E2E TypeScript project**
+- [x] **Step 5: Add the dedicated E2E TypeScript project**
 
 Create `tsconfig.e2e.json` extending `tsconfig.node.json`, with `noEmit`, `strict`, `lib: ["ES2023", "DOM"]`, `module: "ESNext"`, `moduleResolution: "Bundler"`, and source paths for clean-checkout type resolution:
 
@@ -144,7 +144,7 @@ Create `tsconfig.e2e.json` extending `tsconfig.node.json`, with `noEmit`, `stric
 }
 ```
 
-- [ ] **Step 6: Verify GREEN and commit**
+- [x] **Step 6: Verify GREEN and commit**
 
 Run:
 
@@ -172,7 +172,7 @@ git commit -m "test(e2e): add pinned Playwright toolchain"
 - Create: `apps/server/src/server-paths.test.ts`
 - Modify: `apps/server/src/index.ts`
 
-- [ ] **Step 1: Write the failing path-resolution tests**
+- [x] **Step 1: Write the failing path-resolution tests**
 
 Create `server-paths.test.ts` with a pure helper contract:
 
@@ -205,13 +205,13 @@ describe("resolveServerPaths", () => {
 });
 ```
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run `pnpm exec vitest run apps/server/src/server-paths.test.ts`.
 
 Expected: FAIL because `server-paths.ts` is missing.
 
-- [ ] **Step 3: Implement the pure path helper and wire the launcher**
+- [x] **Step 3: Implement the pure path helper and wire the launcher**
 
 Implement only the five paths above. Treat an undefined or whitespace-only override as absent; preserve the existing `~/.<APP_NAME>-server` default. In `apps/server/src/index.ts`, replace the module-level path constants with:
 
@@ -225,7 +225,7 @@ const serverPaths = resolveServerPaths({
 
 Use `serverPaths.data`, `.logs`, `.downloads`, and `.database` everywhere else. Do not change auth, port `9900`, Core arguments, or shutdown behavior.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Run:
 
@@ -254,7 +254,7 @@ git commit -m "feat(server): isolate runtime root"
 - Create: `apps/electron/src/services/webview.service.test.ts`
 - Modify: `apps/electron/src/services/webview.service.ts`
 
-- [ ] **Step 1: Write failing lazy-loader tests**
+- [x] **Step 1: Write failing lazy-loader tests**
 
 Define a small generic `AdBlockerLoader<T>` contract. Tests must prove the factory is not called by construction, concurrent/repeated `load()` calls use one promise, and rejection is contained and reported once:
 
@@ -278,7 +278,7 @@ await expect(failure.load()).resolves.toBeUndefined();
 expect(onError).toHaveBeenCalledTimes(1);
 ```
 
-- [ ] **Step 2: Write the failing Webview integration test**
+- [x] **Step 2: Write the failing Webview integration test**
 
 Before dynamically importing `WebviewService`, hoist all clean-checkout-safe resolution mocks:
 
@@ -307,7 +307,7 @@ expect(webContents.loadURL).toHaveBeenLastCalledWith("http://127.0.0.1/page");
 
 Add a rejected `fromLists` case proving `loadURL` still proceeds and the logger receives exactly `[AdBlocker] list load failed` once, without the thrown message or an unhandled rejection. Add a deferred-factory race: call `setBlocking(true)`, then `setBlocking(false)` before resolving the factory; after resolution, `enableBlockingInSession` must still be untouched.
 
-- [ ] **Step 3: Run focused RED**
+- [x] **Step 3: Run focused RED**
 
 Run:
 
@@ -317,7 +317,7 @@ pnpm exec vitest run apps/electron/src/services/ad-blocker-loader.test.ts apps/e
 
 Expected: FAIL because the loader does not exist and Webview construction still starts `fromLists`.
 
-- [ ] **Step 4: Implement the memoized loader**
+- [x] **Step 4: Implement the memoized loader**
 
 Create `AdBlockerLoader<T>` with a single private `Promise<T | undefined> | null`. `load()` memoizes `factory().catch(...)`; the catch calls `onError` and resolves `undefined`, so callers never create unhandled rejections.
 
@@ -333,7 +333,7 @@ In `WebviewService`:
 
 Do not bundle a new EasyList file and do not add an E2E-only environment switch.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run:
 
@@ -360,7 +360,7 @@ git commit -m "fix(electron): defer ad blocker loading"
 - Create: `apps/electron/src/services/downloader.server.test.ts`
 - Modify: `apps/electron/src/services/downloader.server.ts`
 
-- [ ] **Step 1: Write failing lifecycle tests**
+- [x] **Step 1: Write failing lifecycle tests**
 
 Before dynamically importing `DownloaderServer`, mock `@mediago/service-runner`, `@mediago/core-sdk`, `../utils/binaryResolver`, and `../vendor/ElectronLogger`. The binary-resolver/logger mocks are mandatory in a clean checkout: they prevent Electron runtime evaluation, `APP_NAME` lookup, and resolution of ignored preload/extension outputs. Then start the server with fake paths and assert the created runner and task event stream are retained. Invoke the registered `download-start` listener on the mocked stream so the real `startPolling()` creates its interval. Then call `stop()` twice concurrently and once after completion. Verify:
 
@@ -374,13 +374,13 @@ expect(await server.getURL()).toBe("");
 
 Add a runner-stop rejection case: both concurrent callers observe the rejection, state is still cleared, and a later `stop()` is a no-op. Do not assert private fields directly.
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run `pnpm exec vitest run apps/electron/src/services/downloader.server.test.ts`.
 
 Expected: FAIL because `DownloaderServer.stop()` and retained runner/event fields do not exist.
 
-- [ ] **Step 3: Implement minimal ownership and stop**
+- [x] **Step 3: Implement minimal ownership and stop**
 
 Add these fields:
 
@@ -399,7 +399,7 @@ Store the runner during `start()`, store the value returned by `streamEvents()`,
 
 If `start()` fails, clear the retained runner before rethrowing; rely on `ServiceRunner.start()`'s existing failed-start cleanup rather than stopping twice.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Run:
 
@@ -426,7 +426,7 @@ git commit -m "fix(electron): own downloader shutdown"
 - Modify: `apps/electron/src/app.ts`
 - Modify: `apps/electron/src/index.ts`
 
-- [ ] **Step 1: Write the failing quit coordinator tests**
+- [x] **Step 1: Write the failing quit coordinator tests**
 
 Test a pure `registerGracefulQuit` helper with an `on("before-quit")` app double. Capture the listener and assert:
 
@@ -448,13 +448,13 @@ expect(thirdEvent.preventDefault).not.toHaveBeenCalled();
 
 Add a rejected-shutdown test proving `onError` is called and the second quit still occurs, so a cleanup error cannot strand the application.
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run `pnpm exec vitest run apps/electron/src/lifecycle.test.ts`.
 
 Expected: FAIL because the lifecycle helper is missing.
 
-- [ ] **Step 3: Implement the coordinator and application hook**
+- [x] **Step 3: Implement the coordinator and application hook**
 
 `registerGracefulQuit` owns two booleans/promises only: first `before-quit` prevents default and starts one shutdown; repeated events while stopping also prevent default; completion or failure marks the resumed quit and calls `app.quit()` once; the resumed event is allowed through.
 
@@ -478,7 +478,7 @@ registerGracefulQuit(
 
 Do not add `process.exit()` and do not change tray/window-close semantics.
 
-- [ ] **Step 4: Verify the complete production-prerequisite chunk**
+- [x] **Step 4: Verify the complete production-prerequisite chunk**
 
 Run:
 
@@ -492,7 +492,7 @@ git diff --check
 
 Expected: focused tests and full Vitest suite PASS; no test performs an external request.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/electron/src/lifecycle.ts apps/electron/src/lifecycle.test.ts apps/electron/src/app.ts apps/electron/src/index.ts
@@ -520,7 +520,7 @@ git commit -m "fix(electron): await Core shutdown on quit"
 - Create: `tests/e2e/support/artifacts.ts`
 - Modify: `vitest.config.ts`
 
-- [ ] **Step 1: Expose support-unit tests to Vitest and write RED tests**
+- [x] **Step 1: Expose support-unit tests to Vitest and write RED tests**
 
 Add only `tests/e2e/support/**/*.test.ts` to the Vitest include list. Do not include `tests/e2e/**/*.spec.ts`.
 
@@ -545,7 +545,7 @@ expect(isAllowedBrowserURL("https://example.com/video.mp4")).toBe(false);
 
 Start the committed media service and assert `loadMediaFixture()` returns the manifest's `sample.mp4` size/SHA and that `verifyFixtureCopy(tempDir)` accepts a copied sample but rejects a modified file. For `ManagedProcess`, spawn `process.execPath -e "setInterval(() => {}, 1000)"`, stop it, and assert its process group exits within the helper deadline. Add a second child with a never-ready URL and a 100 ms startup deadline; `startManagedProcess` must reject only after that child/process group is gone.
 
-- [ ] **Step 2: Run support tests and verify RED**
+- [x] **Step 2: Run support tests and verify RED**
 
 Run:
 
@@ -555,7 +555,7 @@ pnpm exec vitest run tests/e2e/support
 
 Expected: FAIL because the support modules do not exist.
 
-- [ ] **Step 3: Implement bounded process and port ownership**
+- [x] **Step 3: Implement bounded process and port ownership**
 
 `process.ts` exports:
 
@@ -583,7 +583,7 @@ Spawn detached with piped stdout/stderr, keep only the last 16 KiB after redacti
 
 `ports.ts` exports `assertPortFree(host, port, owner)`, `waitForPortFree(host, port, timeoutMs)`, and `reserveLoopbackPort()`. Errors name both owner and port. Never treat an existing healthy response as reusable.
 
-- [ ] **Step 4: Implement media and network helpers**
+- [x] **Step 4: Implement media and network helpers**
 
 `media.ts` wraps `startMediaServer()` from `tests/media-service/server.ts`, reads `tests/media-service/public/v1/manifest.json`, and returns:
 
@@ -600,7 +600,7 @@ export interface MediaFixture {
 
 `network.ts` exports `isAllowedBrowserURL`, `guardBrowserContext`, and `assertNoBlockedRequests`. Permit `about:`, `blob:`, `data:`, `chrome-extension:`, and HTTP(S) whose hostname is `localhost`, `127.0.0.1`, or `::1`. `guardBrowserContext` registers `context.route("**/*", ...)`, aborts disallowed HTTP(S), and stores only redacted origin/path strings for the final assertion.
 
-- [ ] **Step 5: Implement product launchers**
+- [x] **Step 5: Implement product launchers**
 
 `core-process.ts` validates Linux x64 plus executable `.deps/linux-x64/aria2c`, creates `config`, `logs`, `downloads`, and SQLite paths under the supplied runtime root, and starts `apps/core/bin/mediago-core` on the requested port with:
 
@@ -629,7 +629,7 @@ Set `APP_TARGET=server` for `8501` or `APP_TARGET=electron` for `8500`; readines
 
 `test-page.ts` starts an OS-assigned loopback HTTP server. Its single HTML page has title `MediaGo E2E Fixture`, performs one `fetch(sampleURL)` on load, consumes the body, and exposes `window.fixtureMediaLoaded = true` or a bounded error string.
 
-- [ ] **Step 6: Implement failure artifacts**
+- [x] **Step 6: Implement failure artifacts**
 
 `artifacts.ts` exports helpers to attach bounded process/Core logs and manage manual contexts. Each scenario catches its primary error into `let primaryError: unknown`; finalization receives `failed: primaryError !== undefined` rather than reading `testInfo.status` inside the still-running test. For Electron and persistent Chromium:
 
@@ -642,7 +642,7 @@ Set `APP_TARGET=server` for `8501` or `APP_TARGET=electron` for `8500`; readines
 
 Attachments use only the fixed synthetic password and localhost responses; never attach storage dumps, complete environments, or unbounded headers.
 
-- [ ] **Step 7: Verify GREEN and commit**
+- [x] **Step 7: Verify GREEN and commit**
 
 Run:
 
@@ -670,7 +670,7 @@ git commit -m "test(e2e): add local runtime harness"
 - Create: `tests/e2e/web/download.spec.ts`
 - Modify: `apps/ui/src/pages/home-page/components/download-item.tsx`
 
-- [ ] **Step 1: Write the Web scenario**
+- [x] **Step 1: Write the Web scenario**
 
 Use the normal Playwright `page` fixture so configured trace/screenshot/video retention applies. In a single test with nested `try/finally` ownership:
 
@@ -689,7 +689,7 @@ Use the normal Playwright `page` fixture so configured trace/screenshot/video re
 
 Add `role="article"` and `aria-label={task.name}` to the outer task-card element in `apps/ui/src/pages/home-page/components/download-item.tsx`; this is a semantic accessibility seam shared by Web and Electron, not test-only state. In test cleanup explicitly call `page.close()` first, then stop Server, UI, media, and finally remove the runtime directory. If an assertion fails, attach both managed-process tails before rethrowing; cleanup errors are attached and do not replace the first failure.
 
-- [ ] **Step 2: Provision/build once and run the focused scenario**
+- [x] **Step 2: Provision/build once and run the focused scenario**
 
 Run:
 
@@ -701,7 +701,7 @@ pnpm test:e2e:web
 
 Expected: 1 Web test PASS, the copied file matches the committed hash, and ports `8501`/`9900` are free afterward. If the first run is RED, fix only selector/readiness mistakes or a demonstrated product defect; do not route/mock Core APIs.
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
 Run:
 
@@ -726,13 +726,13 @@ git commit -m "test(e2e): cover Web direct download"
 - Create: `tests/e2e/support/electron-network.test.ts`
 - Create: `tests/e2e/electron/download.spec.ts`
 
-- [ ] **Step 1: Test the owned-Core network policy**
+- [x] **Step 1: Test the owned-Core network policy**
 
 Write pure tests for URL classification before adding Electron evaluation code. The provisional policy permits browser-internal schemes, loopback, and private IPv4 HTTP(S) only on `39719`; it rejects public IPs, hostnames, and other private ports. After `tighten(coreOrigin)`, the only non-loopback HTTP(S) origin accepted is the exact origin returned by preload. Recorded provisional requests must all match that origin.
 
 Run `pnpm exec vitest run tests/e2e/support/electron-network.test.ts` and expect RED because the helper is missing.
 
-- [ ] **Step 2: Implement the Electron session guard**
+- [x] **Step 2: Implement the Electron session guard**
 
 Export serializable policy functions plus `installElectronNetworkGuard(electronApp)`. Immediately after `_electron.launch()`, use `electronApp.evaluate(({ session }) => ...)` to register `defaultSession.webRequest.onBeforeRequest`. The callback:
 
@@ -743,7 +743,7 @@ Export serializable policy functions plus `installElectronNetworkGuard(electronA
 
 After preload returns `coreUrl`, call a second evaluator to set the exact origin and retrieve the provisional/blocked arrays. The Node-side assertion fails if any provisional origin differs from `coreUrl` or any blocked request exists. Store only origin/path, never headers.
 
-- [ ] **Step 3: Write the Electron scenario**
+- [x] **Step 3: Write the Electron scenario**
 
 The single test must:
 
@@ -760,7 +760,7 @@ The single test must:
 
 Always close Electron before UI/media cleanup, then remove the runtime root. `PORTABLE_EXECUTABLE_FILE` is a fixed synthetic path and is used only through existing production updater behavior.
 
-- [ ] **Step 4: Run focused GREEN**
+- [x] **Step 4: Run focused GREEN**
 
 Run:
 
@@ -772,7 +772,7 @@ xvfb-run -a pnpm test:e2e:electron
 
 Expected: policy unit tests and 1 Electron test PASS; Electron PID is gone and `39719` is free.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/e2e/support/electron-network.ts tests/e2e/support/electron-network.test.ts tests/e2e/electron/download.spec.ts
@@ -786,11 +786,11 @@ git commit -m "test(e2e): cover Electron direct download"
 - Create: `tests/e2e/extension/capture-and-download.spec.ts`
 - Modify: `packages/mediago-extension/src/options/components/ServerCard.tsx`
 
-- [ ] **Step 1: Add one accessible status seam**
+- [x] **Step 1: Add one accessible status seam**
 
 Add `role="status"` and `aria-live="polite"` to both success and failure roots returned by `StatusInline`. This is an accessibility semantic, not an E2E backdoor. Do not add test-only messages, API hooks, or source URL rendering.
 
-- [ ] **Step 2: Write the MV3 scenario**
+- [x] **Step 2: Write the MV3 scenario**
 
 The single test must:
 
@@ -808,7 +808,7 @@ The single test must:
 
 The worker is never asked for `GET_SOURCES`, never handed a fabricated source, and never told to import. The final hash is the URL proof because `SourceItem` intentionally shows title/type rather than raw URL.
 
-- [ ] **Step 3: Run focused GREEN**
+- [x] **Step 3: Run focused GREEN**
 
 Run:
 
@@ -819,7 +819,7 @@ xvfb-run -a pnpm test:e2e:extension
 
 Expected: 1 extension test PASS; no Vite listener starts; Options persistence, Badge, Popup, Core task success, and file hash all pass.
 
-- [ ] **Step 4: Verify Chunk 2 together and commit**
+- [x] **Step 4: Verify Chunk 2 together and commit**
 
 Run:
 
@@ -849,7 +849,7 @@ git commit -m "test(e2e): cover MV3 capture and download"
 - Create: `scripts/ci/e2e-workflow.test.ts`
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Write the failing workflow contract**
+- [x] **Step 1: Write the failing workflow contract**
 
 Read `.github/workflows/ci.yml` as text and extract two bounded sections before asserting them:
 
@@ -874,7 +874,7 @@ Also assert the job contains dependency setup, E2E typecheck/build/run, and an `
 
 On `gateJob`, assert the complete explicit contract remains intact: `needs` contains `quality`, `test-ts`, `test-go`, `test-media-integration`, and `test-e2e`; its environment contains all five corresponding result expressions; and its shell loop enumerates all five labels. Keep the test intentionally textual and dependency-free, but scope every assertion to the owning job.
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run:
 
@@ -884,7 +884,7 @@ pnpm exec vitest run scripts/ci/e2e-workflow.test.ts
 
 Expected: FAIL because `test-e2e` and `E2E_RESULT` are absent.
 
-- [ ] **Step 3: Add the eight-minute E2E job**
+- [x] **Step 3: Add the eight-minute E2E job**
 
 Add one `test-e2e` job named `Test three-surface Playwright` using the same checkout/pnpm 10.15/Node 24.14/Go 1.25 setup as media integration. Keep `timeout-minutes: 8` and use this order:
 
@@ -902,7 +902,7 @@ Add one `test-e2e` job named `Test three-surface Playwright` using the same chec
 
 Do not reuse the media-integration setup command because it provisions HLS tools. Do not upload success artifacts or pass repository/user secrets into Playwright.
 
-- [ ] **Step 4: Make `pr-gate` check the result explicitly**
+- [x] **Step 4: Make `pr-gate` check the result explicitly**
 
 Add `test-e2e` to `needs`, add:
 
@@ -912,7 +912,7 @@ E2E_RESULT: ${{ needs.test-e2e.result }}
 
 and add `"test-e2e:$E2E_RESULT"` to the existing enumerated shell loop. Keep every existing gate result.
 
-- [ ] **Step 5: Verify GREEN, YAML syntax, and commit**
+- [x] **Step 5: Verify GREEN, YAML syntax, and commit**
 
 Run:
 
@@ -940,7 +940,7 @@ git commit -m "ci: require three-surface Playwright tests"
 - REQUIRED: `@superpowers:requesting-code-review`
 - REQUIRED on any failure: `@superpowers:systematic-debugging`
 
-- [ ] **Step 1: Verify branch, identity, and scope**
+- [x] **Step 1: Verify branch, identity, and scope**
 
 Run:
 
@@ -954,7 +954,7 @@ git diff --check origin/codex/automated-testing..HEAD
 
 Expected: correct branch; author/committer `caorushizi <84996057@qq.com>`; no unrelated changes and no files under `docs/`.
 
-- [ ] **Step 2: Run all focused and full local checks with fresh evidence**
+- [x] **Step 2: Run all focused and full local checks with fresh evidence**
 
 Run each command separately and preserve its exit code/timing:
 
@@ -980,7 +980,7 @@ Expected:
 
 If sandbox loopback/Electron restrictions cause EPERM, rerun the exact affected verification outside the sandbox; do not weaken the test.
 
-- [ ] **Step 3: Request independent code review**
+- [x] **Step 3: Request independent code review**
 
 Dispatch a fresh reviewer with the approved spec, this plan, and the full implementation diff. Require review of:
 
