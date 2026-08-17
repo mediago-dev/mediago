@@ -26,6 +26,10 @@ import {
   type StartedServerProcess,
 } from "../support/server-process.ts";
 import {
+  probeServerStartupShutdown,
+  type ServerShutdownProbe,
+} from "../support/server-shutdown.ts";
+import {
   startUIProcess,
   type StartedUIProcess,
 } from "../support/ui-process.ts";
@@ -42,6 +46,7 @@ const FORCE_NETWORK_VIOLATION =
 interface WebRuntime {
   media: MediaFixture;
   runtimeRoot: string;
+  serverShutdownProbe: ServerShutdownProbe;
   ui: StartedUIProcess;
   installNetworkGuard(context: BrowserContext): Promise<BrowserNetworkGuard>;
 }
@@ -129,11 +134,13 @@ const test = base.extend<{ webRuntime: WebRuntime }>({
       };
       let guardedContext: BrowserContext | undefined;
       let networkGuard: BrowserNetworkGuard | undefined;
+      let serverShutdownProbe: ServerShutdownProbe | undefined;
       let setupError: unknown;
 
       try {
         await assertPortFree("127.0.0.1", 8501, "MediaGo Web UI");
         await assertPortFree("127.0.0.1", 9900, "MediaGo Web Core");
+        serverShutdownProbe = await probeServerStartupShutdown();
         resources.media = await loadMediaFixture();
         resources.ui = await startUIProcess("server");
         if (FORCE_SLOW_SETUP) {
@@ -149,11 +156,13 @@ const test = base.extend<{ webRuntime: WebRuntime }>({
         setupError === undefined &&
         resources.media &&
         resources.ui &&
-        resources.server
+        resources.server &&
+        serverShutdownProbe
       ) {
         await use({
           media: resources.media,
           runtimeRoot: resources.runtimeRoot,
+          serverShutdownProbe,
           ui: resources.ui,
           installNetworkGuard: async (context) => {
             if (networkGuard) {
@@ -261,6 +270,15 @@ test("downloads a direct MP4 after first-run authentication", async ({
   page,
   webRuntime,
 }, testInfo) => {
+  if (process.platform === "linux") {
+    expect(webRuntime.serverShutdownProbe).toMatchObject({
+      corePidRecorded: true,
+      executed: true,
+      shutdownLogCount: 1,
+    });
+    expect(webRuntime.serverShutdownProbe.elapsedMs).toBeLessThan(3_000);
+  }
+
   const networkGuard = await webRuntime.installNetworkGuard(page.context());
   await page.goto(webRuntime.ui.baseURL);
 

@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = path.resolve(__dirname, "../../..");
+const CORE_SHUTDOWN_TIMEOUT_MS = 1_000;
 dotenvFlow.config({
   path: projectRoot,
 });
@@ -38,6 +39,7 @@ const runner = new ServiceRunner({
   executableDir: path.dirname(core.coreBin),
   preferredPort: 9900,
   internal: true,
+  shutdownTimeoutMs: CORE_SHUTDOWN_TIMEOUT_MS,
   extraArgs: [
     `--enable-auth`,
     `--log-level=debug`,
@@ -62,16 +64,25 @@ runner.on("exit", (code, signal) => {
   console.log(`Go Core exited with code=${code}, signal=${signal}`);
 });
 
+// Handle graceful shutdown
+let shutdownPromise: Promise<void> | null = null;
+const shutdown = (): Promise<void> => {
+  if (shutdownPromise) return shutdownPromise;
+
+  console.log("Shutting down...");
+  shutdownPromise = runner.stop().then(
+    () => process.exit(0),
+    (error) => {
+      process.stderr.write(`Failed to stop Go Core: ${String(error)}\n`);
+      process.exit(1);
+    },
+  );
+  return shutdownPromise;
+};
+
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
+
 const state = await runner.start();
 console.log(`Go Core started at ${state.url} (pid: ${state.pid})`);
 console.log(`Player UI available at ${state.url}/player/`);
-
-// Handle graceful shutdown
-const shutdown = async () => {
-  console.log("Shutting down...");
-  await runner.stop();
-  process.exit(0);
-};
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
