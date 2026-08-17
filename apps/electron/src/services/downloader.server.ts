@@ -4,6 +4,7 @@ import { provide } from "@inversifyjs/binding-decorators";
 import {
   type CreateTaskResponse,
   MediaGoClient,
+  type TaskEventEmitter,
   TaskStatus,
 } from "@mediago/core-sdk";
 import { ServiceRunner } from "@mediago/service-runner";
@@ -36,11 +37,22 @@ export interface DownloadServiceOptions {
   dbPath: string;
 }
 
+interface DownloaderStartOperation {
+  promise: Promise<void>;
+  runner: ServiceRunner;
+  started: boolean;
+}
+
 @injectable()
 @provide()
 export class DownloaderServer extends EventEmitter {
   private serverUrl = "";
   private client: MediaGoClient | null = null;
+  private runner: ServiceRunner | null = null;
+  private events: TaskEventEmitter | null = null;
+  private startOperation: DownloaderStartOperation | null = null;
+  private stopping: Promise<void> | null = null;
+  private shutdownFailed = false;
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -50,26 +62,65 @@ export class DownloaderServer extends EventEmitter {
     super();
   }
 
-  async start(opts: DownloadServiceOptions) {
-    const core = resolveCoreBinaries();
-    const deps = resolveDepsBinaries();
+  start(opts: DownloadServiceOptions): Promise<void> {
+    if (this.stopping) {
+      return Promise.reject(new Error("DownloaderServer is stopping"));
+    }
+    if (this.shutdownFailed) {
+      return Promise.reject(
+        new Error("DownloaderServer cannot restart after shutdown failure"),
+      );
+    }
+    if (this.startOperation) return this.startOperation.promise;
+    if (this.runner) return Promise.resolve();
 
-    const runner = new ServiceRunner({
-      executableName: "mediago-core",
-      executableDir: path.dirname(core.coreBin),
-      preferredPort: 39719,
-      internal: false,
-      extraArgs: [
-        `-log-level=info`,
-        `-log-dir=${opts.logDir}`,
-        `-schema-path=${core.coreConfig}`,
-        `-deps-dir=${deps.depsDir}`,
-        `-db-path=${opts.dbPath}`,
-        `-config-dir=${path.dirname(opts.dbPath)}`,
-      ],
-    });
+    let runner: ServiceRunner;
+    try {
+      const core = resolveCoreBinaries();
+      const deps = resolveDepsBinaries();
+      runner = new ServiceRunner({
+        executableName: "mediago-core",
+        executableDir: path.dirname(core.coreBin),
+        preferredPort: 39719,
+        internal: false,
+        extraArgs: [
+          `-log-level=info`,
+          `-log-dir=${opts.logDir}`,
+          `-schema-path=${core.coreConfig}`,
+          `-deps-dir=${deps.depsDir}`,
+          `-db-path=${opts.dbPath}`,
+          `-config-dir=${path.dirname(opts.dbPath)}`,
+        ],
+      });
+    } catch (error) {
+      return Promise.reject(error);
+    }
 
-    await runner.start();
+    this.runner = runner;
+    const operation = {
+      runner,
+      started: false,
+    } as DownloaderStartOperation;
+    operation.promise = this.startRunner(operation);
+    this.startOperation = operation;
+    void operation.promise.then(
+      () => this.clearStartOperation(operation),
+      () => this.clearStartOperation(operation),
+    );
+    return operation.promise;
+  }
+
+  private async startRunner(operation: DownloaderStartOperation) {
+    const { runner } = operation;
+    try {
+      await runner.start();
+    } catch (error) {
+      if (this.runner === runner) this.runner = null;
+      throw error;
+    }
+
+    operation.started = true;
+    if (this.runner !== runner) return;
 
     this.serverUrl = runner.getURL();
 
@@ -78,7 +129,8 @@ export class DownloaderServer extends EventEmitter {
     this.client = new MediaGoClient({
       baseURL: this.serverUrl,
     });
-    const events = this.client.streamEvents();
+    this.events = this.client.streamEvents();
+    const events = this.events;
 
     events.on("download-start", (payload) => {
       this.emit("download-start", payload.id);
@@ -103,6 +155,88 @@ export class DownloaderServer extends EventEmitter {
     events.on("config-changed", (payload) => {
       this.emit("config-changed", payload.key, payload.value);
     });
+  }
+
+  private clearStartOperation(operation: DownloaderStartOperation) {
+    if (this.startOperation === operation) this.startOperation = null;
+  }
+
+  stop(): Promise<void> {
+    if (this.stopping) return this.stopping;
+
+    this.stopPolling();
+    const events = this.events;
+    this.events = null;
+    this.client = null;
+    const runner = this.runner;
+    this.runner = null;
+    this.serverUrl = "";
+
+    let closeFailed = false;
+    let closeError: unknown;
+    try {
+      events?.close();
+    } catch (error) {
+      closeFailed = true;
+      closeError = error;
+    }
+
+    if (!runner) {
+      if (closeFailed) {
+        this.shutdownFailed = true;
+        return Promise.reject(closeError);
+      }
+      return Promise.resolve();
+    }
+
+    const startOperation =
+      this.startOperation?.runner === runner ? this.startOperation : null;
+    const stopping = this.stopRunner(
+      runner,
+      startOperation,
+      closeFailed,
+      closeError,
+    );
+    this.stopping = stopping;
+    void stopping.then(
+      () => {
+        if (this.stopping === stopping) this.stopping = null;
+      },
+      () => {
+        this.shutdownFailed = true;
+        if (this.stopping === stopping) this.stopping = null;
+      },
+    );
+    return stopping;
+  }
+
+  private async stopRunner(
+    runner: ServiceRunner,
+    startOperation: DownloaderStartOperation | null,
+    closeFailed: boolean,
+    closeError: unknown,
+  ) {
+    if (startOperation) {
+      try {
+        await startOperation.promise;
+      } catch {
+        // ServiceRunner.start already cleans up its own failed start.
+      }
+    }
+
+    let runnerStopFailed = false;
+    let runnerStopError: unknown;
+    if (!startOperation || startOperation.started) {
+      try {
+        await runner.stop();
+      } catch (error) {
+        runnerStopFailed = true;
+        runnerStopError = error;
+      }
+    }
+
+    if (runnerStopFailed) throw runnerStopError;
+    if (closeFailed) throw closeError;
   }
 
   async startTask(
