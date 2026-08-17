@@ -38,6 +38,8 @@ export interface ServiceRunnerOptions {
   healthCheckIntervalMs?: number;
   /** Timeout for a single health-check request, in ms (default 2000). */
   healthRequestTimeoutMs?: number;
+  /** Max time to wait for SIGTERM before sending SIGKILL, in ms (default 5000). */
+  shutdownTimeoutMs?: number;
   /** Command-line arguments passed to the child process. */
   extraArgs?: string[];
   /** Environment variables passed to the child process. */
@@ -98,6 +100,7 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
   private healthCheckTimeoutMs: number;
   private healthCheckIntervalMs: number;
   private healthRequestTimeoutMs: number;
+  private shutdownTimeoutMs: number;
   private currentHost: string;
 
   constructor(options: ServiceRunnerOptions) {
@@ -126,6 +129,7 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
       requestTimeout,
       this.healthCheckTimeoutMs,
     );
+    this.shutdownTimeoutMs = options.shutdownTimeoutMs ?? 5_000;
     this.currentHost = this.computeHost();
 
     // Initialise runtime state.
@@ -239,31 +243,54 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
     const pid = child.pid;
 
     return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let shutdownTimeout: ReturnType<typeof setTimeout> | undefined;
+
       const cleanup = () => {
         child.removeListener("exit", handleExit);
+        if (shutdownTimeout) clearTimeout(shutdownTimeout);
+      };
+
+      const settle = (result: () => void) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        result();
       };
 
       const handleExit = () => {
-        cleanup();
-        resolve();
+        settle(resolve);
+      };
+
+      const handleKillError = (
+        killError: Error | NodeJS.ErrnoException | null | undefined,
+      ) => {
+        if (!killError) return false;
+
+        if ((killError as NodeJS.ErrnoException).code === "ESRCH") {
+          this.resetRuntimeState();
+          settle(resolve);
+          return true;
+        }
+
+        settle(() => reject(killError));
+        return true;
       };
 
       child.once("exit", handleExit);
 
       kill(pid, "SIGTERM", (killError) => {
-        if (!killError) {
+        if (settled || handleKillError(killError)) {
           return;
         }
 
-        if ((killError as NodeJS.ErrnoException).code === "ESRCH") {
-          cleanup();
-          this.resetRuntimeState();
-          resolve();
-          return;
-        }
-
-        cleanup();
-        reject(killError);
+        shutdownTimeout = setTimeout(() => {
+          if (settled) return;
+          kill(pid, "SIGKILL", (forceKillError) => {
+            if (settled) return;
+            handleKillError(forceKillError);
+          });
+        }, this.shutdownTimeoutMs);
       });
     });
   }

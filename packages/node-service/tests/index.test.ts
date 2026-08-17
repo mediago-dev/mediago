@@ -280,4 +280,115 @@ describe("ServiceRunner", () => {
     await expect(runner.start()).rejects.toThrow(/failed health check/i);
     expect(runner.isRunning()).toBe(false);
   });
+
+  test("force kills a service that does not exit after SIGTERM", async () => {
+    const ServiceRunner = await loadServiceRunnerWithAvailablePort();
+    const fixture = getExecutableFixture();
+    vi.useFakeTimers();
+
+    try {
+      killMock.mockImplementation((_pid, _signal, callback) =>
+        callback?.(null),
+      );
+      const runner = new ServiceRunner({
+        executableDir: fixture.dir,
+        executableName: fixture.name,
+        shutdownTimeoutMs: 20,
+      });
+      await runner.start();
+
+      const stop = runner.stop();
+      expect(killMock).toHaveBeenNthCalledWith(
+        1,
+        lastSpawnedChild?.pid,
+        "SIGTERM",
+        expect.any(Function),
+      );
+
+      await vi.advanceTimersByTimeAsync(19);
+      expect(killMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(killMock).toHaveBeenNthCalledWith(
+        2,
+        lastSpawnedChild?.pid,
+        "SIGKILL",
+        expect.any(Function),
+      );
+
+      lastSpawnedChild?.emit("exit", null, "SIGKILL");
+      await stop;
+      expect(runner.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("does not force kill a service that exits after SIGTERM", async () => {
+    const ServiceRunner = await loadServiceRunnerWithAvailablePort();
+    const fixture = getExecutableFixture();
+    vi.useFakeTimers();
+
+    try {
+      killMock.mockImplementation((_pid, _signal, callback) =>
+        callback?.(null),
+      );
+      const runner = new ServiceRunner({
+        executableDir: fixture.dir,
+        executableName: fixture.name,
+        shutdownTimeoutMs: 20,
+      });
+      await runner.start();
+
+      const stop = runner.stop();
+      lastSpawnedChild?.emit("exit", null, "SIGTERM");
+      await stop;
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(killMock).toHaveBeenCalledTimes(1);
+      expect(killMock).toHaveBeenNthCalledWith(
+        1,
+        lastSpawnedChild?.pid,
+        "SIGTERM",
+        expect.any(Function),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("rejects if a force kill fails for a running service", async () => {
+    const ServiceRunner = await loadServiceRunnerWithAvailablePort();
+    const fixture = getExecutableFixture();
+    vi.useFakeTimers();
+
+    try {
+      killMock.mockImplementation((_pid, signal, callback) => {
+        if (signal === "SIGKILL") {
+          callback?.(
+            Object.assign(new Error("force kill failed"), { code: "EPERM" }),
+          );
+          return;
+        }
+        callback?.(null);
+      });
+      const runner = new ServiceRunner({
+        executableDir: fixture.dir,
+        executableName: fixture.name,
+        shutdownTimeoutMs: 20,
+      });
+      await runner.start();
+
+      const stop = runner.stop();
+      const expectStop = expect(stop).rejects.toThrow("force kill failed");
+      await vi.advanceTimersByTimeAsync(20);
+
+      await expectStop;
+      expect(lastSpawnedChild?.listenerCount("exit")).toBe(1);
+      await vi.advanceTimersByTimeAsync(20);
+      expect(killMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
