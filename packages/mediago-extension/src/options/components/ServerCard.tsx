@@ -210,6 +210,8 @@ function StatusInline({ ok, text }: { ok: boolean; text: string }) {
   if (ok) {
     return (
       <Badge
+        role="status"
+        aria-live="polite"
         variant="success"
         className="max-w-[360px] gap-1 normal-case tracking-normal"
       >
@@ -220,6 +222,8 @@ function StatusInline({ ok, text }: { ok: boolean; text: string }) {
   }
   return (
     <Badge
+      role="status"
+      aria-live="polite"
       variant="destructive"
       className="max-w-[360px] gap-1 normal-case tracking-normal"
     >

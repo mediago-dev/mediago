@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -647,5 +654,308 @@ describe("manual context failure artifacts", () => {
       "attach:trace.zip:trace.zip",
       "attach:electron-video-1.webm:electron-video-1.webm",
     ]);
+  });
+
+  test("bounds stalled pre-close artifacts and still invokes close without replacing a primary failure", async () => {
+    const never = new Promise<never>(() => {});
+    const close = vi.fn(async () => undefined);
+    const attachments: Array<{ name: string; body?: string }> = [];
+    const video = {
+      path: vi.fn(() => never),
+      saveAs: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    } as unknown as Video;
+    const page = {
+      screenshot: vi.fn(() => never),
+      video: () => video,
+    } as unknown as Page;
+    const context = {
+      tracing: { stop: vi.fn(() => never) },
+      pages: () => [page],
+    } as unknown as BrowserContext;
+    const testInfo = {
+      outputPath: (...segments: string[]) =>
+        path.join("/tmp/mediago-stalled-artifacts", ...segments),
+      attach: vi.fn(
+        async (name: string, options?: { body?: string | Buffer }) => {
+          attachments.push({
+            name,
+            body:
+              typeof options?.body === "string"
+                ? options.body
+                : options?.body?.toString("utf8"),
+          });
+        },
+      ),
+    } as unknown as TestInfo;
+
+    const startedAt = Date.now();
+    await finalizeManualContextArtifacts({
+      testInfo,
+      context,
+      page,
+      close,
+      failed: true,
+      name: "extension",
+      artifactOperationTimeoutMs: 20,
+    });
+
+    expect(Date.now() - startedAt).toBeLessThan(300);
+    expect(close).toHaveBeenCalledOnce();
+    const diagnostics = attachments.find(
+      (attachment) => attachment.name === "extension-artifact-errors.log",
+    )?.body;
+    expect(diagnostics).toContain("capture failure screenshot");
+    expect(diagnostics).toContain("stop trace");
+    expect(diagnostics).toContain("read video 1 path");
+  }, 500);
+
+  test("bounds stalled post-close video save and delete operations", async () => {
+    const never = new Promise<never>(() => {});
+    const makeOptions = (failed: boolean) => {
+      const close = vi.fn(async () => undefined);
+      const video = {
+        path: vi.fn(async () => ""),
+        saveAs: vi.fn(() => never),
+        delete: vi.fn(() => never),
+      } as unknown as Video;
+      const page = { video: () => video } as unknown as Page;
+      const context = {
+        tracing: { stop: vi.fn(async () => undefined) },
+        pages: () => [page],
+      } as unknown as BrowserContext;
+      const testInfo = {
+        outputPath: (...segments: string[]) =>
+          path.join("/tmp/mediago-stalled-videos", ...segments),
+        attach: vi.fn(async () => undefined),
+      } as unknown as TestInfo;
+      return {
+        close,
+        options: {
+          testInfo,
+          context,
+          close,
+          failed,
+          name: "extension",
+          artifactOperationTimeoutMs: 20,
+        },
+      };
+    };
+
+    const failedRun = makeOptions(true);
+    const successfulRun = makeOptions(false);
+    const startedAt = Date.now();
+
+    await finalizeManualContextArtifacts(failedRun.options);
+    await expect(
+      finalizeManualContextArtifacts(successfulRun.options),
+    ).rejects.toThrow(/delete video 1 timed out/i);
+
+    expect(Date.now() - startedAt).toBeLessThan(300);
+    expect(failedRun.close).toHaveBeenCalledOnce();
+    expect(successfulRun.close).toHaveBeenCalledOnce();
+  });
+
+  test("observes an artifact rejection that arrives after its deadline", async () => {
+    let rejectScreenshot: ((error: Error) => void) | undefined;
+    const lateScreenshot = new Promise<never>((_resolve, reject) => {
+      rejectScreenshot = reject;
+    });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (error: unknown): void => {
+      unhandled.push(error);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    const close = vi.fn(async () => undefined);
+    const page = {
+      screenshot: vi.fn(() => lateScreenshot),
+      video: () => null,
+    } as unknown as Page;
+    const context = {
+      tracing: { stop: vi.fn(async () => undefined) },
+      pages: () => [page],
+    } as unknown as BrowserContext;
+    const testInfo = {
+      outputPath: (...segments: string[]) =>
+        path.join("/tmp/mediago-late-artifact-rejection", ...segments),
+      attach: vi.fn(async () => undefined),
+    } as unknown as TestInfo;
+
+    try {
+      await finalizeManualContextArtifacts({
+        testInfo,
+        context,
+        page,
+        close,
+        failed: true,
+        name: "extension",
+        artifactOperationTimeoutMs: 20,
+      });
+      rejectScreenshot?.(new Error("late screenshot rejection"));
+      await delay(20);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(unhandled).toEqual([]);
+  });
+
+  test("copies only retained persistent-context videos after close", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "mediago-artifacts-test-"));
+    temporaryRoots.push(root);
+    const videoDirectory = path.join(root, "manual-videos");
+    await mkdir(videoDirectory, { recursive: true });
+    const firstSource = path.join(videoDirectory, "first.webm");
+    const secondSource = path.join(videoDirectory, "second.webm");
+    const unrelated = path.join(videoDirectory, "unrelated.webm");
+    await Promise.all([
+      writeFile(firstSource, "first-video"),
+      writeFile(secondSource, "second-video"),
+      writeFile(unrelated, "unrelated-video"),
+    ]);
+
+    const calls: string[] = [];
+    const videoFor = (sourcePath: string): Video =>
+      ({
+        path: vi.fn(async () => sourcePath),
+        saveAs: vi.fn(async () => {
+          calls.push(`save:${path.basename(sourcePath)}`);
+          throw new Error("Target page, context or browser has been closed");
+        }),
+        delete: vi.fn(async () => undefined),
+      }) as unknown as Video;
+    const pages = [firstSource, secondSource].map(
+      (sourcePath) =>
+        ({ video: () => videoFor(sourcePath) }) as unknown as Page,
+    );
+    const context = {
+      tracing: {
+        stop: vi.fn(async () => {
+          calls.push("trace");
+        }),
+      },
+      pages: () => pages,
+    } as unknown as BrowserContext;
+    const testInfo = {
+      outputPath: (...segments: string[]) => path.join(root, ...segments),
+      attach: vi.fn(async () => undefined),
+    } as unknown as TestInfo;
+
+    await finalizeManualContextArtifacts({
+      testInfo,
+      context,
+      close: async () => {
+        calls.push("close");
+      },
+      failed: true,
+      name: "extension",
+    });
+
+    expect(calls).toEqual([
+      "trace",
+      "close",
+      "save:first.webm",
+      "save:second.webm",
+    ]);
+    await expect(
+      readFile(path.join(root, "extension-video-1.webm"), "utf8"),
+    ).resolves.toBe("first-video");
+    await expect(
+      readFile(path.join(root, "extension-video-2.webm"), "utf8"),
+    ).resolves.toBe("second-video");
+    await expect(readFile(unrelated, "utf8")).resolves.toBe("unrelated-video");
+  });
+
+  test("does not follow a retained video symlink during filesystem fallback", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "mediago-artifacts-test-"));
+    temporaryRoots.push(root);
+    const videoDirectory = path.join(root, "manual-videos");
+    await mkdir(videoDirectory, { recursive: true });
+    const unrelated = path.join(root, "unrelated.webm");
+    const linkedSource = path.join(videoDirectory, "linked.webm");
+    await writeFile(unrelated, "unrelated-video");
+    await symlink(unrelated, linkedSource);
+
+    const video = {
+      path: vi.fn(async () => linkedSource),
+      saveAs: vi.fn(async () => {
+        throw new Error("Target page, context or browser has been closed");
+      }),
+      delete: vi.fn(async () => undefined),
+    } as unknown as Video;
+    const context = {
+      tracing: { stop: vi.fn(async () => undefined) },
+      pages: () => [{ video: () => video } as unknown as Page],
+    } as unknown as BrowserContext;
+    const testInfo = {
+      outputPath: (...segments: string[]) => path.join(root, ...segments),
+      attach: vi.fn(async () => undefined),
+    } as unknown as TestInfo;
+
+    await finalizeManualContextArtifacts({
+      testInfo,
+      context,
+      close: async () => undefined,
+      failed: true,
+      name: "extension",
+    });
+
+    await expect(
+      readFile(path.join(root, "extension-video-1.webm")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(unrelated, "utf8")).resolves.toBe("unrelated-video");
+  });
+
+  test("removes only retained persistent-context videos after close", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "mediago-artifacts-test-"));
+    temporaryRoots.push(root);
+    const videoDirectory = path.join(root, "manual-videos");
+    await mkdir(videoDirectory, { recursive: true });
+    const firstSource = path.join(videoDirectory, "first.webm");
+    const secondSource = path.join(videoDirectory, "second.webm");
+    const unrelated = path.join(videoDirectory, "unrelated.webm");
+    await Promise.all([
+      writeFile(firstSource, "first-video"),
+      writeFile(secondSource, "second-video"),
+      writeFile(unrelated, "unrelated-video"),
+    ]);
+
+    const videoFor = (sourcePath: string): Video =>
+      ({
+        path: vi.fn(async () => sourcePath),
+        saveAs: vi.fn(async () => undefined),
+        delete: vi.fn(async () => {
+          throw new Error("Target page, context or browser has been closed");
+        }),
+      }) as unknown as Video;
+    const context = {
+      tracing: { stop: vi.fn(async () => undefined) },
+      pages: () =>
+        [firstSource, secondSource].map(
+          (sourcePath) =>
+            ({ video: () => videoFor(sourcePath) }) as unknown as Page,
+        ),
+    } as unknown as BrowserContext;
+    const testInfo = {
+      outputPath: (...segments: string[]) => path.join(root, ...segments),
+      attach: vi.fn(async () => undefined),
+    } as unknown as TestInfo;
+
+    await finalizeManualContextArtifacts({
+      testInfo,
+      context,
+      close: async () => undefined,
+      failed: false,
+      name: "extension",
+    });
+
+    await expect(readFile(firstSource)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(readFile(secondSource)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(readFile(unrelated, "utf8")).resolves.toBe("unrelated-video");
   });
 });

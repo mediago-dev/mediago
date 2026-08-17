@@ -2,7 +2,7 @@ import { constants } from "node:fs";
 import { access, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MediaGoClient } from "@mediago/core-sdk";
+import { MediaGoClient } from "../../../packages/core-sdk/src/index.ts";
 import { assertPortFree } from "./ports.ts";
 import { startManagedProcess, type ManagedProcess } from "./process.ts";
 
