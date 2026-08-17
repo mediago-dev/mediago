@@ -385,6 +385,8 @@ export const DownloadTaskItem = memo(function DownloadTaskItem({
 
   return (
     <div
+      role="article"
+      aria-label={task.name}
       className={cn(
         "relative flex flex-row gap-3 border-b px-3 py-3 transition-colors last:border-b-0 hover:bg-surface-hover",
         {

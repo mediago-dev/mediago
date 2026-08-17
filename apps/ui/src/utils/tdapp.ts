@@ -10,8 +10,10 @@ class TDEvent {
   }
 
   init() {
+    const appId = typeof this.appId === "string" ? this.appId.trim() : "";
+    if (!appId) return;
     const script = document.createElement("script");
-    script.src = `https://jic.talkingdata.com/app/h5/v1?appid=${this.appId}&vn=${this.vn}&vc=${this.vc}`;
+    script.src = `https://jic.talkingdata.com/app/h5/v1?appid=${appId}&vn=${this.vn}&vc=${this.vc}`;
     script.async = true;
     const headElement = document.getElementsByTagName("head")[0];
     headElement.appendChild(script);
