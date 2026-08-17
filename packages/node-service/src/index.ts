@@ -38,7 +38,10 @@ export interface ServiceRunnerOptions {
   healthCheckIntervalMs?: number;
   /** Timeout for a single health-check request, in ms (default 2000). */
   healthRequestTimeoutMs?: number;
-  /** Max time to wait for SIGTERM before sending SIGKILL, in ms (default 5000). */
+  /**
+   * Max time to wait after SIGTERM before sending SIGKILL, and again after
+   * SIGKILL before reporting cleanup failure, in ms (default 5000).
+   */
   shutdownTimeoutMs?: number;
   /** Command-line arguments passed to the child process. */
   extraArgs?: string[];
@@ -89,6 +92,10 @@ export interface ServiceRunnerEvents {
  */
 export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
   private childProcess: ChildProcessWithoutNullStreams | null = null;
+  // POSIX uses this PID as the retained process-group ID; Windows retains the
+  // taskkill tree root until cleanup has completed or reported failure.
+  private ownedProcessPid: number | undefined;
+  private stopping: Promise<void> | null = null;
   private readonly runtimeState: ServiceRunnerState;
   private readonly binaryPath: string;
   private preferredPort?: number;
@@ -152,6 +159,10 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
       return this.getState();
     }
 
+    if (this.ownedProcessPid !== undefined) {
+      await this.stop();
+    }
+
     if (this.childProcess) {
       // Clean up a stale child-process handle (e.g. after an abnormal exit).
       this.resetRuntimeState(false);
@@ -198,12 +209,14 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
 
     try {
       const child = spawn(this.binaryPath, this.spawnArguments, {
+        detached: process.platform !== "win32",
         env: childEnv,
         stdio: "pipe",
         windowsHide: process.platform === "win32",
       }) as ChildProcessWithoutNullStreams;
 
       this.childProcess = child;
+      this.ownedProcessPid = child.pid ?? undefined;
       this.runtimeState.pid = child.pid ?? undefined;
       this.runtimeState.started = false;
       this.runtimeState.host = host;
@@ -214,7 +227,7 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
       await this.waitForHealthy(host, resolvedPort);
       this.runtimeState.started = true;
     } catch (error) {
-      if (this.childProcess) {
+      if (this.ownedProcessPid !== undefined) {
         try {
           await this.stop();
         } catch {
@@ -234,65 +247,29 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
    * Stop the service, gracefully terminating the process tree.
    */
   async stop(): Promise<void> {
-    const child = this.childProcess;
-    if (!child?.pid) {
+    if (this.stopping) {
+      return this.stopping;
+    }
+
+    const pid = this.ownedProcessPid;
+    if (pid === undefined) {
       this.resetRuntimeState();
       return;
     }
 
-    const pid = child.pid;
-
-    return new Promise<void>((resolve, reject) => {
-      let settled = false;
-      let shutdownTimeout: ReturnType<typeof setTimeout> | undefined;
-
-      const cleanup = () => {
-        child.removeListener("exit", handleExit);
-        if (shutdownTimeout) clearTimeout(shutdownTimeout);
-      };
-
-      const settle = (result: () => void) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        result();
-      };
-
-      const handleExit = () => {
-        settle(resolve);
-      };
-
-      const handleKillError = (
-        killError: Error | NodeJS.ErrnoException | null | undefined,
-      ) => {
-        if (!killError) return false;
-
-        if ((killError as NodeJS.ErrnoException).code === "ESRCH") {
-          this.resetRuntimeState();
-          settle(resolve);
-          return true;
-        }
-
-        settle(() => reject(killError));
-        return true;
-      };
-
-      child.once("exit", handleExit);
-
-      kill(pid, "SIGTERM", (killError) => {
-        if (settled || handleKillError(killError)) {
-          return;
-        }
-
-        shutdownTimeout = setTimeout(() => {
-          if (settled) return;
-          kill(pid, "SIGKILL", (forceKillError) => {
-            if (settled) return;
-            handleKillError(forceKillError);
-          });
-        }, this.shutdownTimeoutMs);
-      });
+    const stop = this.stopOwnedProcess(pid).then(() => {
+      if (this.ownedProcessPid === pid) {
+        this.ownedProcessPid = undefined;
+        this.resetRuntimeState();
+      }
     });
+    const trackedStop = stop.finally(() => {
+      if (this.stopping === trackedStop) {
+        this.stopping = null;
+      }
+    });
+    this.stopping = trackedStop;
+    return trackedStop;
   }
 
   /**
@@ -575,6 +552,65 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
     });
   }
 
+  private async stopOwnedProcess(pid: number): Promise<void> {
+    await ServiceRunner.signalOwnedProcessTree(pid, "SIGTERM");
+    if (await this.waitForOwnedProcessTreeExit(pid)) return;
+
+    await ServiceRunner.signalOwnedProcessTree(pid, "SIGKILL");
+    if (await this.waitForOwnedProcessTreeExit(pid)) return;
+
+    throw new Error(
+      `Process tree ${pid} did not exit within ${this.shutdownTimeoutMs * 2} ms`,
+    );
+  }
+
+  private async waitForOwnedProcessTreeExit(pid: number): Promise<boolean> {
+    const deadline = Date.now() + this.shutdownTimeoutMs;
+    while (ServiceRunner.ownedProcessTreeIsAlive(pid)) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return false;
+      // oxlint-disable-next-line no-await-in-loop -- Liveness polling must complete before the next probe.
+      await ServiceRunner.delay(Math.min(25, remaining));
+    }
+    return true;
+  }
+
+  private static ownedProcessTreeIsAlive(pid: number): boolean {
+    try {
+      process.kill(process.platform === "win32" ? pid : -pid, 0);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    }
+  }
+
+  private static signalOwnedProcessTree(
+    pid: number,
+    signal: NodeJS.Signals,
+  ): Promise<void> {
+    if (process.platform === "win32") {
+      return new Promise((resolve, reject) => {
+        kill(pid, signal, (error) => {
+          if (!error || (error as NodeJS.ErrnoException).code === "ESRCH") {
+            resolve();
+          } else {
+            reject(error);
+          }
+        });
+      });
+    }
+
+    try {
+      process.kill(-pid, signal);
+      return Promise.resolve();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+        return Promise.resolve();
+      }
+      return Promise.reject(error);
+    }
+  }
+
   private async ensureBinaryAccessible(): Promise<void> {
     try {
       await access(this.binaryPath, fsConstants.F_OK);
@@ -597,7 +633,9 @@ export class ServiceRunner extends EventEmitter<ServiceRunnerEvents> {
     });
 
     child.once("exit", (code, signal) => {
-      this.resetRuntimeState();
+      if (this.childProcess === child) {
+        this.resetRuntimeState();
+      }
       this.emit("exit", code, signal);
     });
 

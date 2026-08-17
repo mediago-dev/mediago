@@ -33,6 +33,10 @@ const killMock =
     ) => void
   >();
 
+const signalOwnedProcessTreeMock =
+  vi.fn<(pid: number, signal: NodeJS.Signals) => Promise<void>>();
+const ownedProcessTreeIsAliveMock = vi.fn<(pid: number) => boolean>();
+
 vi.mock("node:child_process", () => ({
   spawn: (...args: Parameters<typeof spawnMock>) => spawnMock(...args),
 }));
@@ -44,13 +48,30 @@ vi.mock("tree-kill", () => ({
 async function loadServiceRunnerWithAvailablePort() {
   const { ServiceRunner } = await import("../src/index");
   const original = Reflect.get(ServiceRunner, "isPortFree");
+  const originalSignal = Reflect.get(ServiceRunner, "signalOwnedProcessTree");
+  const originalLiveness = Reflect.get(
+    ServiceRunner,
+    "ownedProcessTreeIsAlive",
+  );
   Reflect.set(
     ServiceRunner,
     "isPortFree",
     vi.fn(async () => true),
   );
+  Reflect.set(
+    ServiceRunner,
+    "signalOwnedProcessTree",
+    signalOwnedProcessTreeMock,
+  );
+  Reflect.set(
+    ServiceRunner,
+    "ownedProcessTreeIsAlive",
+    ownedProcessTreeIsAliveMock,
+  );
   onTestFinished(() => {
     Reflect.set(ServiceRunner, "isPortFree", original);
+    Reflect.set(ServiceRunner, "signalOwnedProcessTree", originalSignal);
+    Reflect.set(ServiceRunner, "ownedProcessTreeIsAlive", originalLiveness);
   });
   return ServiceRunner;
 }
@@ -126,6 +147,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   lastSpawnedChild = null;
   nextPid = 4_000;
+  signalOwnedProcessTreeMock.mockResolvedValue(undefined);
+  ownedProcessTreeIsAliveMock.mockReturnValue(false);
 
   spawnMock.mockImplementation(() => {
     const child = new MockChildProcess(nextPid++);
@@ -173,6 +196,7 @@ describe("ServiceRunner", () => {
       PORT: "4321",
       HOST: "127.0.0.1",
     });
+    expect(spawnOptions?.detached).toBe(process.platform !== "win32");
 
     expect(fetchMock).toHaveBeenCalled();
     const requestURL = fetchMock.mock.calls[0][0];
@@ -202,11 +226,11 @@ describe("ServiceRunner", () => {
     });
     expect(restartedState.port).toBe(9_000);
     expect(restartedState.started).toBe(true);
-    expect(killMock).toHaveBeenCalledTimes(1);
+    expect(signalOwnedProcessTreeMock).toHaveBeenCalledTimes(1);
     expect(runner.isRunning()).toBe(true);
 
     await runner.stop();
-    expect(killMock).toHaveBeenCalledTimes(2);
+    expect(signalOwnedProcessTreeMock).toHaveBeenCalledTimes(2);
     expect(runner.isRunning()).toBe(false);
   });
 
@@ -287,9 +311,11 @@ describe("ServiceRunner", () => {
     vi.useFakeTimers();
 
     try {
-      killMock.mockImplementation((_pid, _signal, callback) =>
-        callback?.(null),
-      );
+      let treeAlive = true;
+      ownedProcessTreeIsAliveMock.mockImplementation(() => treeAlive);
+      signalOwnedProcessTreeMock.mockImplementation(async (_pid, signal) => {
+        if (signal === "SIGKILL") treeAlive = false;
+      });
       const runner = new ServiceRunner({
         executableDir: fixture.dir,
         executableName: fixture.name,
@@ -298,25 +324,23 @@ describe("ServiceRunner", () => {
       await runner.start();
 
       const stop = runner.stop();
-      expect(killMock).toHaveBeenNthCalledWith(
+      lastSpawnedChild?.emit("exit", null, "SIGTERM");
+      expect(signalOwnedProcessTreeMock).toHaveBeenNthCalledWith(
         1,
         lastSpawnedChild?.pid,
         "SIGTERM",
-        expect.any(Function),
       );
 
       await vi.advanceTimersByTimeAsync(19);
-      expect(killMock).toHaveBeenCalledTimes(1);
+      expect(signalOwnedProcessTreeMock).toHaveBeenCalledTimes(1);
 
       await vi.advanceTimersByTimeAsync(1);
-      expect(killMock).toHaveBeenNthCalledWith(
+      expect(signalOwnedProcessTreeMock).toHaveBeenNthCalledWith(
         2,
         lastSpawnedChild?.pid,
         "SIGKILL",
-        expect.any(Function),
       );
 
-      lastSpawnedChild?.emit("exit", null, "SIGKILL");
       await stop;
       expect(runner.isRunning()).toBe(false);
     } finally {
@@ -330,9 +354,8 @@ describe("ServiceRunner", () => {
     vi.useFakeTimers();
 
     try {
-      killMock.mockImplementation((_pid, _signal, callback) =>
-        callback?.(null),
-      );
+      let treeAlive = true;
+      ownedProcessTreeIsAliveMock.mockImplementation(() => treeAlive);
       const runner = new ServiceRunner({
         executableDir: fixture.dir,
         executableName: fixture.name,
@@ -342,15 +365,15 @@ describe("ServiceRunner", () => {
 
       const stop = runner.stop();
       lastSpawnedChild?.emit("exit", null, "SIGTERM");
+      treeAlive = false;
       await stop;
       await vi.advanceTimersByTimeAsync(20);
 
-      expect(killMock).toHaveBeenCalledTimes(1);
-      expect(killMock).toHaveBeenNthCalledWith(
+      expect(signalOwnedProcessTreeMock).toHaveBeenCalledTimes(1);
+      expect(signalOwnedProcessTreeMock).toHaveBeenNthCalledWith(
         1,
         lastSpawnedChild?.pid,
         "SIGTERM",
-        expect.any(Function),
       );
     } finally {
       vi.useRealTimers();
@@ -363,14 +386,13 @@ describe("ServiceRunner", () => {
     vi.useFakeTimers();
 
     try {
-      killMock.mockImplementation((_pid, signal, callback) => {
+      ownedProcessTreeIsAliveMock.mockReturnValue(true);
+      signalOwnedProcessTreeMock.mockImplementation(async (_pid, signal) => {
         if (signal === "SIGKILL") {
-          callback?.(
-            Object.assign(new Error("force kill failed"), { code: "EPERM" }),
-          );
-          return;
+          throw Object.assign(new Error("force kill failed"), {
+            code: "EPERM",
+          });
         }
-        callback?.(null);
       });
       const runner = new ServiceRunner({
         executableDir: fixture.dir,
@@ -386,7 +408,37 @@ describe("ServiceRunner", () => {
       await expectStop;
       expect(lastSpawnedChild?.listenerCount("exit")).toBe(1);
       await vi.advanceTimersByTimeAsync(20);
-      expect(killMock).toHaveBeenCalledTimes(2);
+      expect(signalOwnedProcessTreeMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("rejects if the owned process tree survives SIGKILL", async () => {
+    const ServiceRunner = await loadServiceRunnerWithAvailablePort();
+    const fixture = getExecutableFixture();
+    vi.useFakeTimers();
+
+    try {
+      ownedProcessTreeIsAliveMock.mockReturnValue(true);
+      const runner = new ServiceRunner({
+        executableDir: fixture.dir,
+        executableName: fixture.name,
+        shutdownTimeoutMs: 20,
+      });
+      await runner.start();
+
+      const stop = runner.stop();
+      const expectStop = expect(stop).rejects.toThrow(
+        "Process tree 4000 did not exit within 40 ms",
+      );
+      await vi.advanceTimersByTimeAsync(40);
+
+      await expectStop;
+      expect(signalOwnedProcessTreeMock.mock.calls).toEqual([
+        [lastSpawnedChild?.pid, "SIGTERM"],
+        [lastSpawnedChild?.pid, "SIGKILL"],
+      ]);
     } finally {
       vi.useRealTimers();
     }
