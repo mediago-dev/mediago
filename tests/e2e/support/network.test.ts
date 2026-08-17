@@ -97,17 +97,19 @@ describe("browser context network guard", () => {
     };
     const guard = await guardBrowserContext(context);
 
-    for (const url of ["http://127.0.0.1:8501/", "ftp://external.invalid/"]) {
-      const abort = vi.fn(async () => undefined);
-      const continueRequest = vi.fn(async () => undefined);
-      await handler?.({
-        request: () => ({ url: () => url }),
-        abort,
-        continue: continueRequest,
-      });
-      expect(abort).not.toHaveBeenCalled();
-      expect(continueRequest).toHaveBeenCalledOnce();
-    }
+    await Promise.all(
+      ["http://127.0.0.1:8501/", "ftp://external.invalid/"].map(async (url) => {
+        const abort = vi.fn(async () => undefined);
+        const continueRequest = vi.fn(async () => undefined);
+        await handler?.({
+          request: () => ({ url: () => url }),
+          abort,
+          continue: continueRequest,
+        });
+        expect(abort).not.toHaveBeenCalled();
+        expect(continueRequest).toHaveBeenCalledOnce();
+      }),
+    );
 
     expect(() => assertNoBlockedRequests(guard)).not.toThrow();
   });
@@ -140,17 +142,19 @@ describe("browser context network guard", () => {
       },
     ];
 
-    for (const item of cases) {
-      const connectToServer = vi.fn(() => ({}));
-      const close = vi.fn(async () => undefined);
-      await webSocketHandler?.({
-        url: () => item.url,
-        connectToServer,
-        close,
-      });
-      expect(connectToServer).not.toHaveBeenCalled();
-      expect(close).toHaveBeenCalledOnce();
-    }
+    await Promise.all(
+      cases.map(async (item) => {
+        const connectToServer = vi.fn(() => ({}));
+        const close = vi.fn(async () => undefined);
+        await webSocketHandler?.({
+          url: () => item.url,
+          connectToServer,
+          close,
+        });
+        expect(connectToServer).not.toHaveBeenCalled();
+        expect(close).toHaveBeenCalledOnce();
+      }),
+    );
 
     expect(guard.blockedRequestCount).toBe(2);
     expect(guard.blockedRequests).toEqual(cases.map((item) => item.safe));

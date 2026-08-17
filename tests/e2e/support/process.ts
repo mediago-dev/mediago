@@ -462,6 +462,7 @@ async function waitForProcessGroupExit(
   while (processGroupIsAlive(pid)) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) return false;
+    // oxlint-disable-next-line no-await-in-loop -- Liveness polling waits before the next deadline check.
     await delay(Math.min(50, remaining));
   }
   return true;
@@ -492,6 +493,7 @@ async function waitForNoReadinessExit(
   const eventLoopBarrier = (async (): Promise<undefined> => {
     const deadline = Date.now() + NO_READINESS_EXIT_DEADLINE_MS;
     while (Date.now() < deadline) {
+      // oxlint-disable-next-line no-await-in-loop -- Each barrier step intentionally yields one event-loop turn.
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
     return undefined;
@@ -668,6 +670,7 @@ export async function startManagedProcess(options: {
         );
       }
 
+      // oxlint-disable-next-line no-await-in-loop -- Readiness probes are sequential and race process exit.
       const attempt = await Promise.race([
         checkReadiness(
           options.readinessURL,
@@ -685,6 +688,7 @@ export async function startManagedProcess(options: {
 
       const pollRemaining = deadline - Date.now();
       if (pollRemaining <= 0) continue;
+      // oxlint-disable-next-line no-await-in-loop -- Backoff must finish or observe exit before the next probe.
       const pause = await Promise.race([
         delay(Math.min(READINESS_INTERVAL_MS, pollRemaining)).then(() => false),
         exitPromise.then(() => true),

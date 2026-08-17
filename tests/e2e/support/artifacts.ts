@@ -299,6 +299,7 @@ async function listLogFiles(
     if (files.length >= LOG_FILE_LIMIT) break;
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
+      // oxlint-disable-next-line no-await-in-loop -- Ordered traversal keeps the shared file limit deterministic.
       await listLogFiles(root, absolutePath, depth + 1, files);
     } else if (entry.isFile()) {
       files.push(absolutePath);
@@ -339,6 +340,7 @@ export async function attachBoundedCoreLogs(
   const sections: string[] = [];
   for (const file of files.toReversed()) {
     if (remaining <= 0) break;
+    // oxlint-disable-next-line no-await-in-loop -- Each tail consumes the remaining byte budget in order.
     const contents = await readFileTail(file, remaining);
     const section = `${path.relative(logDirectory, file)}:\n${contents}\n`;
     const bytes = Buffer.byteLength(section);
@@ -361,6 +363,7 @@ async function attachSavedArtifacts(
 ): Promise<void> {
   for (const artifact of artifacts) {
     try {
+      // oxlint-disable-next-line no-await-in-loop -- Attachments stay ordered while failures are collected individually.
       await testInfo.attach(artifact.name, {
         path: artifact.path,
         contentType: artifact.contentType,
@@ -477,6 +480,7 @@ export async function finalizeManualContextArtifacts(
         const videoPath = options.testInfo.outputPath(
           `${prefix}-video-${index + 1}.webm`,
         );
+        // oxlint-disable-next-line no-await-in-loop -- Video cleanup stays ordered for deterministic artifacts and errors.
         await finalizeRetainedVideo(
           video,
           true,
@@ -490,6 +494,7 @@ export async function finalizeManualContextArtifacts(
           contentType: "video/webm",
         });
       } else {
+        // oxlint-disable-next-line no-await-in-loop -- Video cleanup stays ordered for deterministic artifacts and errors.
         await finalizeRetainedVideo(
           video,
           false,

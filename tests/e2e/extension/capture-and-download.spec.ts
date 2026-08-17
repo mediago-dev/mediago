@@ -180,25 +180,28 @@ async function findOwnedChromiumIdentity(
   const expectedArgument = `--user-data-dir=${path.resolve(userDataDirectory)}`;
   const deadline = Date.now() + 3_000;
   while (true) {
+    // oxlint-disable-next-line no-await-in-loop -- Each ownership poll needs a fresh /proc snapshot.
     const entries = await readdir("/proc", { withFileTypes: true });
-    const candidates = (
-      await Promise.all(
-        entries
-          .filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name))
-          .map(async (entry) => {
-            const pid = Number(entry.name);
-            const args = await readProcessArguments(pid);
-            const commandLine = args.join("\0");
-            if (
-              !commandLine.includes(expectedArgument) ||
-              args.some((argument) => /(?:^|\s)--type=/.test(argument))
-            ) {
-              return undefined;
-            }
-            return readProcessIdentity(pid);
-          }),
-      )
-    ).filter((identity): identity is ProcessIdentity => identity !== undefined);
+    // oxlint-disable-next-line no-await-in-loop -- Candidate reads are parallelized within one polling iteration.
+    const candidateIdentities = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name))
+        .map(async (entry) => {
+          const pid = Number(entry.name);
+          const args = await readProcessArguments(pid);
+          const commandLine = args.join("\0");
+          if (
+            !commandLine.includes(expectedArgument) ||
+            args.some((argument) => /(?:^|\s)--type=/.test(argument))
+          ) {
+            return undefined;
+          }
+          return readProcessIdentity(pid);
+        }),
+    );
+    const candidates = candidateIdentities.filter(
+      (identity): identity is ProcessIdentity => identity !== undefined,
+    );
     if (candidates.length === 1) return candidates[0];
     if (candidates.length > 1) {
       throw new Error(
@@ -212,6 +215,7 @@ async function findOwnedChromiumIdentity(
         `Could not identify the Chromium process for ${userDataDirectory}`,
       );
     }
+    // oxlint-disable-next-line no-await-in-loop -- Polling backoff separates process-table snapshots.
     await delay(50);
   }
 }
@@ -259,16 +263,19 @@ async function waitForIdentitiesExit(
   const deadline = Date.now() + timeoutMs;
   let candidates = [...identities];
   while (true) {
-    const alive = (
-      await Promise.all(
-        candidates.map(async (identity) => ({
-          identity,
-          alive: await identityIsAlive(identity),
-        })),
-      )
-    ).flatMap((result) => (result.alive ? [result.identity] : []));
+    // oxlint-disable-next-line no-await-in-loop -- Liveness reads are parallelized within one polling iteration.
+    const liveness = await Promise.all(
+      candidates.map(async (identity) => ({
+        identity,
+        alive: await identityIsAlive(identity),
+      })),
+    );
+    const alive = liveness.flatMap((result) =>
+      result.alive ? [result.identity] : [],
+    );
     if (alive.length === 0 || Date.now() >= deadline) return alive;
     candidates = alive;
+    // oxlint-disable-next-line no-await-in-loop -- Backoff separates survivor-set liveness checks.
     await delay(50);
   }
 }
@@ -364,6 +371,7 @@ async function waitForSuccessfulDownload(
 ): Promise<void> {
   const deadline = Date.now() + DOWNLOAD_DEADLINE_MS;
   while (true) {
+    // oxlint-disable-next-line no-await-in-loop -- Each task poll must finish before status is evaluated.
     const response = await core.client.getDownloadTasks({
       current: 1,
       pageSize: 20,
@@ -384,6 +392,7 @@ async function waitForSuccessfulDownload(
         `Extension download did not succeed within ${DOWNLOAD_DEADLINE_MS}ms`,
       );
     }
+    // oxlint-disable-next-line no-await-in-loop -- Backoff respects the shared download deadline.
     await delay(Math.min(100, remaining));
   }
 }

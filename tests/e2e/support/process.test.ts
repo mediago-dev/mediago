@@ -36,9 +36,11 @@ async function waitForFile(filePath: string): Promise<string> {
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
+      // oxlint-disable-next-line no-await-in-loop -- File retries must finish before the next attempt.
       return await readFile(filePath, "utf8");
     } catch (error) {
       lastError = error;
+      // oxlint-disable-next-line no-await-in-loop -- Retry backoff intentionally separates file reads.
       await delay(20);
     }
   }
@@ -54,6 +56,7 @@ async function waitForLog(
   while (Date.now() < deadline) {
     const logs = managedProcess.logTail();
     if (logs.includes(expected)) return logs;
+    // oxlint-disable-next-line no-await-in-loop -- Log polling waits before sampling the process again.
     await delay(20);
   }
   throw new Error(`Process logs did not contain ${expected}`);

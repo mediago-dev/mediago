@@ -55,6 +55,7 @@ export async function waitForPortFree(
   let lastError: unknown;
   while (true) {
     try {
+      // oxlint-disable-next-line no-await-in-loop -- Each bind probe must finish before the next attempt.
       await bindAndRelease(host, port);
       return;
     } catch (error) {
@@ -71,6 +72,7 @@ export async function waitForPortFree(
         { cause: lastError },
       );
     }
+    // oxlint-disable-next-line no-await-in-loop -- Backoff must elapse before the next deadline-bound probe.
     await delay(Math.min(PORT_POLL_INTERVAL_MS, remaining));
   }
 }
