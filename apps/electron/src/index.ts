@@ -3,6 +3,7 @@ import { buildProviderModule } from "@inversifyjs/binding-decorators";
 import { app, protocol } from "electron";
 import { Container } from "inversify";
 import ElectronApp from "./app";
+import { registerGracefulQuit } from "./lifecycle";
 import { defaultScheme, noop } from "./utils";
 import path from "node:path";
 
@@ -39,6 +40,12 @@ app.on("second-instance", (_event, commandLine) => {
     pendingCommandLines.push(commandLine);
   }
 });
+
+registerGracefulQuit(
+  app,
+  async () => mediagoApp?.shutdown(),
+  (error) => console.error("Electron shutdown failed", error),
+);
 
 if (process.defaultApp) {
   if (process.argv.length >= 2) {

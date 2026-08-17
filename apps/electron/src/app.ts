@@ -194,6 +194,10 @@ export default class ElectronApp {
     this.presentPendingExternalInvocations();
   }
 
+  async shutdown(): Promise<void> {
+    await this.downloaderServer.stop();
+  }
+
   initTray() {
     let trayIcon = nativeImage.createFromPath(resolve(__dirname, TrayIcon));
     if (isMac) {
