@@ -4,6 +4,7 @@ import path, { dirname } from "node:path";
 import fs from "node:fs";
 import { ServiceRunner } from "@mediago/service-runner";
 import { resolveCoreBinaries, resolveDepsBinaries } from "./binaryResolver";
+import { resolveServerPaths } from "./server-paths";
 import dotenvFlow from "dotenv-flow";
 import { fileURLToPath } from "node:url";
 
@@ -18,20 +19,16 @@ if (!process.env.APP_NAME) {
   throw new Error("APP_NAME is not defined in environment variables");
 }
 
-// All persistent data under one root: ~/.mediago-server/
-//   data/       — database + config
-//   logs/       — runtime & task logs
-//   downloads/  — downloaded files (also video-root for player)
-const ROOT_DIR = path.resolve(os.homedir(), `.${process.env.APP_NAME}-server`);
-const DATA_DIR = path.resolve(ROOT_DIR, "data");
-const LOG_DIR = path.resolve(ROOT_DIR, "logs");
-const DOWNLOAD_DIR = path.resolve(ROOT_DIR, "downloads");
-const DB_PATH = path.resolve(DATA_DIR, "mediago.db");
+const serverPaths = resolveServerPaths({
+  appName: process.env.APP_NAME,
+  homeDir: os.homedir(),
+  rootOverride: process.env.MEDIAGO_SERVER_ROOT,
+});
 
 // Ensure directories exist
-fs.mkdirSync(DATA_DIR, { recursive: true });
-fs.mkdirSync(LOG_DIR, { recursive: true });
-fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+fs.mkdirSync(serverPaths.data, { recursive: true });
+fs.mkdirSync(serverPaths.logs, { recursive: true });
+fs.mkdirSync(serverPaths.downloads, { recursive: true });
 
 const core = resolveCoreBinaries();
 const deps = resolveDepsBinaries();
@@ -44,12 +41,12 @@ const runner = new ServiceRunner({
   extraArgs: [
     `--enable-auth`,
     `--log-level=debug`,
-    `--log-dir=${LOG_DIR}`,
-    `--local-dir=${DOWNLOAD_DIR}`,
+    `--log-dir=${serverPaths.logs}`,
+    `--local-dir=${serverPaths.downloads}`,
     `--schema-path=${core.coreConfig}`,
     `--deps-dir=${deps.depsDir}`,
-    `--db-path=${DB_PATH}`,
-    `--config-dir=${DATA_DIR}`,
+    `--db-path=${serverPaths.database}`,
+    `--config-dir=${serverPaths.data}`,
   ],
 });
 
