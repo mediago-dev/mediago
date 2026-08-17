@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@mediago/core-sdk": ["./packages/core-sdk/src/index.ts"],
+      "@mediago/shared-common": ["./packages/shared/common/src/index.ts"]
+    },
+    "types": ["node", "@playwright/test"]
+  },
+  "include": ["playwright.config.ts", "tests/e2e/**/*.ts"],
+  "exclude": []
+}
