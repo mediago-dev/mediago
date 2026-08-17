@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"sort"
 
 	"caorushizi.cn/mediago/internal/api/dto"
 	"caorushizi.cn/mediago/internal/api/sse"
@@ -102,7 +103,13 @@ func (h *ConfigHandler) Update(c *gin.Context) {
 		return
 	}
 
-	logger.Info("Config update request received", zap.Any("req", req), zap.String("clientIP", c.ClientIP()))
+	keys := make([]string, 0, len(req))
+	for key := range req {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	logger.Info("Config update request received", zap.Strings("keys", keys), zap.String("clientIP", c.ClientIP()))
 
 	if err := h.conf.Update(req); err != nil {
 		logger.Error("Failed to update config", zap.Error(err))

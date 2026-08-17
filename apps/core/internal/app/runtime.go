@@ -39,7 +39,6 @@ func InitLogger(cfg *AppConfig) error {
 
 func NewRuntime(cfg *AppConfig) (*Runtime, error) {
 	logger.Info("MediaGo Downloader Core Starting...")
-	logger.Infof("Final Config: %+v", cfg)
 
 	appStore, err := conf.New(conf.Options[AppStore]{
 		ConfigName: "config",
@@ -97,7 +96,7 @@ func NewRuntime(cfg *AppConfig) (*Runtime, error) {
 	appStore.OnDidChange("proxy", func(newVal, oldVal any) {
 		if v, ok := newVal.(string); ok {
 			cfg.SetProxy(v)
-			logger.Infof("proxy updated to %q via config change", v)
+			logger.Info("proxy updated via config change")
 		}
 	})
 	appStore.OnDidChange("useProxy", func(newVal, oldVal any) {
