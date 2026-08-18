@@ -436,26 +436,39 @@ test("setup version gate runs without pnpm, tsx, package metadata, or node_modul
   expect(result.output).not.toMatch(/\b(?:pnpm|tsx)\b/i);
 });
 
-test.each(["doctor", "version gate"] as const)(
-  "%s reports the Node prerequisite before its helper when Node is absent",
-  (target) => {
+const nodePrerequisiteCases = [
+  {
+    expected: /Node 24\.14\.0 or newer.*mise use node@24\.14\.0/i,
+    target: "doctor",
+  },
+  {
+    expected: /Node 22\.18\.0 or newer.*validate the pinned Task version/i,
+    target: "version gate",
+  },
+  {
+    expected: /Node 24\.14\.0 or newer.*workspace dependencies/i,
+    target: "node dependencies",
+  },
+] as const;
+
+test.each(nodePrerequisiteCases)(
+  "$target reports the Node prerequisite before its helper when Node is absent",
+  ({ expected, target }) => {
     const fixture = createNodePrerequisiteFixture(target);
     const result = runTask(fixture.taskfilePath, fixture.taskName, {
       PATH: createTemporaryDirectory(),
     });
 
     expect(result.status).not.toBe(0);
-    expect(result.output).toMatch(
-      /Node 24\.14\.0 or newer.*mise use node@24\.14\.0/i,
-    );
+    expect(result.output).toMatch(expected);
     expect(result.output).not.toMatch(/(?:exit status|code) 127/i);
     expect(result.output).not.toContain(fixture.helperName);
   },
 );
 
-test.each(["doctor", "version gate"] as const)(
-  "%s reports the Node prerequisite before its helper when Node is too old",
-  (target) => {
+test.each(nodePrerequisiteCases)(
+  "$target reports the Node prerequisite before its helper when Node is too old",
+  ({ expected, target }) => {
     const fixture = createNodePrerequisiteFixture(target);
     const fakeNode = createFailingNodePath();
     const result = runTask(fixture.taskfilePath, fixture.taskName, {
@@ -463,9 +476,7 @@ test.each(["doctor", "version gate"] as const)(
     });
 
     expect(result.status).not.toBe(0);
-    expect(result.output).toMatch(
-      /Node 24\.14\.0 or newer.*mise use node@24\.14\.0/i,
-    );
+    expect(result.output).toMatch(expected);
     expect(result.output).not.toMatch(/(?:exit status|code) 127/i);
     expect(result.output).not.toContain(fixture.helperName);
     expect(readFileSync(fakeNode.log, "utf8")).not.toContain(
@@ -732,7 +743,9 @@ function createCleanCloneProductionFixture(
   return { binDirectory, directory, pnpmLog, taskfilePath };
 }
 
-function createNodePrerequisiteFixture(target: "doctor" | "version gate"): {
+function createNodePrerequisiteFixture(
+  target: "doctor" | "node dependencies" | "version gate",
+): {
   directory: string;
   helperName: string;
   taskfilePath: string;
@@ -751,6 +764,21 @@ function createNodePrerequisiteFixture(target: "doctor" | "version gate"): {
       }),
       helperName: "scripts/task-doctor.ts",
       taskName: "doctor",
+    };
+  }
+
+  if (target === "node dependencies") {
+    return {
+      ...createFixture({
+        version: "3",
+        vars: rootTaskfile.vars,
+        tasks: {
+          entry: { cmds: [{ task: "internal:deps:node" }] },
+          "internal:deps:node": rootTaskfile.tasks["internal:deps:node"],
+        },
+      }),
+      helperName: "pnpm install --frozen-lockfile",
+      taskName: "entry",
     };
   }
 

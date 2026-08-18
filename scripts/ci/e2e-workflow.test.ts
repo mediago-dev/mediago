@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -12,61 +12,64 @@ const workflow = fs.readFileSync(
   "utf8",
 );
 
-test("defines the bounded three-surface Playwright job contract", () => {
-  assertE2EWorkflowContract(workflow);
-});
+describe("ci.yml E2E workflow contract", () => {
+  test("defines the bounded three-surface Playwright job contract", () => {
+    assertE2EWorkflowContract(workflow);
+  });
 
-test("requires every worker result in the bounded PR gate contract", () => {
-  assertPrGateContract(workflow);
-});
+  test("requires every worker result in the bounded PR gate contract", () => {
+    assertPrGateContract(workflow);
+  });
 
-test("pins Task before repository commands in the TypeScript test job", () => {
-  const testJob = extractJob(workflow, "test-ts");
-  expect(testJob).toBeDefined();
-  if (testJob === undefined) return;
+  test("pins Task before the repository command in the E2E job", () => {
+    const testJob = extractJob(workflow, "test-e2e");
+    expect(testJob).toBeDefined();
+    if (testJob === undefined) return;
 
-  const taskSetup = [
-    "      - uses: go-task/setup-task@v1",
-    "        with:",
-    '          version: "3.51.1"',
-  ].join("\n");
-  expect(testJob.match(/uses: go-task\/setup-task@v1/g) ?? []).toHaveLength(1);
-  expect(testJob).toContain(taskSetup);
-  expect(testJob.indexOf(taskSetup)).toBeLessThan(
-    testJob.indexOf("run: pnpm install --frozen-lockfile"),
-  );
-  expect(testJob.indexOf(taskSetup)).toBeLessThan(
-    testJob.indexOf("run: pnpm test:ts"),
-  );
-});
+    const taskSetup = [
+      "      - uses: go-task/setup-task@v1",
+      "        with:",
+      '          version: "3.51.1"',
+    ].join("\n");
+    expect(testJob.match(/uses: go-task\/setup-task@v1/g) ?? []).toHaveLength(
+      1,
+    );
+    expect(testJob).toContain(taskSetup);
+    expect(testJob.indexOf(taskSetup)).toBeLessThan(
+      testJob.indexOf("run: task ci:test:e2e"),
+    );
+  });
 
-test("rejects misplaced failure conditions and unrelated later-job tokens", () => {
-  const runStep = extractNamedStep(
-    extractJob(workflow, "test-e2e"),
-    "Run three-surface Playwright",
-  );
-  const uploadStep = extractNamedStep(
-    extractJob(workflow, "test-e2e"),
-    "Upload Playwright failure artifacts",
-  );
-  expect(runStep).toBeDefined();
-  expect(uploadStep).toBeDefined();
-  if (runStep === undefined || uploadStep === undefined) return;
+  test("rejects misplaced failure conditions and unrelated later-job tokens", () => {
+    const runStep = extractNamedStep(
+      extractJob(workflow, "test-e2e"),
+      "Run three-surface Playwright",
+    );
+    const uploadStep = extractNamedStep(
+      extractJob(workflow, "test-e2e"),
+      "Upload Playwright failure artifacts",
+    );
+    expect(runStep).toBeDefined();
+    expect(uploadStep).toBeDefined();
+    if (runStep === undefined || uploadStep === undefined) return;
 
-  const misplacedFailureCondition = workflow
-    .replace(
-      runStep,
-      runStep.replace("        run:", "        if: failure()\n        run:"),
-    )
-    .replace(uploadStep, uploadStep.replace("        if: failure()\n", ""));
-  expect(() => assertE2EWorkflowContract(misplacedFailureCondition)).toThrow();
+    const misplacedFailureCondition = workflow
+      .replace(
+        runStep,
+        runStep.replace("        run:", "        if: failure()\n        run:"),
+      )
+      .replace(uploadStep, uploadStep.replace("        if: failure()\n", ""));
+    expect(() =>
+      assertE2EWorkflowContract(misplacedFailureCondition),
+    ).toThrow();
 
-  const gateWithoutE2EEnv = workflow.replace(
-    "      E2E_RESULT: ${{ needs.test-e2e.result }}\n",
-    "",
-  );
-  const unrelatedLaterJob = `${gateWithoutE2EEnv}\n  unrelated-job:\n    env:\n      E2E_RESULT: \${{ needs.test-e2e.result }}\n`;
-  expect(() => assertPrGateContract(unrelatedLaterJob)).toThrow();
+    const gateWithoutE2EEnv = workflow.replace(
+      "      E2E_RESULT: ${{ needs.test-e2e.result }}\n",
+      "",
+    );
+    const unrelatedLaterJob = `${gateWithoutE2EEnv}\n  unrelated-job:\n    env:\n      E2E_RESULT: \${{ needs.test-e2e.result }}\n`;
+    expect(() => assertPrGateContract(unrelatedLaterJob)).toThrow();
+  });
 });
 
 function assertE2EWorkflowContract(workflowContents: string) {
@@ -89,24 +92,7 @@ function assertE2EWorkflowContract(workflowContents: string) {
   expect(e2eJob).toContain("uses: actions/setup-go@v7");
   expect(e2eJob).toContain('go-version: "1.25.0"');
 
-  const orderedCommands = [
-    "pnpm install --frozen-lockfile",
-    "pnpm test:e2e:setup:deps",
-    "pnpm exec playwright install-deps chromium",
-    "pnpm exec playwright install chromium",
-    "pnpm type:check:e2e",
-    "pnpm test:e2e:build",
-    "xvfb-run -a pnpm test:e2e",
-  ];
-  let previousIndex = -1;
-  for (const command of orderedCommands) {
-    const commandIndex = e2eJob.indexOf(command);
-    expect(
-      commandIndex,
-      `${command} must exist and remain ordered`,
-    ).toBeGreaterThan(previousIndex);
-    previousIndex = commandIndex;
-  }
+  expect(e2eJob.match(/run: task ci:test:e2e/g) ?? []).toHaveLength(1);
 
   expect(e2eJob).toContain("GITHUB_TOKEN: ${{ github.token }}");
   expect(e2eJob).not.toContain("secrets.");
@@ -126,7 +112,7 @@ function assertE2EWorkflowContract(workflowContents: string) {
   );
 
   const runStep = extractNamedStep(e2eJob, "Run three-surface Playwright");
-  expect(runStep).toContain("run: xvfb-run -a pnpm test:e2e");
+  expect(runStep).toContain("run: task ci:test:e2e");
   expect(runStep).not.toContain("if:");
 
   const uploadStep = extractNamedStep(

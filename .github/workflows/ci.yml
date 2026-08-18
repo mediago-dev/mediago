@@ -19,6 +19,9 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
       - uses: pnpm/action-setup@v6
         with:
           version: "10.15.0"
@@ -27,14 +30,16 @@ jobs:
         with:
           node-version: "24.14.0"
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      - run: task ci:quality
 
   test-ts:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
       - uses: pnpm/action-setup@v6
         with:
           version: "10.15.0"
@@ -43,23 +48,21 @@ jobs:
         with:
           node-version: "24.14.0"
           cache: pnpm
-      - uses: go-task/setup-task@v1
-        with:
-          version: "3.51.1"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test:ts
+      - run: task ci:test:ts
 
   test-go:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
       - uses: actions/setup-go@v7
         with:
           go-version: "1.25.0"
           cache-dependency-path: apps/core/go.sum
-      - run: go test ./...
-        working-directory: apps/core
+      - run: task ci:test:go
 
   test-media-integration:
     name: Test local media integration
@@ -67,6 +70,9 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
       - uses: pnpm/action-setup@v6
         with:
           version: "10.15.0"
@@ -79,17 +85,15 @@ jobs:
         with:
           go-version: "1.25.0"
           cache-dependency-path: apps/core/go.sum
-      - run: pnpm install --frozen-lockfile
       - name: Cache media integration dependencies
         uses: actions/cache@v4
         with:
           path: .deps
           key: media-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps-versions.json') }}
-      - name: Set up media integration dependencies
-        run: pnpm test:integration:media:setup
+      - name: Run media integration tests
+        run: task ci:test:media
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - run: pnpm test:integration:media:run
 
   test-e2e:
     name: Test three-surface Playwright
@@ -97,6 +101,9 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
       - uses: pnpm/action-setup@v6
         with:
           version: "10.15.0"
@@ -109,7 +116,6 @@ jobs:
         with:
           go-version: "1.25.0"
           cache-dependency-path: apps/core/go.sum
-      - run: pnpm install --frozen-lockfile
       - name: Cache E2E dependencies
         uses: actions/cache@v4
         with:
@@ -120,16 +126,10 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Set up E2E dependencies
-        run: pnpm test:e2e:setup:deps
+      - name: Run three-surface Playwright
+        run: task ci:test:e2e
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - run: pnpm exec playwright install-deps chromium
-      - run: pnpm exec playwright install chromium
-      - run: pnpm type:check:e2e
-      - run: pnpm test:e2e:build
-      - name: Run three-surface Playwright
-        run: xvfb-run -a pnpm test:e2e
       - name: Upload Playwright failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

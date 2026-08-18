@@ -7,7 +7,7 @@ vars:
 tasks:
   doctor:
     desc: Diagnose the local MediaGo toolchain and runtime dependencies; Node >=24.14.0 is required to aggregate checks
-    preconditions: &node-preconditions
+    preconditions:
       - sh: >-
           node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 24 || (major === 24 && minor >= 14) ? 0 : 1)"
         msg: Node 24.14.0 or newer is MediaGo's bootstrap prerequisite. Without a usable Node runtime, doctor cannot aggregate the remaining diagnostics. Install or switch Node (for example, mise use node@24.14.0), then retry.
@@ -192,9 +192,48 @@ tasks:
       - task: internal:require-task-version
       - task: internal:production:release:electron
 
+  ci:quality:
+    desc: Run the pull-request quality checks
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:quality
+
+  ci:test:ts:
+    desc: Run the pull-request TypeScript tests
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:test:ts
+
+  ci:test:go:
+    desc: Run the pull-request Go tests
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:test:go
+
+  ci:test:media:
+    desc: Run the pull-request media integration tests
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:test:media
+
+  ci:test:e2e:
+    desc: Run the pull-request Playwright end-to-end tests
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:test:e2e
+
+  ci:docs:build:
+    desc: Build documentation for continuous integration
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:docs:build
+
   internal:require-task-version:
     internal: true
-    preconditions: *node-preconditions
+    preconditions:
+      - sh: >-
+          node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 22 || (major === 22 && minor >= 18) ? 0 : 1)"
+        msg: Node 22.18.0 or newer is required to validate the pinned Task version. Install or switch Node, then retry.
     env:
       MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}"
       MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}"
@@ -223,6 +262,10 @@ tasks:
   internal:deps:node:
     internal: true
     run: once
+    preconditions:
+      - sh: >-
+          node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 24 || (major === 24 && minor >= 14) ? 0 : 1)"
+        msg: Node 24.14.0 or newer is required to install MediaGo's workspace dependencies. Install or switch Node (for example, mise use node@24.14.0), then retry.
     method: timestamp
     sources:
       - package.json
@@ -672,3 +715,44 @@ tasks:
     requires: *production-package-metadata-requires
     cmds:
       - task: internal:release:electron
+
+  internal:ci:quality:
+    internal: true
+    deps:
+      - task: internal:check
+
+  internal:ci:test:ts:
+    internal: true
+    deps:
+      - task: internal:test:ts
+
+  internal:ci:test:go:
+    internal: true
+    deps:
+      - task: internal:test:go
+
+  internal:ci:test:media:
+    internal: true
+    deps:
+      - task: internal:test:integration
+
+  internal:ci:test:e2e:
+    internal: true
+    vars: *test-runtime-vars
+    env: *test-runtime-env
+    dotenv: *profile-dotenv
+    requires: *profile-requires
+    deps:
+      - task: internal:deps:e2e
+      - task: internal:core:build
+      - task: internal:test:e2e:build
+    cmds:
+      - pnpm exec playwright install-deps chromium
+      - pnpm exec playwright install chromium
+      - pnpm type:check:e2e
+      - xvfb-run -a pnpm test:e2e:raw
+
+  internal:ci:docs:build:
+    internal: true
+    deps:
+      - task: internal:build:docs

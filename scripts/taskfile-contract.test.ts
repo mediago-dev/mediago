@@ -63,6 +63,12 @@ const publicTasks = [
   "pack:extension",
   "pack:electron",
   "release:electron",
+  "ci:quality",
+  "ci:test:ts",
+  "ci:test:go",
+  "ci:test:media",
+  "ci:test:e2e",
+  "ci:docs:build",
 ] as const;
 
 const profileImplementations = {
@@ -96,6 +102,7 @@ const profileImplementations = {
   "internal:production:pack:electron:validated": "production",
   "internal:release:electron": "production",
   "internal:production:release:electron:validated": "production",
+  "internal:ci:test:e2e": "test",
 } as const;
 
 const implementationGraph = {
@@ -251,6 +258,39 @@ const implementationGraph = {
       "internal:build:electron",
     ],
     leaves: ["pnpm -F @mediago/electron run release"],
+  },
+  "internal:ci:quality": {
+    deps: ["internal:check"],
+    leaves: [],
+  },
+  "internal:ci:test:ts": {
+    deps: ["internal:test:ts"],
+    leaves: [],
+  },
+  "internal:ci:test:go": {
+    deps: ["internal:test:go"],
+    leaves: [],
+  },
+  "internal:ci:test:media": {
+    deps: ["internal:test:integration"],
+    leaves: [],
+  },
+  "internal:ci:test:e2e": {
+    deps: [
+      "internal:deps:e2e",
+      "internal:core:build",
+      "internal:test:e2e:build",
+    ],
+    leaves: [
+      "pnpm exec playwright install-deps chromium",
+      "pnpm exec playwright install chromium",
+      "pnpm type:check:e2e",
+      "xvfb-run -a pnpm test:e2e:raw",
+    ],
+  },
+  "internal:ci:docs:build": {
+    deps: ["internal:build:docs"],
+    leaves: [],
   },
 } as const;
 
@@ -500,9 +540,17 @@ describe("root Taskfile public API", () => {
 });
 
 describe("Task version gate and doctor", () => {
-  const nodePrerequisite = {
+  const doctorNodePrerequisite = {
     sh: `node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 24 || (major === 24 && minor >= 14) ? 0 : 1)"`,
     msg: "Node 24.14.0 or newer is MediaGo's bootstrap prerequisite. Without a usable Node runtime, doctor cannot aggregate the remaining diagnostics. Install or switch Node (for example, mise use node@24.14.0), then retry.",
+  };
+  const dependencyNodePrerequisite = {
+    sh: doctorNodePrerequisite.sh,
+    msg: "Node 24.14.0 or newer is required to install MediaGo's workspace dependencies. Install or switch Node (for example, mise use node@24.14.0), then retry.",
+  };
+  const gateNodePrerequisite = {
+    sh: `node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 22 || (major === 22 && minor >= 18) ? 0 : 1)"`,
+    msg: "Node 22.18.0 or newer is required to validate the pinned Task version. Install or switch Node, then retry.",
   };
 
   it("contains exactly one typed 3.51.1 gate with environment-only inputs", () => {
@@ -533,12 +581,16 @@ describe("Task version gate and doctor", () => {
     expect(task("internal:require-task-version")).not.toHaveProperty("dotenv");
   });
 
-  it("checks the static Node prerequisite before either typed helper", () => {
+  it("uses the minimum static Node prerequisite for each typed boundary", () => {
     expect(task("doctor").desc).toBe(
       "Diagnose the local MediaGo toolchain and runtime dependencies; Node >=24.14.0 is required to aggregate checks",
     );
-    for (const name of ["doctor", "internal:require-task-version"]) {
-      expect(task(name).preconditions).toEqual([nodePrerequisite]);
+    for (const [name, prerequisite] of [
+      ["doctor", doctorNodePrerequisite],
+      ["internal:require-task-version", gateNodePrerequisite],
+      ["internal:deps:node", dependencyNodePrerequisite],
+    ] as const) {
+      expect(task(name).preconditions).toEqual([prerequisite]);
       expect(JSON.stringify(task(name).preconditions)).not.toContain("{{");
     }
   });
@@ -819,7 +871,7 @@ describe("Task command leaves", () => {
           `${name} must not compose leaf commands`,
         ).not.toMatch(/(?:&&|\|\||[|]|\n)/);
         expect(command.text, `${name} has an unsafe leaf command`).toMatch(
-          /^(?:node\s+scripts\/task-(?:version-gate|doctor)\.ts|node -e "console\.log\('MEDIAGO_(?:RUNTIME_READY', process\.env\.MEDIAGO_DEPS_DIR|DEV_PROCESSES_STARTING')\)"|pnpm\s+[\w:-]+(?::raw)?(?:\s+[^;&|\n]+)?|pnpm\s+(?:-F|--filter)\s+\S+\s+run\s+\S+|pnpm\s+install(?:\s+[^;&|\n]+)?|pnpm\s+exec(?:\s+[^;&|\n]+)?|go\s+[^;&|\n]+|docker\s+[^;&|\n]+)$/,
+          /^(?:node\s+scripts\/task-(?:version-gate|doctor)\.ts|node -e "console\.log\('MEDIAGO_(?:RUNTIME_READY', process\.env\.MEDIAGO_DEPS_DIR|DEV_PROCESSES_STARTING')\)"|pnpm\s+[\w:-]+(?::raw)?(?:\s+[^;&|\n]+)?|pnpm\s+(?:-F|--filter)\s+\S+\s+run\s+\S+|pnpm\s+install(?:\s+[^;&|\n]+)?|pnpm\s+exec(?:\s+[^;&|\n]+)?|xvfb-run -a pnpm test:e2e:raw|go\s+[^;&|\n]+|docker\s+[^;&|\n]+)$/,
         );
       }
     }

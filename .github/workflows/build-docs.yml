@@ -32,6 +32,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
+
       - uses: pnpm/action-setup@v5
         with:
           version: "10.15.0"
@@ -44,11 +48,8 @@ jobs:
           node-version: "24.14.0"
           cache: "pnpm"
 
-      - name: Install dependencies
-        run: pnpm install
-
       - name: Build with Vitepress
-        run: pnpm docs:build
+        run: task ci:docs:build
 
       - name: Install Alibaba Cloud ossutil
         run: wget http://gosspublic.alicdn.com/ossutil/1.6.10/ossutil64 && chmod +x ossutil64
