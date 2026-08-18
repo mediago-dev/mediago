@@ -83,6 +83,7 @@ const profileImplementations = {
   "internal:test:e2e:web": "test",
   "internal:test:e2e:electron": "test",
   "internal:test:e2e:extension": "test",
+  "internal:test:e2e:build": "test",
   "internal:build:web": "production",
   "internal:build:server": "production",
   "internal:build:electron": "production",
@@ -724,6 +725,20 @@ describe("Task command leaves", () => {
   it("runs shared mutating prerequisites only once per invocation graph", () => {
     expect(task("internal:deps:node").run).toBe("once");
     expect(task("internal:core:build").run).toBe("once");
+  });
+
+  it("gives only the environment-consuming shared E2E build its own test profile", () => {
+    for (const name of [
+      "internal:test:e2e",
+      "internal:test:e2e:web",
+      "internal:test:e2e:electron",
+      "internal:test:e2e:extension",
+    ]) {
+      expect(taskDependencies(name)).toContain("internal:test:e2e:build");
+    }
+    for (const property of ["vars", "env", "dotenv", "requires"]) {
+      expect(task("internal:core:build")).not.toHaveProperty(property);
+    }
   });
 
   it("ignores Task's reproducible local timestamp cache", () => {

@@ -117,6 +117,33 @@ test("typed Task version mismatch blocks its implementation leaf", () => {
   expect(result.output).toMatch(/taskfile\.dev\/installation|mise use/i);
 });
 
+test("shared E2E build selects the test profile inside its production-mode raw leaf", () => {
+  const fixture = createE2eBuildProfileFixture();
+  const result = runTask(
+    fixture.taskfilePath,
+    "probe",
+    {
+      PATH: `${fixture.binDirectory}${path.delimiter}${process.env.PATH ?? ""}`,
+    },
+    ["--force"],
+  );
+
+  expect(result.status).toBe(0);
+  expect(result.output).toContain("E2E_BUILD_PROFILE_CAPTURED");
+  const artifact = JSON.parse(readFileSync(fixture.artifactPath, "utf8")) as {
+    appId?: string;
+    profile?: string;
+  };
+  expect(artifact).toEqual({
+    appId: "TASK_E2E_TEST_LOCAL_VALUE",
+    profile: "test",
+  });
+  expect(JSON.stringify(artifact)).not.toContain(
+    "TASK_E2E_PRODUCTION_SECRET_SENTINEL",
+  );
+  expect(result.output).not.toContain("TASK_E2E_PRODUCTION_SECRET_SENTINEL");
+});
+
 test.each(productionEntries)(
   "$task loads production metadata from profile dotenv after the public version gate",
   ({ leaf, task }) => {
@@ -556,6 +583,79 @@ function createRepositoryTaskfileFixture(
     );
   }
   return { directory, taskfilePath };
+}
+
+function createE2eBuildProfileFixture(): ReturnType<typeof createFixture> & {
+  artifactPath: string;
+  binDirectory: string;
+} {
+  const rootTaskfile = parse(readFileSync(rootTaskfilePath, "utf8")) as {
+    tasks: Record<string, Record<string, unknown>>;
+  };
+  const fixture = createFixture({
+    version: "3",
+    tasks: {
+      probe: {
+        deps: [{ task: "internal:test:e2e:build" }],
+      },
+      "internal:deps:node": {
+        internal: true,
+      },
+      "internal:test:e2e:build": rootTaskfile.tasks["internal:test:e2e:build"],
+    },
+  });
+  writeFileSync(
+    path.join(fixture.directory, ".env.production"),
+    "APP_TD_APPID=TASK_E2E_PRODUCTION_SECRET_SENTINEL\n",
+  );
+  writeFileSync(
+    path.join(fixture.directory, ".env.test"),
+    "APP_TD_APPID=TASK_E2E_TEST_VALUE\n",
+  );
+  writeFileSync(
+    path.join(fixture.directory, ".env.test.local"),
+    "APP_TD_APPID=TASK_E2E_TEST_LOCAL_VALUE\n",
+  );
+
+  const artifactPath = path.join(fixture.directory, "e2e-build-profile.json");
+  const binDirectory = path.join(fixture.directory, "bin");
+  const fakePnpmScript = path.join(binDirectory, "fake-pnpm.cjs");
+  mkdirSync(binDirectory);
+  writeFileSync(
+    fakePnpmScript,
+    [
+      `#!${process.execPath}`,
+      'const fs = require("node:fs");',
+      `const artifactPath = ${JSON.stringify(artifactPath)};`,
+      `const fixtureRoot = ${JSON.stringify(fixture.directory)};`,
+      `const loaderUrl = ${JSON.stringify(new URL("./load-profile-env.ts", import.meta.url).href)};`,
+      "(async () => {",
+      '  if (process.argv.slice(2).join(" ") !== "test:e2e:build:raw") process.exit(91);',
+      '  process.env.NODE_ENV = "production";',
+      "  const { loadProfileEnv } = await import(loaderUrl);",
+      "  loadProfileEnv(fixtureRoot);",
+      "  fs.writeFileSync(artifactPath, JSON.stringify({ appId: process.env.APP_TD_APPID, profile: process.env.MEDIAGO_PROFILE }));",
+      '  process.stdout.write("E2E_BUILD_PROFILE_CAPTURED\\n");',
+      "})().catch((error) => {",
+      "  process.stderr.write(`${String(error)}\\n`);",
+      "  process.exitCode = 1;",
+      "});",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  chmodSync(fakePnpmScript, 0o755);
+  if (process.platform === "win32") {
+    writeFileSync(
+      path.join(binDirectory, "pnpm.cmd"),
+      `@echo off\r\n"${process.execPath}" "${fakePnpmScript}" %*\r\n`,
+      "utf8",
+    );
+  } else {
+    symlinkSync(fakePnpmScript, path.join(binDirectory, "pnpm"), "file");
+  }
+
+  return { artifactPath, binDirectory, ...fixture };
 }
 
 function createCleanCloneProductionFixture(

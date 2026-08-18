@@ -472,6 +472,10 @@ tasks:
 
   internal:test:e2e:build:
     internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    requires: *profile-requires
     deps:
       - task: internal:deps:node
     cmds:
