@@ -10,6 +10,7 @@ import type {
   HLSPlaylistType,
   HLSVariantInfo,
 } from "@mediago/shared-common";
+import { validateDownloadImportResponse } from "./mediago-response";
 
 /* --------------------------- helpers --------------------------- */
 
@@ -209,7 +210,11 @@ async function importViaHttp(
       }
       return { ok: false, count: 0, error: message };
     }
-    return { ok: true, count: sources.length };
+    const downloadIds = validateDownloadImportResponse(
+      (await res.json()) as unknown,
+      sources.length,
+    );
+    return { ok: true, count: downloadIds.length };
   } catch (err) {
     return { ok: false, count: 0, error: errorToText(err) };
   }

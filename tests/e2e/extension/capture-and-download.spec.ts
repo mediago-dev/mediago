@@ -24,6 +24,10 @@ import {
   type StartedCoreProcess,
 } from "../support/core-process.ts";
 import {
+  createFakeBilibiliDependencyLeaf,
+  type FakeBilibiliDependencyLeaf,
+} from "../support/fake-dependencies.ts";
+import {
   loadMediaFixture,
   type MediaFixture,
   verifyFixtureCopy,
@@ -44,6 +48,12 @@ const EXTENSION_DIRECTORY = path.join(
 );
 const CORE_PORT = 39_719;
 const TASK_NAME = "MediaGo E2E Fixture";
+const BILIBILI_TASK_NAME = "MediaGo Bilibili Fixture";
+const BILIBILI_SOURCE_ID = "bilibili-controlled-source-fixture";
+const BILIBILI_SOURCE_URL = "https://www.bilibili.com/video/BV1MediaGoFixture";
+const BILIBILI_REFERER = "https://www.bilibili.com/";
+const BILIBILI_COOKIE = "SESSDATA=mediago-e2e-fixture; bili_jct=fixture";
+const BILIBILI_HEADERS = `Referer:${BILIBILI_REFERER}\nCookie:${BILIBILI_COOKIE}`;
 const DOWNLOAD_DEADLINE_MS = 30_000;
 const EXTENSION_FIXTURE_TIMEOUT_MS = 60_000;
 const GRACEFUL_CLOSE_TIMEOUT_MS = 3_000;
@@ -62,7 +72,9 @@ interface ProcessIdentity {
 }
 
 interface ExtensionRuntime {
+  bbdownArgumentsPath: string;
   context: BrowserContext;
+  coreRequestURLs: string[];
   core: StartedCoreProcess;
   extensionURL(relativePath: string): string;
   media: MediaFixture;
@@ -76,6 +88,7 @@ interface ExtensionResources {
   browserIdentity?: ProcessIdentity;
   context?: BrowserContext;
   core?: StartedCoreProcess;
+  fakeBilibiliDependencies?: FakeBilibiliDependencyLeaf;
   media?: MediaFixture;
   page?: Page;
   testPage?: StartedTestPage;
@@ -368,6 +381,7 @@ async function badgeTextForActiveTab(worker: Worker): Promise<string> {
 
 async function waitForSuccessfulDownload(
   core: StartedCoreProcess,
+  taskName = TASK_NAME,
 ): Promise<void> {
   const deadline = Date.now() + DOWNLOAD_DEADLINE_MS;
   while (true) {
@@ -377,7 +391,7 @@ async function waitForSuccessfulDownload(
       pageSize: 20,
     });
     const task = response.data.list.find(
-      (candidate) => candidate.name === TASK_NAME,
+      (candidate) => candidate.name === taskName,
     );
     if (task?.status === "success") return;
     if (task?.status === "failed" || task?.status === "stopped") {
@@ -397,6 +411,168 @@ async function waitForSuccessfulDownload(
   }
 }
 
+async function enableImmediateDownload(
+  runtime: ExtensionRuntime,
+): Promise<void> {
+  const downloadNow = runtime.optionsPage.getByRole("switch", {
+    name: "Start downloading immediately",
+  });
+  if ((await downloadNow.getAttribute("aria-checked")) !== "true") {
+    await downloadNow.click();
+    await expect(
+      runtime.optionsPage.getByText("Saved", { exact: true }),
+    ).toBeVisible();
+  }
+  await expect(downloadNow).toHaveAttribute("aria-checked", "true");
+}
+
+async function injectControlledBilibiliSource(worker: Worker): Promise<void> {
+  await worker.evaluate(
+    async ({ sourceId, sourceURL, sourceName, headers }) => {
+      const extensionChrome = (
+        globalThis as typeof globalThis & {
+          chrome: {
+            action: {
+              setBadgeBackgroundColor(options: {
+                tabId: number;
+                color: string;
+              }): Promise<void>;
+              setBadgeText(options: {
+                tabId: number;
+                text: string;
+              }): Promise<void>;
+            };
+            storage: {
+              session: {
+                set(items: Record<string, unknown>): Promise<void>;
+              };
+            };
+            tabs: {
+              query(options: {
+                active: boolean;
+                currentWindow: boolean;
+              }): Promise<Array<{ id?: number; url?: string }>>;
+            };
+          };
+        }
+      ).chrome;
+      const [tab] = await extensionChrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (tab?.id === undefined || !tab.url?.startsWith("http://127.0.0.1:")) {
+        throw new Error(
+          "Controlled Bilibili source requires a local active tab",
+        );
+      }
+      await extensionChrome.storage.session.set({
+        [`mediago.tab.${tab.id}`]: [
+          {
+            id: sourceId,
+            url: sourceURL,
+            documentURL: tab.url,
+            name: sourceName,
+            type: "bilibili",
+            headers,
+            detectedAt: 1_700_000_000_000,
+          },
+        ],
+      });
+      await extensionChrome.action.setBadgeBackgroundColor({
+        tabId: tab.id,
+        color: "#ef4444",
+      });
+      await extensionChrome.action.setBadgeText({ tabId: tab.id, text: "1" });
+    },
+    {
+      sourceId: BILIBILI_SOURCE_ID,
+      sourceURL: BILIBILI_SOURCE_URL,
+      sourceName: BILIBILI_TASK_NAME,
+      headers: BILIBILI_HEADERS,
+    },
+  );
+}
+
+async function importControlledBilibiliSource(page: Page): Promise<unknown> {
+  return page.evaluate(
+    async (source) => {
+      const extensionChrome = (
+        globalThis as typeof globalThis & {
+          chrome: {
+            runtime: {
+              sendMessage(message: unknown): Promise<unknown>;
+            };
+          };
+        }
+      ).chrome;
+      return extensionChrome.runtime.sendMessage({
+        type: "IMPORT_SOURCES",
+        sources: [source],
+      });
+    },
+    {
+      id: BILIBILI_SOURCE_ID,
+      url: BILIBILI_SOURCE_URL,
+      documentURL: "http://127.0.0.1/controlled-fixture",
+      name: BILIBILI_TASK_NAME,
+      type: "bilibili",
+      headers: BILIBILI_HEADERS,
+      detectedAt: 1_700_000_000_000,
+    },
+  );
+}
+
+async function openControlledBilibiliPopup(
+  runtime: ExtensionRuntime,
+): Promise<{ popupPage: Page; sourceRow: ReturnType<Page["getByRole"]> }> {
+  const popupPage = await runtime.context.newPage();
+  await popupPage.goto(runtime.extensionURL("src/popup/index.html"));
+
+  const fixturePage = await runtime.context.newPage();
+  runtime.trackPage(fixturePage);
+  await fixturePage.goto(runtime.testPage.url);
+  await fixturePage.bringToFront();
+  await injectControlledBilibiliSource(runtime.worker);
+  await expect
+    .poll(() => badgeTextForActiveTab(runtime.worker), {
+      timeout: 10_000,
+      intervals: [100],
+    })
+    .toBe("1");
+
+  await popupPage.reload();
+  runtime.trackPage(popupPage);
+  const sourceRow = popupPage
+    .getByRole("listitem")
+    .filter({ hasText: BILIBILI_TASK_NAME });
+  await expect(sourceRow).toBeVisible();
+  await expect(sourceRow.getByText("bilibili", { exact: true })).toBeVisible();
+  return { popupPage, sourceRow };
+}
+
+async function readBBDownArguments(filePath: string): Promise<string[][]> {
+  try {
+    return (await readFile(filePath, "utf8"))
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as string[]);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+function expectNoInvalidDownloadIDRequests(urls: readonly string[]): void {
+  for (const value of urls) {
+    expect(value).not.toContain("NaN");
+    expect(value).not.toContain("undefined");
+    expect(value).not.toContain(BILIBILI_SOURCE_URL);
+    expect(value).not.toContain(encodeURIComponent(BILIBILI_SOURCE_URL));
+    expect(new URL(value).pathname).not.toContain(BILIBILI_SOURCE_ID);
+  }
+}
+
 const test = base.extend<{ extensionRuntime: ExtensionRuntime }>({
   extensionRuntime: [
     async ({ browserName: _browserName }, use, testInfo) => {
@@ -407,6 +583,7 @@ const test = base.extend<{ extensionRuntime: ExtensionRuntime }>({
       );
       const userDataDirectory = path.join(runtimeRoot, "chromium-profile");
       const resources: ExtensionResources = {};
+      const coreRequestURLs: string[] = [];
       let setupError: unknown;
       let tracingStarted = false;
       let contextClosed = false;
@@ -417,6 +594,8 @@ const test = base.extend<{ extensionRuntime: ExtensionRuntime }>({
 
       try {
         resources.media = await loadMediaFixture();
+        resources.fakeBilibiliDependencies =
+          await createFakeBilibiliDependencyLeaf(runtimeRoot);
         await assertPortFree("127.0.0.1", CORE_PORT, "MediaGo extension Core");
 
         const artifactPaths = manualArtifactPaths(testInfo);
@@ -436,6 +615,11 @@ const test = base.extend<{ extensionRuntime: ExtensionRuntime }>({
         resources.browserIdentity =
           await findOwnedChromiumIdentity(userDataDirectory);
         networkGuard = await guardBrowserContext(resources.context);
+        resources.context.on("request", (request) => {
+          if (request.url().startsWith(`http://127.0.0.1:${CORE_PORT}/`)) {
+            coreRequestURLs.push(request.url());
+          }
+        });
         await startManualContextArtifacts(resources.context);
         tracingStarted = true;
 
@@ -476,6 +660,7 @@ const test = base.extend<{ extensionRuntime: ExtensionRuntime }>({
         resources.core = await startCoreProcess({
           runtimeRoot,
           port: CORE_PORT,
+          depsDirectory: resources.fakeBilibiliDependencies.depsDirectory,
         });
         await optionsPage
           .getByRole("button", { name: "Test connection" })
@@ -484,8 +669,11 @@ const test = base.extend<{ extensionRuntime: ExtensionRuntime }>({
 
         resources.testPage = await startTestPage(resources.media.sampleURL);
         await use({
+          bbdownArgumentsPath:
+            resources.fakeBilibiliDependencies.bbdownArgumentsPath,
           context: resources.context,
           core: resources.core,
+          coreRequestURLs,
           extensionURL,
           media: resources.media,
           optionsPage,
@@ -837,4 +1025,152 @@ test("captures a direct MP4 and downloads it through the MV3 popup", async ({
 
   await waitForSuccessfulDownload(extensionRuntime.core);
   await verifyFixtureCopy(extensionRuntime.core.downloadDirectory);
+});
+
+test("imports a controlled Bilibili capture with the real Core response and fake BBDown", async ({
+  extensionRuntime,
+}) => {
+  await enableImmediateDownload(extensionRuntime);
+
+  let postedBody: unknown;
+  let realResponseBody: unknown;
+  await extensionRuntime.context.route(
+    `${extensionRuntime.core.baseURL}/api/downloads`,
+    async (route) => {
+      postedBody = route.request().postDataJSON();
+      const response = await route.fetch();
+      realResponseBody = await response.json();
+      await route.fulfill({ response });
+    },
+  );
+
+  const { popupPage, sourceRow } =
+    await openControlledBilibiliPopup(extensionRuntime);
+  await sourceRow.getByRole("button", { name: "Import" }).click();
+  await expect(
+    popupPage.getByText("Imported 1 task(s)", { exact: true }),
+  ).toBeVisible();
+
+  expect(postedBody).toMatchObject({
+    tasks: [
+      {
+        type: "bilibili",
+        url: BILIBILI_SOURCE_URL,
+        headers: BILIBILI_HEADERS,
+      },
+    ],
+    startDownload: true,
+  });
+  expect(realResponseBody).toMatchObject({
+    success: true,
+    data: [{ id: expect.any(Number) }],
+  });
+  const responseData = (realResponseBody as { data: Array<{ id: number }> })
+    .data;
+  expect(responseData).toHaveLength(1);
+  const responseID = responseData[0]?.id;
+  expect(Number.isSafeInteger(responseID)).toBe(true);
+  expect(responseID).toBeGreaterThan(0);
+
+  await waitForSuccessfulDownload(extensionRuntime.core, BILIBILI_TASK_NAME);
+  await expect
+    .poll(() => readBBDownArguments(extensionRuntime.bbdownArgumentsPath), {
+      timeout: DOWNLOAD_DEADLINE_MS,
+      intervals: [50, 100, 250],
+    })
+    .toHaveLength(1);
+  const [arguments_] = await readBBDownArguments(
+    extensionRuntime.bbdownArgumentsPath,
+  );
+  expect(arguments_).toContain(BILIBILI_SOURCE_URL);
+  const cookieIndex = arguments_.indexOf("--cookie");
+  expect(cookieIndex).toBeGreaterThanOrEqual(0);
+  expect(arguments_[cookieIndex + 1]).toBe(BILIBILI_COOKIE);
+  expect(arguments_).not.toContain(BILIBILI_REFERER);
+  expectNoInvalidDownloadIDRequests(extensionRuntime.coreRequestURLs);
+});
+
+test("rejects malformed successful imports without sending them to Core", async ({
+  extensionRuntime,
+}) => {
+  await enableImmediateDownload(extensionRuntime);
+  const malformedResponses = [
+    {
+      label: "missing ID",
+      body: JSON.stringify({ success: true, data: [{}] }),
+      error: /Invalid Download ID/,
+    },
+    {
+      label: "string ID",
+      body: JSON.stringify({ success: true, data: [{ id: "1" }] }),
+      error: /Invalid Download ID/,
+    },
+    {
+      label: "wrong count",
+      body: JSON.stringify({ success: true, data: [] }),
+      error: /Invalid download import response count/,
+    },
+    {
+      label: "non-JSON",
+      body: "not JSON",
+      error: /JSON|Unexpected token|parse/i,
+    },
+  ] as const;
+  let currentResponseBody = "";
+  let interceptedRequests = 0;
+  await extensionRuntime.context.route(
+    `${extensionRuntime.core.baseURL}/api/downloads`,
+    async (route) => {
+      interceptedRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: currentResponseBody,
+      });
+    },
+  );
+
+  const { popupPage, sourceRow } =
+    await openControlledBilibiliPopup(extensionRuntime);
+  for (const fixture of malformedResponses) {
+    currentResponseBody = fixture.body;
+    const requestsBefore = interceptedRequests;
+    // oxlint-disable-next-line no-await-in-loop -- Each click consumes one ordered response fixture.
+    await sourceRow.getByRole("button", { name: "Import" }).click();
+    // oxlint-disable-next-line no-await-in-loop -- The toast is the observable popup failure state.
+    await expect(
+      popupPage.getByText(fixture.error).last(),
+      fixture.label,
+    ).toBeVisible();
+    // oxlint-disable-next-line no-await-in-loop -- Success must remain absent after each ordered response fixture.
+    await expect(
+      popupPage.getByText("Imported 1 task(s)", { exact: true }),
+    ).toHaveCount(0);
+    // The direct message exposes the same response object consumed by the
+    // popup, so count=0 is asserted without weakening the visible UI check.
+    // oxlint-disable-next-line no-await-in-loop -- Each response must be validated before advancing the fixture.
+    const result = await importControlledBilibiliSource(popupPage);
+    expect(result, fixture.label).toMatchObject({
+      type: "IMPORT_RESULT",
+      ok: false,
+      count: 0,
+    });
+    // oxlint-disable-next-line no-await-in-loop -- Observe both requests before replacing the shared response body.
+    await expect
+      .poll(() => interceptedRequests, { intervals: [25, 50, 100] })
+      .toBe(requestsBefore + 2);
+  }
+
+  expect(interceptedRequests).toBe(malformedResponses.length * 2);
+  expect(
+    await readBBDownArguments(extensionRuntime.bbdownArgumentsPath),
+  ).toEqual([]);
+  const tasks = await extensionRuntime.core.client.getDownloadTasks({
+    current: 1,
+    pageSize: 20,
+  });
+  expect(
+    tasks.data.list.filter((task) => task.name === BILIBILI_TASK_NAME),
+  ).toEqual([]);
+  expectNoInvalidDownloadIDRequests(extensionRuntime.coreRequestURLs);
 });

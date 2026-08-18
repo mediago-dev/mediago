@@ -13,6 +13,7 @@ const LOCAL_NO_PROXY =
 export interface StartCoreProcessOptions {
   runtimeRoot: string;
   port: number;
+  depsDirectory?: string;
 }
 
 export interface StartedCoreProcess {
@@ -61,7 +62,9 @@ export async function startCoreProcess(
   }
 
   const runtimeRoot = path.resolve(options.runtimeRoot);
-  const depsDirectory = path.join(REPOSITORY_ROOT, ".deps/linux-x64");
+  const depsDirectory = path.resolve(
+    options.depsDirectory ?? path.join(REPOSITORY_ROOT, ".deps/linux-x64"),
+  );
   await assertExecutable(path.join(depsDirectory, "aria2c"), "E2E aria2c");
   await assertPortFree("127.0.0.1", options.port, "MediaGo Core");
 
