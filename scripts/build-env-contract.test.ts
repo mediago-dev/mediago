@@ -1,6 +1,7 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createScanner, SyntaxKind } from "typescript/unstable/ast";
 import { describe, expect, it } from "vitest";
 import {
@@ -252,7 +253,7 @@ describe("build environment contract", () => {
     const config = exportedConfig(configPaths.ui);
     const definitions = objectProperty(config, "define");
 
-    expect(config.properties.has("envPrefix")).toBe(false);
+    expect(initializerText(config, "envPrefix")).toBe("[]");
     expect(definitionNames(definitions)).toEqual([
       "import.meta.env.APP_TARGET",
       "import.meta.env.APP_TD_APPID",
@@ -260,6 +261,49 @@ describe("build environment contract", () => {
     ]);
     assertNoSecretDefinitions(definitionNames(definitions));
   });
+
+  it("resolves the UI config without exposing prefixed process variables", async () => {
+    const previousSecret = process.env.VITE_UNAPPROVED_SECRET;
+    process.env.VITE_UNAPPROVED_SECRET = "must-not-reach-the-client";
+    try {
+      const uiRequire = createRequire(
+        path.join(projectRoot, "apps/ui/package.json"),
+      );
+      const vite = await import(pathToFileURL(uiRequire.resolve("vite")).href);
+      const resolved = await vite.resolveConfig(
+        {
+          configFile: configPaths.ui,
+          logLevel: "silent",
+          mode: "production",
+        },
+        "build",
+      );
+
+      expect(vite.resolveEnvPrefix(resolved)).toEqual([]);
+      expect(resolved.env).not.toHaveProperty("VITE_UNAPPROVED_SECRET");
+      expect(Object.keys(resolved.define).toSorted()).toEqual([
+        "import.meta.env.APP_TARGET",
+        "import.meta.env.APP_TD_APPID",
+        "import.meta.env.APP_VERSION",
+      ]);
+    } finally {
+      if (previousSecret === undefined) {
+        delete process.env.VITE_UNAPPROVED_SECRET;
+      } else {
+        process.env.VITE_UNAPPROVED_SECRET = previousSecret;
+      }
+    }
+  });
+
+  it.each([configPaths.server, configPaths.electron])(
+    "loads the selected profile before deriving development mode in %s",
+    (filename) => {
+      const source = readSource(filename);
+      expect(source.indexOf("loadProfileEnv(projectRoot)")).toBeLessThan(
+        source.indexOf('const isDev = process.env.NODE_ENV === "development"'),
+      );
+    },
+  );
 
   it("uses the shared profile loader in every Node-side environment consumer", () => {
     for (const [filename, importSpecifier] of [

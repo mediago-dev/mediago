@@ -28,6 +28,7 @@ export default defineConfig({
   },
   plugins: [react(), tailwindcss()],
   envDir: projectRoot,
+  envPrefix: [],
   build: {
     outDir: isWeb ? "build/server" : "build/electron",
     emptyOutDir: true,

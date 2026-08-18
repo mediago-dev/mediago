@@ -5,12 +5,11 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsdown";
 import { loadProfileEnv } from "../../scripts/load-profile-env.ts";
 
-const isDev = process.env.NODE_ENV === "development";
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = path.resolve(__dirname, "../..");
 loadProfileEnv(projectRoot);
+const isDev = process.env.NODE_ENV === "development";
 
 class NodeApp {
   process: ChildProcessByStdio<null, Readable, Readable> | null = null;
