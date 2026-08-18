@@ -14,7 +14,9 @@ vi.mock("@/utils", async (importOriginal) => {
 });
 
 import {
+  dispatchDownload,
   initGoEvents,
+  onDownloadEvent,
   registerDownloadSseListeners,
   type DownloadSseCollaborators,
 } from "./events";
@@ -158,6 +160,46 @@ describe("registerDownloadSseListeners", () => {
     expect(collaborators.stopProgressPollingIfIdle).toHaveBeenCalledTimes(3);
     expect(collaborators.protocolWarning).not.toHaveBeenCalled();
     expect(httpGet).not.toHaveBeenCalled();
+  });
+
+  test("isolates subscriber failures from later listeners and polling transitions", () => {
+    const eventSource = new FakeEventSource("http://core.test/api/events");
+    const collaborators = createCollaborators();
+    collaborators.dispatchDownload.mockImplementation((event) => {
+      dispatchDownload(event, collaborators.protocolWarning);
+    });
+    const firstListener = vi.fn(() => {
+      throw new Error("private server detail");
+    });
+    const secondListener = vi.fn();
+    const unsubscribeFirst = onDownloadEvent(firstListener);
+    const unsubscribeSecond = onDownloadEvent(secondListener);
+    registerDownloadSseListeners(eventSource, collaborators);
+
+    try {
+      expect(() => {
+        eventSource.emit("download-start", JSON.stringify({ id: "42" }));
+        eventSource.emit("download-stop", JSON.stringify({ id: "42" }));
+      }).not.toThrow();
+
+      expect(firstListener).toHaveBeenCalledTimes(2);
+      expect(secondListener.mock.calls).toEqual([
+        [null, { type: "start", data: { id: 42 } }],
+        [null, { type: "stopped", data: { id: 42 } }],
+      ]);
+      expect(collaborators.startProgressPolling).toHaveBeenCalledOnce();
+      expect(collaborators.stopProgressPollingIfIdle).toHaveBeenCalledOnce();
+      expect(collaborators.protocolWarning.mock.calls).toEqual([
+        ["Ignored failing download listener"],
+        ["Ignored failing download listener"],
+      ]);
+      expect(
+        JSON.stringify(collaborators.protocolWarning.mock.calls),
+      ).not.toContain("private server detail");
+    } finally {
+      unsubscribeFirst();
+      unsubscribeSecond();
+    }
   });
 });
 

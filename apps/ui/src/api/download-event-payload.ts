@@ -4,6 +4,7 @@ import type {
 } from "@mediago/shared-common";
 
 const DOWNLOAD_ID_PATTERN = /^[1-9]\d*$/;
+const MAX_SAFE_DECIMAL_LENGTH = 16;
 const FAILURE_CODES = new Set(["dependency_missing", "download_failed"]);
 
 export type PersistedDownloadEventType =
@@ -24,7 +25,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseDownloadId(value: unknown): number | null {
-  if (typeof value !== "string" || !DOWNLOAD_ID_PATTERN.test(value)) {
+  if (
+    typeof value !== "string" ||
+    value.length > MAX_SAFE_DECIMAL_LENGTH ||
+    !DOWNLOAD_ID_PATTERN.test(value)
+  ) {
     return null;
   }
 

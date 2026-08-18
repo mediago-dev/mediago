@@ -5,6 +5,7 @@ import { useAdapterBootstrap } from "./hooks/use-adapter-bootstrap";
 import { useAppTheme } from "./hooks/use-app-theme";
 import { AuthGuard } from "./hooks/use-auth";
 import { useDesktopEvents } from "./hooks/use-desktop-events";
+import { useDownloadEvents } from "./hooks/use-download-events";
 import { AppRoutes } from "./routes/app-routes";
 
 const App: FC = () => {
@@ -12,6 +13,7 @@ const App: FC = () => {
   const theme = useAppTheme();
 
   useDesktopEvents();
+  useDownloadEvents();
 
   if (!adapterReady) return <AppBootScreen />;
 

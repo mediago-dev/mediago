@@ -19,6 +19,8 @@ let stopWatchingApiKey: (() => void) | null = null;
 const downloadListeners = new Set<DownloadEventCallback>();
 const configListeners = new Set<Callback>();
 const INVALID_DOWNLOAD_EVENT_WARNING = "Ignored invalid download event";
+const FAILING_DOWNLOAD_LISTENER_WARNING = "Ignored failing download listener";
+const FAILING_DOWNLOAD_DISPATCH_WARNING = "Ignored failing download dispatch";
 
 function logDownloadProtocolWarning(message: string) {
   // The UI has no logger facade; keep this warning fixed and payload-free.
@@ -94,7 +96,11 @@ export function registerDownloadSseListeners(
         return;
       }
 
-      collaborators.dispatchDownload(parsedEvent);
+      try {
+        collaborators.dispatchDownload(parsedEvent);
+      } catch {
+        collaborators.protocolWarning(FAILING_DOWNLOAD_DISPATCH_WARNING);
+      }
       if (pollingTransition === "start") {
         collaborators.startProgressPolling();
       } else {
@@ -198,8 +204,17 @@ export function onConfigChanged(cb: Callback): () => void {
   };
 }
 
-function dispatchDownload(data: DownloadEvent) {
-  downloadListeners.forEach((cb) => cb(null, data));
+export function dispatchDownload(
+  data: DownloadEvent,
+  protocolWarning: (message: string) => void = logDownloadProtocolWarning,
+) {
+  for (const callback of downloadListeners) {
+    try {
+      callback(null, data);
+    } catch {
+      protocolWarning(FAILING_DOWNLOAD_LISTENER_WARNING);
+    }
+  }
 }
 
 function dispatchConfig(data: unknown) {

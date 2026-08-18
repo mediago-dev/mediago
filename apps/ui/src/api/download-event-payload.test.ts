@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { parseDownloadEventPayload } from "./download-event-payload";
 
 describe("parseDownloadEventPayload", () => {
@@ -35,6 +35,24 @@ describe("parseDownloadEventPayload", () => {
   test("rejects non-object payloads", () => {
     for (const payload of [null, undefined, "42", 42, [], true]) {
       expect(parseDownloadEventPayload("success", payload)).toBeNull();
+    }
+  });
+
+  test("rejects an oversized decimal ID before numeric conversion", () => {
+    const originalNumber = globalThis.Number;
+    const numberSpy = vi.fn((value?: unknown) => originalNumber(value));
+    Object.defineProperty(numberSpy, "isSafeInteger", {
+      value: originalNumber.isSafeInteger,
+    });
+    vi.stubGlobal("Number", numberSpy);
+
+    try {
+      expect(
+        parseDownloadEventPayload("start", { id: "9".repeat(1024 * 1024) }),
+      ).toBeNull();
+      expect(numberSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 
