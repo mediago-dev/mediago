@@ -126,7 +126,7 @@ const migratedRootPnpmScripts = new Set([
 export function migratedPnpmCommandsInFences(source: string): string[] {
   const commands: string[] = [];
   for (const match of source.matchAll(/```[^\r\n]*\r?\n([\s\S]*?)```/g)) {
-    const body = match[1] ?? "";
+    const body = (match[1] ?? "").replace(/\\\r?\n\s*/g, "");
     for (const line of body.split(/\r?\n/)) {
       const command = line.trim().replace(/\s+#.*$/, "");
       const pnpmInvocation = command.match(/\bpnpm\s+(?:run\s+)?([^\s#]+)/);

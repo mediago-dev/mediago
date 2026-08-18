@@ -1283,6 +1283,38 @@ docker run --name mediago example/mediago
 `),
     ).toEqual([]);
   });
+
+  it("rejects migrated pnpm commands split across POSIX and Windows continuations", () => {
+    expect(
+      migratedPnpmCommandsInFences(`
+\`\`\`shell
+pnpm \\
+  dev:web
+pnpm run \\
+  build:electron
+\`\`\`
+`),
+    ).toEqual(["pnpm dev:web", "pnpm run build:electron"]);
+
+    expect(
+      migratedPnpmCommandsInFences(
+        "```shell\r\npnpm \\\r\n  dev:electron\r\n```\r\n",
+      ),
+    ).toEqual(["pnpm dev:electron"]);
+
+    expect(
+      migratedPnpmCommandsInFences(`
+\`\`\`shell
+pnpm install \\
+  --frozen-lockfile
+pnpm --filter \\
+  @mediago/player-ui run build
+pnpm run \\
+  npm:build
+\`\`\`
+`),
+    ).toEqual([]);
+  });
 });
 
 function createDependencyRootFixture(): TaskFixture {
