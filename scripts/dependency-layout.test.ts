@@ -71,7 +71,7 @@ describe("dependency layout", () => {
 
   test("rejects unsupported Node platform and architecture pairs", () => {
     expect(() => platformKeyFor("linux", "riscv64")).toThrow(
-      "Unsupported runtime platform: linux-riscv64",
+      /Unsupported runtime platform: linux-riscv64.*Selectable runtime platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-arm64, win32-x64/i,
     );
   });
 

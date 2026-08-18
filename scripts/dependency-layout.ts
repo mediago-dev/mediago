@@ -80,7 +80,9 @@ export function platformKeyFor(
 ): RuntimePlatform {
   const key = `${platform}-${arch}`;
   if (!(SELECTABLE_RUNTIME_PLATFORMS as readonly string[]).includes(key)) {
-    throw new Error(`Unsupported runtime platform: ${key}`);
+    throw new Error(
+      `Unsupported runtime platform: ${key}. Selectable runtime platforms: ${SELECTABLE_RUNTIME_PLATFORMS.join(", ")}`,
+    );
   }
   return key as RuntimePlatform;
 }
