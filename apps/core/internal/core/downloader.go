@@ -392,7 +392,15 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 			zap.String("type", string(p.Type)),
 			zap.String("binary", bin),
 			zap.Error(statErr))
-		return fmt.Errorf("binary %q not found for type %q: %w", bin, p.Type, statErr)
+		tool := filepath.Base(bin)
+		if extension := filepath.Ext(tool); strings.EqualFold(extension, ".exe") {
+			tool = strings.TrimSuffix(tool, extension)
+		}
+		return &DependencyError{
+			Tool:         tool,
+			ExpectedPath: bin,
+			Err:          statErr,
+		}
 	}
 
 	logger.Debug("Using downloader binary",

@@ -199,6 +199,94 @@ func TestExternalRunnerBoundary(t *testing.T) {
 	}
 }
 
+func TestDownloaderMissingBBDownContract(t *testing.T) {
+	ensureTestLogger()
+
+	tests := []struct {
+		name       string
+		binaryName string
+	}{
+		{name: "native name", binaryName: "BBDown"},
+		{name: "Windows name", binaryName: "BBDown.exe"},
+		{name: "case-insensitive Windows extension", binaryName: "BBDown.EXE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			missingPath := filepath.Join(t.TempDir(), tt.binaryName)
+			runnerCalled := false
+			d := NewDownloader(
+				map[DownloadType]string{TypeBilibili: missingPath},
+				runnerFunc(func(context.Context, string, []string, func(string)) error {
+					runnerCalled = true
+					return nil
+				}),
+				schema.DefaultSchemas(),
+				testDownloaderConfig{localDir: t.TempDir()},
+			)
+
+			err := d.Download(context.Background(), DownloadParams{
+				ID:   TaskID("missing-bbdown"),
+				Type: TypeBilibili,
+				URL:  "https://www.bilibili.com/video/BV-contract",
+				Name: "missing-bbdown",
+			}, Callbacks{})
+
+			var dependencyErr *DependencyError
+			if !errors.As(err, &dependencyErr) {
+				t.Fatalf("Download() error = %v, want *DependencyError", err)
+			}
+			if dependencyErr.Tool != "BBDown" {
+				t.Fatalf("DependencyError.Tool = %q, want %q", dependencyErr.Tool, "BBDown")
+			}
+			if dependencyErr.ExpectedPath != missingPath {
+				t.Fatalf("DependencyError.ExpectedPath = %q, want %q", dependencyErr.ExpectedPath, missingPath)
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("errors.Is(%v, os.ErrNotExist) = false, want true", err)
+			}
+			if runnerCalled {
+				t.Fatal("runner was called for a missing dependency")
+			}
+		})
+	}
+}
+
+func TestDownloaderUnconfiguredBinaryContract(t *testing.T) {
+	ensureTestLogger()
+
+	runnerCalled := false
+	d := NewDownloader(
+		map[DownloadType]string{},
+		runnerFunc(func(context.Context, string, []string, func(string)) error {
+			runnerCalled = true
+			return nil
+		}),
+		schema.DefaultSchemas(),
+		testDownloaderConfig{localDir: t.TempDir()},
+	)
+
+	err := d.Download(context.Background(), DownloadParams{
+		ID:   TaskID("unconfigured-binary"),
+		Type: TypeBilibili,
+		URL:  "https://www.bilibili.com/video/BV-contract",
+		Name: "unconfigured-binary",
+	}, Callbacks{})
+	if err == nil {
+		t.Fatal("Download() error = nil, want configuration error")
+	}
+	var dependencyErr *DependencyError
+	if errors.As(err, &dependencyErr) {
+		t.Fatalf("Download() error = %v, must not be *DependencyError", err)
+	}
+	if !strings.Contains(err.Error(), `binary not configured for type "bilibili"`) {
+		t.Fatalf("Download() error = %q, want unconfigured binary diagnostic", err)
+	}
+	if runnerCalled {
+		t.Fatal("runner was called without a configured binary")
+	}
+}
+
 func TestExternalInputContracts(t *testing.T) {
 	const (
 		unsafeName = "contract:video?"
