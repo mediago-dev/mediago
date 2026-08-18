@@ -35,6 +35,8 @@
     "scripts/download-deps-integrity.test.ts",
     "scripts/download-deps-provisioner.ts",
     "scripts/download-deps-provisioner.test.ts",
+    "scripts/verify-isolated-runtime-deps.ts",
+    "scripts/smoke-dev-all.ts",
     "scripts/print-platform-key.ts",
     "scripts/task-version-gate.ts",
     "scripts/task-version-gate.test.ts",
