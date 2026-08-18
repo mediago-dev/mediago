@@ -9,7 +9,14 @@ if (metadataName === undefined || !ALLOWED_METADATA_NAMES.has(metadataName)) {
 }
 
 process.env.MEDIAGO_PROFILE ??= "production";
-loadProfileEnv(process.cwd());
+try {
+  loadProfileEnv(process.cwd());
+} catch {
+  process.stderr.write(
+    "Production metadata validation could not load the selected profile. Set MEDIAGO_PROFILE to development, test, or production and check the matching dotenv files.\n",
+  );
+  process.exit(2);
+}
 const configured = (process.env[metadataName]?.trim().length ?? 0) > 0;
 
 process.stdout.write(configured ? "present" : "missing");

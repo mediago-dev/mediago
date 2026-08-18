@@ -276,6 +276,42 @@ test.each(productionEntries)(
 );
 
 test.each(productionEntries)(
+  "$task rejects an invalid profile without exposing profile or metadata values",
+  ({ leaf, task }) => {
+    const result = runTask(
+      rootTaskfilePath,
+      task,
+      {
+        APP_COPYRIGHT: "TASK_METADATA_COPYRIGHT_SECRET_SENTINEL",
+        APP_ID: "TASK_METADATA_ID_SECRET_SENTINEL",
+        APP_NAME: "TASK_METADATA_NAME_SECRET_SENTINEL",
+        MEDIAGO_PROFILE: "TASK_PROFILE_SECRET_SENTINEL",
+      },
+      ["--force", "--dry"],
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain(
+      "Production metadata validation could not load the selected profile. Set MEDIAGO_PROFILE to development, test, or production and check the matching dotenv files.",
+    );
+    expect(result.output).not.toContain("TASK_PROFILE_SECRET_SENTINEL");
+    expect(result.output).not.toContain("TASK_METADATA_");
+    expect(result.output).not.toMatch(
+      /(?:Error: Unsupported|at loadProfileEnv|at file:|load-profile-env\.ts|node:internal)/,
+    );
+    expect(result.output).toContain("pnpm install --frozen-lockfile");
+    for (const forbiddenLeaf of [
+      "pnpm core:build",
+      "pnpm deps:download:raw",
+      "pnpm build:electron:raw",
+      leaf,
+    ]) {
+      expect(result.output).not.toContain(forbiddenLeaf);
+    }
+  },
+);
+
+test.each(productionEntries)(
   "$task accepts nonblank production metadata with surrounding whitespace without logging it",
   ({ leaf, required, task }) => {
     const environment = Object.fromEntries(
