@@ -141,6 +141,51 @@ describe("validateDownloadImportResponse", () => {
     expect(reads).toBe(1);
   });
 
+  test.each([
+    ["a secret string", "SENSITIVE_LENGTH_VALUE"],
+    ["a negative number", -1],
+    ["a fractional number", 1.5],
+    ["an unsafe number", Number.MAX_SAFE_INTEGER + 1],
+  ])("rejects %s returned by the data length getter", (_label, length) => {
+    const data = new Proxy([], {
+      get(target, property, receiver) {
+        if (property === "length") return length;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    let message = "";
+    try {
+      validateDownloadImportResponse({ success: true, data }, 0);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toBe("Invalid download import response array length");
+    expect(message).not.toContain(String(length));
+  });
+
+  test.each([
+    ["zero", [], 0, []],
+    ["positive", [{ id: 47 }], 1, [47]],
+  ])(
+    "snapshots a valid %s data length exactly once",
+    (_label, rows, requestedCount, expectedIds) => {
+      let reads = 0;
+      const data = new Proxy(rows, {
+        get(target, property, receiver) {
+          if (property === "length") reads += 1;
+          return Reflect.get(target, property, receiver);
+        },
+      });
+
+      expect(
+        validateDownloadImportResponse({ success: true, data }, requestedCount),
+      ).toEqual(expectedIds);
+      expect(reads).toBe(1);
+    },
+  );
+
   test("rejects sparse arrays instead of accepting missing rows", () => {
     const data: unknown[] = [];
     data.length = 2;

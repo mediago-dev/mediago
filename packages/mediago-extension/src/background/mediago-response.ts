@@ -55,11 +55,19 @@ export function validateDownloadImportResponse(
     throw new Error(invalidEnvelope);
   }
 
-  let dataLength: number;
+  const invalidArrayLength = "Invalid download import response array length";
+  let dataLength: unknown;
   try {
     dataLength = data.length;
   } catch {
-    throw new Error(invalidEnvelope);
+    throw new Error(invalidArrayLength);
+  }
+  if (
+    typeof dataLength !== "number" ||
+    !Number.isSafeInteger(dataLength) ||
+    dataLength < 0
+  ) {
+    throw new Error(invalidArrayLength);
   }
   if (dataLength !== requestedCount) {
     throw new Error(
