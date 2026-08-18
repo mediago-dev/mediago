@@ -1,13 +1,16 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type BundleVerificationOptions,
+  createTerminationCoordinator,
   handleTermination,
   injectBundleVerificationEnvironment,
   verifyBundleEnvironment,
 } from "./verify-bundle-env.ts";
+import { transactionArtifacts as artifactPaths } from "./bundle-env-transaction-files.ts";
 
 type Cleanup = () => Promise<void>;
 
@@ -55,6 +58,25 @@ describe("bundle environment verifier transaction", () => {
       ...overrides,
     };
   }
+
+  it("keeps every secret-bearing transaction artifact Git-ignored", () => {
+    const artifacts = Object.values(
+      artifactPaths(
+        path.join(process.cwd(), ".env.production.local"),
+        "ignore-contract",
+      ),
+    ).map((filename) => path.relative(process.cwd(), filename));
+    const check = spawnSync("git", ["check-ignore", "--no-index", "--stdin"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      input: `${artifacts.join("\n")}\n`,
+    });
+
+    expect(check.status, check.stderr).toBe(0);
+    expect(check.stdout.trim().split("\n").toSorted()).toEqual(
+      artifacts.toSorted(),
+    );
+  });
 
   it.each([
     ["existing file", Buffer.from("FIRST=1\nLAST=no-newline")],
@@ -260,4 +282,37 @@ describe("bundle environment verifier termination", () => {
       expect(events).toEqual(["terminate", "cleanup", `exit:${exitCode}`]);
     },
   );
+
+  it("ignores repeated signals while tree termination and cleanup are in progress", async () => {
+    const events: string[] = [];
+    let releaseTermination: (() => void) | undefined;
+    const terminationBarrier = new Promise<void>((resolve) => {
+      releaseTermination = resolve;
+    });
+    const terminate = createTerminationCoordinator({
+      exit: (code) => {
+        events.push(`exit:${code}`);
+      },
+      getCleanup: () => async () => {
+        events.push("cleanup");
+      },
+      reportError: () => {
+        events.push("error");
+      },
+      terminateActiveChild: async () => {
+        events.push("terminate");
+        await terminationBarrier;
+      },
+    });
+
+    const first = terminate("SIGTERM");
+    const repeated = terminate("SIGINT");
+    expect(repeated).toBe(first);
+    expect(events).toEqual(["terminate"]);
+
+    releaseTermination?.();
+    await first;
+
+    expect(events).toEqual(["terminate", "cleanup", "exit:143"]);
+  });
 });

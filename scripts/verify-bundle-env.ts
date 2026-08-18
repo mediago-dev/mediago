@@ -10,8 +10,8 @@ import {
   probePnpmPath,
   resolvePnpmEntrypoint,
   runPnpm,
-  terminateChild,
 } from "./bundle-env-runtime.ts";
+import { terminateProcessTree } from "./bundle-env-process-tree.ts";
 
 export {
   buildVerificationEnvironment,
@@ -60,6 +60,25 @@ export async function handleTermination(options: {
   options.exit(options.signal === "SIGINT" ? 130 : 143);
 }
 
+export function createTerminationCoordinator(options: {
+  exit: (code: number) => void;
+  getCleanup: () => EnvironmentTransaction["cleanup"] | undefined;
+  reportError: (error: unknown) => void;
+  terminateActiveChild: () => Promise<void>;
+}): (signal: "SIGINT" | "SIGTERM") => Promise<void> {
+  let termination: Promise<void> | undefined;
+  return (signal) => {
+    termination ??= handleTermination({
+      cleanup: options.getCleanup(),
+      exit: options.exit,
+      reportError: options.reportError,
+      signal,
+      terminateActiveChild: options.terminateActiveChild,
+    });
+    return termination;
+  };
+}
+
 async function main(): Promise<void> {
   const entrypoint = await resolvePnpmEntrypoint({
     environment: process.env,
@@ -69,25 +88,26 @@ async function main(): Promise<void> {
   let activeChild: ChildProcess | undefined;
   let activeCleanup: EnvironmentTransaction["cleanup"] | undefined;
   let terminating = false;
-  const runTermination = (signal: "SIGINT" | "SIGTERM") => {
+  const terminate = createTerminationCoordinator({
+    exit: (code) => process.exit(code),
+    getCleanup: () => activeCleanup,
+    reportError: (error) => {
+      process.stderr.write(
+        `Bundle verification cleanup failed: ${String(error)}\n`,
+      );
+    },
+    terminateActiveChild: () =>
+      terminateProcessTree(activeChild, { environment: process.env }),
+  });
+  const runTermination = (signal: "SIGINT" | "SIGTERM"): void => {
     if (terminating) return;
     terminating = true;
-    void handleTermination({
-      cleanup: activeCleanup,
-      exit: (code) => process.exit(code),
-      reportError: (error) => {
-        process.stderr.write(
-          `Bundle verification cleanup failed: ${String(error)}\n`,
-        );
-      },
-      signal,
-      terminateActiveChild: () => terminateChild(activeChild, signal),
-    });
+    void terminate(signal);
   };
   const onSigint = () => runTermination("SIGINT");
   const onSigterm = () => runTermination("SIGTERM");
-  process.once("SIGINT", onSigint);
-  process.once("SIGTERM", onSigterm);
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
   try {
     await verifyBundleEnvironment({
       environment: process.env,

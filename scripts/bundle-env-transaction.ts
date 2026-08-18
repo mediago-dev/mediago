@@ -7,17 +7,19 @@ import {
   SENTINEL_ENV_KEY,
 } from "./bundle-env-values.ts";
 import {
+  InjectedTransactionCrash,
+  type TransactionPhase,
   type TransactionJournal,
   type TransactionState,
   hashBytes,
   recoveryError,
   restoreCapturedWithoutClobber,
-  rewriteJournal,
   sameIdentity,
   serializeJournal,
   snapshotRegularFile,
+  throwAfterPhaseIfRequested,
   transactionArtifacts,
-  unlinkIfIdentity,
+  transitionJournal,
   validateTransactionId,
   writeExclusiveFile,
 } from "./bundle-env-transaction-files.ts";
@@ -42,16 +44,8 @@ export type BundleVerificationOptions = {
   transactionId?: string;
 };
 
-async function removePreInjectionArtifacts(
-  state: TransactionState,
-): Promise<void> {
-  await fs.rm(state.artifacts.injectedTempPath, { force: true });
-  await fs.rm(state.artifacts.backupPath, { force: true });
-  await fs.rm(state.artifacts.journalTempPath, { force: true });
-  await fs.rm(state.artifacts.lockPath, { force: true });
-}
-
 export async function injectBundleVerificationEnvironment(options: {
+  faultAfterPhase?: TransactionPhase;
   isProcessAlive?: (pid: number) => boolean;
   targetPath: string;
   transactionId?: string;
@@ -80,8 +74,9 @@ export async function injectBundleVerificationEnvironment(options: {
     originalExists: Boolean(original),
     originalHash: hashBytes(original?.bytes ?? Buffer.alloc(0)),
     originalIdentity: original?.identity,
+    phase: "locked",
     pid: process.pid,
-    version: 1,
+    version: 2,
   };
   const state: TransactionState = {
     artifacts,
@@ -89,11 +84,11 @@ export async function injectBundleVerificationEnvironment(options: {
     journal,
     original,
     targetPath: options.targetPath,
+    faultAfterPhase: options.faultAfterPhase,
   };
 
   await writeExclusiveFile(artifacts.lockPath, serializeJournal(journal));
-  let targetCaptured = false;
-  let targetInjected = false;
+  throwAfterPhaseIfRequested(state, "locked");
   try {
     if (original) {
       await writeExclusiveFile(
@@ -102,6 +97,7 @@ export async function injectBundleVerificationEnvironment(options: {
         original.mode,
       );
     }
+    await transitionJournal(state, "backed-up");
     await writeExclusiveFile(
       artifacts.injectedTempPath,
       expectedInjectedBytes,
@@ -110,7 +106,6 @@ export async function injectBundleVerificationEnvironment(options: {
 
     if (original) {
       await fs.rename(options.targetPath, artifacts.originalCapturePath);
-      targetCaptured = true;
       const captured = await snapshotRegularFile(
         artifacts.originalCapturePath,
         "Captured original environment",
@@ -132,10 +127,21 @@ export async function injectBundleVerificationEnvironment(options: {
           "The target changed before injection; it was not overwritten.",
         );
       }
+    } else {
+      const appeared = await snapshotRegularFile(
+        options.targetPath,
+        "Production-local env",
+      );
+      if (appeared) {
+        throw recoveryError(
+          state,
+          "A concurrent target appeared before injection; it was not overwritten.",
+        );
+      }
     }
+    await transitionJournal(state, "captured");
 
     await fs.link(artifacts.injectedTempPath, options.targetPath);
-    targetInjected = true;
     const injected = await snapshotRegularFile(
       options.targetPath,
       "Injected production-local env",
@@ -143,52 +149,20 @@ export async function injectBundleVerificationEnvironment(options: {
     if (!injected || !injected.bytes.equals(expectedInjectedBytes)) {
       throw recoveryError(state, "The injected target could not be verified.");
     }
-    journal.injectedIdentity = injected.identity;
-    await rewriteJournal(state);
-    const injectedTemp = await snapshotRegularFile(
-      artifacts.injectedTempPath,
-      "Bundle verification temporary file",
-    );
-    if (!injectedTemp || !injectedTemp.bytes.equals(expectedInjectedBytes)) {
-      throw recoveryError(
-        state,
-        "The temporary file changed concurrently; preserving it.",
-      );
-    }
-    await unlinkIfIdentity(
-      artifacts.injectedTempPath,
-      injectedTemp.identity,
-      "Bundle verification temporary file",
-    );
-    if (original) {
-      const captured = await snapshotRegularFile(
-        artifacts.originalCapturePath,
-        "Captured original environment",
-      );
-      if (captured) {
-        await unlinkIfIdentity(
-          artifacts.originalCapturePath,
-          captured.identity,
-          "Captured original environment",
-        );
-      }
-    }
+    await transitionJournal(state, "injected", {
+      injectedIdentity: injected.identity,
+    });
   } catch (error) {
-    if (!targetCaptured) {
-      await removePreInjectionArtifacts(state);
-    } else if (!targetInjected) {
-      const captured = await snapshotRegularFile(
-        artifacts.originalCapturePath,
-        "Captured target after failed injection",
+    if (error instanceof InjectedTransactionCrash) throw error;
+    try {
+      await cleanupTransaction(state);
+    } catch (cleanupError) {
+      // oxlint-disable-next-line preserve-caught-error -- AggregateError preserves both the injection and cleanup failures explicitly.
+      throw new AggregateError(
+        [error, cleanupError],
+        "Bundle environment injection failed and recovery artifacts were preserved",
+        { cause: error },
       );
-      if (captured) {
-        const restored = await restoreCapturedWithoutClobber(
-          artifacts.originalCapturePath,
-          options.targetPath,
-          captured,
-        );
-        if (restored) await removePreInjectionArtifacts(state);
-      }
     }
     throw error;
   }

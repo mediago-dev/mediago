@@ -1,290 +1,176 @@
 import fs from "node:fs/promises";
 import { buildInjectedEnvironmentBytes } from "./bundle-env-values.ts";
 import {
+  hasHash,
+  ownsInjected,
+  parseJournal,
+  removeOwnedJournalTemp,
+  removeResidualArtifacts,
+  validatedBackup,
+  validatedInjectedTemp,
+  validatedOriginalCapture,
+  validatedRestoreCapture,
+} from "./bundle-env-transaction-artifacts.ts";
+import {
   type FileSnapshot,
   type TransactionJournal,
   type TransactionState,
   hashBytes,
   isErrno,
   recoveryError,
-  restoreCapturedWithoutClobber,
   sameIdentity,
   snapshotRegularFile,
   transactionArtifacts,
-  unlinkIfIdentity,
-  validateTransactionId,
+  transactionLockPath,
+  transitionJournal,
 } from "./bundle-env-transaction-files.ts";
 
-async function validatedBackup(
+function targetIsRestored(
   state: TransactionState,
-): Promise<FileSnapshot | undefined> {
-  if (!state.original) return undefined;
-  const backup = await snapshotRegularFile(
-    state.artifacts.backupPath,
-    "Bundle verification backup",
+  target: FileSnapshot | undefined,
+  backup: FileSnapshot | undefined,
+): boolean {
+  if (!state.journal.originalExists) return !target;
+  if (!target || !hasHash(target, state.journal.originalHash)) return false;
+  return Boolean(
+    (state.journal.restoredIdentity &&
+      sameIdentity(target.identity, state.journal.restoredIdentity)) ||
+    (state.journal.originalIdentity &&
+      sameIdentity(target.identity, state.journal.originalIdentity)) ||
+    (backup && sameIdentity(target.identity, backup.identity)),
   );
-  if (!backup || !backup.bytes.equals(state.original.bytes)) {
-    throw recoveryError(
-      state,
-      "The durable backup is missing or changed; refusing automatic recovery.",
-    );
-  }
-  return backup;
+}
+
+async function markRestored(
+  state: TransactionState,
+  target: FileSnapshot | undefined,
+): Promise<void> {
+  await transitionJournal(
+    state,
+    "restored",
+    target ? { restoredIdentity: target.identity } : {},
+  );
 }
 
 async function restoreOriginal(
   state: TransactionState,
   backup: FileSnapshot | undefined,
+  originalCapture: FileSnapshot | undefined,
 ): Promise<void> {
-  if (!state.original || !backup) return;
-  try {
-    await fs.link(state.artifacts.backupPath, state.targetPath);
-  } catch (error) {
+  if (!state.journal.originalExists) {
+    await markRestored(state, undefined);
+    return;
+  }
+  if (!backup) {
     throw recoveryError(
       state,
-      isErrno(error, "EEXIST")
-        ? "A concurrent file appeared while restoring the original; no file was overwritten."
-        : `Unable to restore the original file without clobbering: ${String(error)}`,
+      "The durable backup is unavailable while restoring the original.",
     );
   }
+
+  if (originalCapture) {
+    await fs.rename(state.artifacts.originalCapturePath, state.targetPath);
+  } else {
+    try {
+      await fs.link(state.artifacts.backupPath, state.targetPath);
+    } catch (error) {
+      throw recoveryError(
+        state,
+        isErrno(error, "EEXIST")
+          ? "A concurrent file appeared while restoring; no file was overwritten."
+          : `Unable to restore the original without clobbering: ${String(error)}`,
+      );
+    }
+  }
+
   const restored = await snapshotRegularFile(
     state.targetPath,
     "Restored production-local env",
   );
-  const currentBackup = await snapshotRegularFile(
-    state.artifacts.backupPath,
-    "Bundle verification backup",
-  );
+  const expectedIdentity = originalCapture?.identity ?? backup.identity;
   if (
     !restored ||
-    !currentBackup ||
-    !sameIdentity(restored.identity, currentBackup.identity)
+    !hasHash(restored, state.journal.originalHash) ||
+    !sameIdentity(restored.identity, expectedIdentity)
   ) {
     throw recoveryError(
       state,
-      "The backup changed during restore; preserving all recovery artifacts.",
+      "The original changed during restore; preserving all recovery artifacts.",
     );
   }
-  await unlinkIfIdentity(
-    state.artifacts.backupPath,
-    currentBackup.identity,
-    "Bundle verification backup",
-  );
+  await markRestored(state, restored);
 }
 
-async function removeOwnedTemp(state: TransactionState): Promise<void> {
-  const temp = await snapshotRegularFile(
-    state.artifacts.injectedTempPath,
-    "Bundle verification temporary file",
+async function reconcileRestoredState(state: TransactionState): Promise<void> {
+  const backup = await validatedBackup(state);
+  const originalCapture = await validatedOriginalCapture(state);
+  const injectedTemp = await validatedInjectedTemp(state);
+  let restoreCapture = await validatedRestoreCapture(state, injectedTemp);
+  let target = await snapshotRegularFile(
+    state.targetPath,
+    "Production-local env",
   );
-  if (!temp) return;
-  if (!temp.bytes.equals(state.injectedBytes)) {
-    throw recoveryError(
-      state,
-      "The temporary file changed concurrently; preserving it.",
-    );
-  }
-  await unlinkIfIdentity(
-    state.artifacts.injectedTempPath,
-    temp.identity,
-    "Bundle verification temporary file",
-  );
-}
 
-async function removeOwnedLock(state: TransactionState): Promise<void> {
-  const lock = await snapshotRegularFile(
-    state.artifacts.lockPath,
-    "Bundle verification lock",
-  );
-  if (!lock) return;
-  let journal: TransactionJournal;
-  try {
-    journal = JSON.parse(lock.bytes.toString("utf8")) as TransactionJournal;
-  } catch {
-    throw recoveryError(
-      state,
-      "The lock journal is unreadable; preserving it.",
-    );
+  if (state.journal.phase === "restored") {
+    if (!targetIsRestored(state, target, backup)) {
+      throw recoveryError(
+        state,
+        "The restored target changed concurrently; preserving its backup.",
+      );
+    }
+    return;
   }
-  if (journal.id !== state.journal.id) {
-    throw recoveryError(
-      state,
-      "The lock journal belongs to another transaction; preserving it.",
-    );
-  }
-  await unlinkIfIdentity(
-    state.artifacts.lockPath,
-    lock.identity,
-    "Bundle verification lock",
-  );
-}
 
-async function finishCleanup(
-  state: TransactionState,
-  capture?: FileSnapshot,
-): Promise<void> {
-  if (capture) {
-    await unlinkIfIdentity(
-      state.artifacts.restoreCapturePath,
-      capture.identity,
-      "Captured injected environment",
+  if (targetIsRestored(state, target, backup) && !originalCapture) {
+    await markRestored(state, target);
+    return;
+  }
+
+  if (target) {
+    if (!ownsInjected(state, target, injectedTemp)) {
+      throw recoveryError(
+        state,
+        "The target was modified or replaced concurrently; it remains untouched.",
+      );
+    }
+    if (restoreCapture) {
+      throw recoveryError(
+        state,
+        "Both the target and cleanup capture contain the injected file; preserving both.",
+      );
+    }
+    await fs.rename(state.targetPath, state.artifacts.restoreCapturePath);
+    restoreCapture = await validatedRestoreCapture(state, injectedTemp);
+    if (
+      !restoreCapture ||
+      !sameIdentity(restoreCapture.identity, target.identity)
+    ) {
+      throw recoveryError(
+        state,
+        "The injected target changed while it was captured for cleanup.",
+      );
+    }
+    target = undefined;
+  }
+
+  if (state.journal.originalExists && !backup) {
+    throw recoveryError(
+      state,
+      "The target is missing and its durable backup is unavailable.",
     );
   }
-  await removeOwnedTemp(state);
-  const journalTemp = await snapshotRegularFile(
-    state.artifacts.journalTempPath,
-    "Bundle verification journal temp",
-  );
-  if (journalTemp) {
-    await unlinkIfIdentity(
-      state.artifacts.journalTempPath,
-      journalTemp.identity,
-      "Bundle verification journal temp",
-    );
-  }
-  await removeOwnedLock(state);
+  await restoreOriginal(state, backup, originalCapture);
 }
 
 export async function cleanupTransaction(
   state: TransactionState,
 ): Promise<void> {
-  const backup = await validatedBackup(state);
-  const originalCapture = await snapshotRegularFile(
-    state.artifacts.originalCapturePath,
-    "Captured original environment",
-  );
-  if (originalCapture) {
-    if (
-      !state.original ||
-      !originalCapture.bytes.equals(state.original.bytes) ||
-      (state.journal.originalIdentity &&
-        !sameIdentity(originalCapture.identity, state.journal.originalIdentity))
-    ) {
-      throw recoveryError(
-        state,
-        "The captured original changed; refusing automatic recovery.",
-      );
-    }
-    const currentTarget = await snapshotRegularFile(
-      state.targetPath,
-      "Production-local env",
-    );
-    if (!currentTarget) {
-      await restoreOriginal(state, backup);
-      await unlinkIfIdentity(
-        state.artifacts.originalCapturePath,
-        originalCapture.identity,
-        "Captured original environment",
-      );
-      await finishCleanup(state);
-      return;
-    }
-    if (!currentTarget.bytes.equals(state.injectedBytes)) {
-      throw recoveryError(
-        state,
-        "The target changed while the original was captured; preserving both.",
-      );
-    }
-    await unlinkIfIdentity(
-      state.artifacts.originalCapturePath,
-      originalCapture.identity,
-      "Captured original environment",
-    );
+  await removeOwnedJournalTemp(state);
+  if (state.journal.phase !== "complete") {
+    await reconcileRestoredState(state);
+    await transitionJournal(state, "complete");
   }
-
-  const interruptedCapture = await snapshotRegularFile(
-    state.artifacts.restoreCapturePath,
-    "Captured injected environment",
-  );
-  if (interruptedCapture) {
-    if (
-      !interruptedCapture.bytes.equals(state.injectedBytes) ||
-      (state.journal.injectedIdentity &&
-        !sameIdentity(
-          interruptedCapture.identity,
-          state.journal.injectedIdentity,
-        ))
-    ) {
-      throw recoveryError(
-        state,
-        "The interrupted cleanup capture is not owned by this transaction.",
-      );
-    }
-    const currentTarget = await snapshotRegularFile(
-      state.targetPath,
-      "Production-local env",
-    );
-    if (currentTarget) {
-      throw recoveryError(
-        state,
-        "A concurrent file appeared during interrupted cleanup; preserving both.",
-      );
-    }
-    await restoreOriginal(state, backup);
-    await finishCleanup(state, interruptedCapture);
-    return;
-  }
-
-  const target = await snapshotRegularFile(
-    state.targetPath,
-    "Production-local env",
-  );
-  if (!target) {
-    await restoreOriginal(state, backup);
-    await finishCleanup(state);
-    return;
-  }
-
-  await fs.rename(state.targetPath, state.artifacts.restoreCapturePath);
-  const captured = await snapshotRegularFile(
-    state.artifacts.restoreCapturePath,
-    "Captured production-local env",
-  );
-  if (!captured) {
-    throw recoveryError(state, "The target disappeared during cleanup.");
-  }
-  const ownsCapture =
-    captured.bytes.equals(state.injectedBytes) &&
-    (!state.journal.injectedIdentity ||
-      sameIdentity(captured.identity, state.journal.injectedIdentity));
-  if (!ownsCapture) {
-    const restored = await restoreCapturedWithoutClobber(
-      state.artifacts.restoreCapturePath,
-      state.targetPath,
-      captured,
-    );
-    throw recoveryError(
-      state,
-      restored
-        ? "The injected target was modified or replaced concurrently; the concurrent file was put back unchanged."
-        : "The injected target was modified or replaced concurrently; it remains at the captured-file path.",
-    );
-  }
-
-  await restoreOriginal(state, backup);
-  await finishCleanup(state, captured);
-}
-
-function parseJournal(contents: Buffer, lockPath: string): TransactionJournal {
-  let journal: TransactionJournal;
-  try {
-    journal = JSON.parse(contents.toString("utf8")) as TransactionJournal;
-  } catch {
-    throw new Error(
-      `Bundle verification lock is unreadable. Inspect and recover it manually: ${lockPath}`,
-    );
-  }
-  if (
-    journal.version !== 1 ||
-    !Number.isInteger(journal.pid) ||
-    typeof journal.originalExists !== "boolean"
-  ) {
-    throw new Error(
-      `Bundle verification lock has an unsupported journal. Inspect it manually: ${lockPath}`,
-    );
-  }
-  validateTransactionId(journal.id);
-  return journal;
+  await removeResidualArtifacts(state);
 }
 
 function processIsAlive(pid: number): boolean {
@@ -296,11 +182,33 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
+async function recoveryOriginal(
+  targetPath: string,
+  artifacts: ReturnType<typeof transactionArtifacts>,
+  journal: TransactionJournal,
+): Promise<FileSnapshot | undefined> {
+  if (!journal.originalExists) return undefined;
+  const candidates = [
+    await snapshotRegularFile(
+      artifacts.backupPath,
+      "Bundle verification backup",
+    ),
+    await snapshotRegularFile(
+      artifacts.originalCapturePath,
+      "Captured original environment",
+    ),
+    await snapshotRegularFile(targetPath, "Production-local env"),
+  ];
+  return candidates.find(
+    (candidate) => candidate && hasHash(candidate, journal.originalHash),
+  );
+}
+
 export async function recoverExistingTransaction(
   targetPath: string,
   isProcessAlive: (pid: number) => boolean = processIsAlive,
 ): Promise<void> {
-  const lockPath = `${targetPath}.mediago-bundle-env.lock`;
+  const lockPath = transactionLockPath(targetPath);
   const lock = await snapshotRegularFile(lockPath, "Bundle verification lock");
   if (!lock) return;
   const journal = parseJournal(lock.bytes, lockPath);
@@ -310,29 +218,21 @@ export async function recoverExistingTransaction(
     );
   }
   const artifacts = transactionArtifacts(targetPath, journal.id);
-  let original: FileSnapshot | undefined;
-  if (journal.originalExists) {
-    original = await snapshotRegularFile(
-      artifacts.backupPath,
-      "Bundle verification backup",
-    );
-    if (!original || hashBytes(original.bytes) !== journal.originalHash) {
-      throw new Error(
-        `Cannot recover bundle verification: backup is missing or changed. Backup: ${artifacts.backupPath}; lock: ${lockPath}`,
-      );
-    }
-  }
-  const expectedInjectedBytes = buildInjectedEnvironmentBytes(
+  const original = await recoveryOriginal(targetPath, artifacts, journal);
+  const injectedBytes = buildInjectedEnvironmentBytes(
     original?.bytes ?? Buffer.alloc(0),
   );
-  if (hashBytes(expectedInjectedBytes) !== journal.injectedHash) {
+  if (
+    (!journal.originalExists || original) &&
+    hashBytes(injectedBytes) !== journal.injectedHash
+  ) {
     throw new Error(
-      `Cannot recover bundle verification: journal hash mismatch. Lock: ${lockPath}`,
+      `Cannot recover bundle verification: journal hash mismatch. Lock: ${lockPath}; backup: ${artifacts.backupPath}`,
     );
   }
   await cleanupTransaction({
     artifacts,
-    injectedBytes: expectedInjectedBytes,
+    injectedBytes,
     journal,
     original,
     targetPath,

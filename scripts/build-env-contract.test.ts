@@ -263,7 +263,7 @@ describe("build environment contract", () => {
   });
 
   it("resolves the UI config without exposing prefixed process variables", async () => {
-    const previousSecret = process.env.VITE_UNAPPROVED_SECRET;
+    const previousEnvironment = { ...process.env };
     process.env.VITE_UNAPPROVED_SECRET = "must-not-reach-the-client";
     try {
       const uiRequire = createRequire(
@@ -287,12 +287,12 @@ describe("build environment contract", () => {
         "import.meta.env.APP_VERSION",
       ]);
     } finally {
-      if (previousSecret === undefined) {
-        delete process.env.VITE_UNAPPROVED_SECRET;
-      } else {
-        process.env.VITE_UNAPPROVED_SECRET = previousSecret;
+      for (const key of Object.keys(process.env)) {
+        delete process.env[key];
       }
+      Object.assign(process.env, previousEnvironment);
     }
+    expect(process.env).toEqual(previousEnvironment);
   });
 
   it.each([configPaths.server, configPaths.electron])(

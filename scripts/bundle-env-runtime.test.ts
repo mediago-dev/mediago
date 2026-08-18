@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createPnpmLauncher,
+  createWindowsTreeKillCommand,
   filesContainingSentinel,
   resolvePnpmEntrypoint,
 } from "./bundle-env-runtime.ts";
@@ -62,6 +63,24 @@ describe("bundle environment pnpm runtime", () => {
     });
   });
 
+  it("constructs a direct absolute Windows taskkill tree command", () => {
+    expect(
+      createWindowsTreeKillCommand({
+        environment: { SystemRoot: "C:\\Windows" },
+        pid: 4321,
+      }),
+    ).toEqual({
+      args: ["/PID", "4321", "/T", "/F"],
+      command: "C:\\Windows\\System32\\taskkill.exe",
+    });
+    expect(() =>
+      createWindowsTreeKillCommand({
+        environment: { SystemRoot: "Windows" },
+        pid: 4321,
+      }),
+    ).toThrow(/absolute SystemRoot/i);
+  });
+
   it.each([
     [
       "relative npm_execpath",
@@ -94,4 +113,34 @@ describe("bundle environment pnpm runtime", () => {
       await fs.rm(directory, { force: true, recursive: true });
     }
   });
+
+  it.each(["root", "nested"] as const)(
+    "rejects a %s bundle-directory symlink",
+    async (location) => {
+      const directory = await fs.mkdtemp(
+        path.join(os.tmpdir(), "mediago-bundle-symlink-test-"),
+      );
+      const externalDirectory = await fs.mkdtemp(
+        path.join(os.tmpdir(), "mediago-bundle-external-test-"),
+      );
+      try {
+        await fs.writeFile(path.join(externalDirectory, "bundle.js"), "safe");
+        const scanRoot =
+          location === "root" ? path.join(directory, "root-link") : directory;
+        await fs.symlink(
+          externalDirectory,
+          location === "root" ? scanRoot : path.join(directory, "nested-link"),
+        );
+
+        await expect(filesContainingSentinel(scanRoot)).rejects.toThrow(
+          /symbolic link/i,
+        );
+      } finally {
+        await Promise.all([
+          fs.rm(directory, { force: true, recursive: true }),
+          fs.rm(externalDirectory, { force: true, recursive: true }),
+        ]);
+      }
+    },
+  );
 });

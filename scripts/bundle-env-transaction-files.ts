@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import path from "node:path";
+
+export type TransactionPhase =
+  | "locked"
+  | "backed-up"
+  | "captured"
+  | "injected"
+  | "restored"
+  | "complete";
 
 export type FileIdentity = {
   dev: string;
@@ -28,8 +37,10 @@ export type TransactionJournal = {
   originalExists: boolean;
   originalHash: string;
   originalIdentity?: FileIdentity;
+  phase: TransactionPhase;
   pid: number;
-  version: 1;
+  restoredIdentity?: FileIdentity;
+  version: 2;
 };
 
 export type TransactionState = {
@@ -38,7 +49,10 @@ export type TransactionState = {
   journal: TransactionJournal;
   original: FileSnapshot | undefined;
   targetPath: string;
+  faultAfterPhase?: TransactionPhase;
 };
+
+export class InjectedTransactionCrash extends Error {}
 
 export function isErrno(error: unknown, code: string): boolean {
   return (error as NodeJS.ErrnoException).code === code;
@@ -91,13 +105,17 @@ export function transactionArtifacts(
 ): TransactionArtifacts {
   const prefix = `${targetPath}.mediago-bundle-env.${id}`;
   return {
-    backupPath: `${prefix}.backup`,
-    injectedTempPath: `${prefix}.temp`,
-    journalTempPath: `${prefix}.journal-temp`,
-    lockPath: `${targetPath}.mediago-bundle-env.lock`,
-    originalCapturePath: `${prefix}.original-captured`,
-    restoreCapturePath: `${prefix}.restore-captured`,
+    backupPath: `${prefix}.backup.local`,
+    injectedTempPath: `${prefix}.temp.local`,
+    journalTempPath: `${prefix}.journal-temp.local`,
+    lockPath: transactionLockPath(targetPath),
+    originalCapturePath: `${prefix}.original-captured.local`,
+    restoreCapturePath: `${prefix}.restore-captured.local`,
   };
+}
+
+export function transactionLockPath(targetPath: string): string {
+  return `${targetPath}.mediago-bundle-env.lock.local`;
 }
 
 export function validateTransactionId(id: string): void {
@@ -118,18 +136,56 @@ export async function writeExclusiveFile(
   } finally {
     await handle.close();
   }
+  await syncParentDirectory(filename);
 }
 
 export function serializeJournal(journal: TransactionJournal): string {
   return `${JSON.stringify(journal)}\n`;
 }
 
-export async function rewriteJournal(state: TransactionState): Promise<void> {
+export function supportsParentDirectoryFsync(
+  platform: NodeJS.Platform,
+): boolean {
+  return platform !== "win32";
+}
+
+async function syncParentDirectory(filename: string): Promise<void> {
+  // Node cannot open Windows directory handles for fsync. Journal files are
+  // still fsynced before atomic rename there; POSIX also flushes the directory.
+  if (!supportsParentDirectoryFsync(process.platform)) return;
+  const directory = await fs.open(path.dirname(filename), "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
+}
+
+export function throwAfterPhaseIfRequested(
+  state: TransactionState,
+  phase: TransactionPhase,
+): void {
+  if (state.faultAfterPhase === phase) {
+    throw new InjectedTransactionCrash(`simulated crash after ${phase}`);
+  }
+}
+
+export async function transitionJournal(
+  state: TransactionState,
+  phase: TransactionPhase,
+  updates: Partial<
+    Pick<TransactionJournal, "injectedIdentity" | "restoredIdentity">
+  > = {},
+): Promise<void> {
+  const journal: TransactionJournal = { ...state.journal, ...updates, phase };
   await writeExclusiveFile(
     state.artifacts.journalTempPath,
-    serializeJournal(state.journal),
+    serializeJournal(journal),
   );
   await fs.rename(state.artifacts.journalTempPath, state.artifacts.lockPath);
+  await syncParentDirectory(state.artifacts.lockPath);
+  state.journal = journal;
+  throwAfterPhaseIfRequested(state, phase);
 }
 
 export function recoveryError(state: TransactionState, detail: string): Error {

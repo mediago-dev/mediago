@@ -5,6 +5,11 @@ import path from "node:path";
 import { SENTINEL_VALUE } from "./bundle-env-values.ts";
 import { isErrno } from "./bundle-env-transaction-files.ts";
 
+export {
+  createWindowsTreeKillCommand,
+  terminateProcessTree,
+} from "./bundle-env-process-tree.ts";
+
 export type PnpmProbeResult = { isFile: boolean; realPath: string } | undefined;
 
 type PlatformPath = typeof path.posix;
@@ -46,6 +51,7 @@ async function resolveJavaScriptEntrypoint(
     ),
   ]);
   for (const adjacentCandidate of new Set(adjacentCandidates)) {
+    // oxlint-disable-next-line no-await-in-loop -- Resolution stops at the first trusted regular entrypoint.
     const adjacent = await probe(adjacentCandidate);
     if (
       adjacent?.isFile &&
@@ -92,6 +98,7 @@ export async function resolvePnpmEntrypoint(options: {
     options.platform === "win32" ? ["pnpm.cmd", "pnpm"] : ["pnpm"];
   for (const directory of new Set(directories)) {
     for (const shimName of shimNames) {
+      // oxlint-disable-next-line no-await-in-loop -- Resolution order preserves PATH precedence.
       const entrypoint = await resolveJavaScriptEntrypoint(
         pathApi.join(directory, shimName),
         pathApi,
@@ -158,6 +165,7 @@ export function runPnpm(options: {
   return new Promise((resolve, reject) => {
     const child = spawn(launcher.command, launcher.args, {
       cwd: options.cwd,
+      detached: process.platform !== "win32",
       env: options.environment,
       shell: false,
       stdio: "inherit",
@@ -203,42 +211,30 @@ async function fileContainsSentinel(filename: string): Promise<boolean> {
 export async function filesContainingSentinel(
   directory: string,
 ): Promise<string[]> {
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-  return (
-    await Promise.all(
-      entries.map(async (entry): Promise<string[]> => {
-        const filename = path.join(directory, entry.name);
-        if (entry.isDirectory()) return filesContainingSentinel(filename);
-        if (entry.isFile() && (await fileContainsSentinel(filename))) {
-          return [filename];
-        }
-        return [];
-      }),
-    )
-  ).flat();
-}
+  const directoryStat = await fs.lstat(directory);
+  if (directoryStat.isSymbolicLink()) {
+    throw new Error(`Bundle directory is a symbolic link: ${directory}`);
+  }
+  if (!directoryStat.isDirectory()) {
+    throw new Error(`Bundle scan root must be a directory: ${directory}`);
+  }
 
-export async function terminateChild(
-  child: ChildProcess | undefined,
-  signal: "SIGINT" | "SIGTERM",
-): Promise<void> {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  await new Promise<void>((resolve) => {
-    const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
-    }, 5_000);
-    child.once("exit", () => {
-      clearTimeout(timeout);
-      resolve();
-    });
-    try {
-      if (!child.kill(signal)) {
-        clearTimeout(timeout);
-        resolve();
-      }
-    } catch {
-      clearTimeout(timeout);
-      resolve();
+  const matches: string[] = [];
+  const entries = (await fs.readdir(directory)).toSorted();
+  for (const entry of entries) {
+    const filename = path.join(directory, entry);
+    // oxlint-disable-next-line no-await-in-loop -- Sequential traversal bounds open files and validates each entry before use.
+    const stat = await fs.lstat(filename);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Bundle entry is a symbolic link: ${filename}`);
     }
-  });
+    if (stat.isDirectory()) {
+      // oxlint-disable-next-line no-await-in-loop -- Recursive scans remain sequential to bound file descriptors.
+      matches.push(...(await filesContainingSentinel(filename)));
+    } else if (stat.isFile()) {
+      // oxlint-disable-next-line no-await-in-loop -- Only one bundle stream is open at a time.
+      if (await fileContainsSentinel(filename)) matches.push(filename);
+    }
+  }
+  return matches;
 }
