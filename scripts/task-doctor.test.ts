@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import {
   RUNTIME_TOOLS,
@@ -181,6 +182,62 @@ test("resolves and probes a simulated Windows pnpm.cmd through Node", async () =
         expect(launch).toEqual({
           args: [entrypoint, "--version"],
           command: "C:\\node\\node.exe",
+          environment,
+          shell: false,
+        });
+        return { ok: true, stdout: "10.15.0\n" };
+      },
+    }),
+  ).resolves.toBe("10.15.0");
+});
+
+test("probes a simulated Windows Corepack pnpm.js through the Node executable", async () => {
+  const nodeExecutable = "C:\\Program Files\\nodejs\\node.exe";
+  const shim = "C:\\Program Files\\nodejs\\pnpm.cmd";
+  const entrypoint =
+    "C:\\Program Files\\nodejs\\node_modules\\corepack\\dist\\pnpm.js";
+  const environment = { PATH: "C:\\Program Files\\nodejs" };
+
+  await expect(
+    probePnpmVersion({
+      environment,
+      nodeExecutable,
+      platform: "win32",
+      probePath: async (candidate) => {
+        if (candidate === shim || candidate === entrypoint) {
+          return { isFile: true, realPath: candidate };
+        }
+        return undefined;
+      },
+      runLauncher: (launch) => {
+        expect(launch).toEqual({
+          args: [entrypoint, "--version"],
+          command: nodeExecutable,
+          environment,
+          shell: false,
+        });
+        return { ok: true, stdout: "10.15.0\n" };
+      },
+    }),
+  ).resolves.toBe("10.15.0");
+});
+
+test("defaults the pnpm version launcher to process.execPath", async () => {
+  const entrypoint = path.join(path.dirname(process.execPath), "pnpm.cjs");
+  const environment = { npm_execpath: entrypoint };
+
+  await expect(
+    probePnpmVersion({
+      environment,
+      platform: process.platform,
+      probePath: async (candidate) =>
+        candidate === entrypoint
+          ? { isFile: true, realPath: candidate }
+          : undefined,
+      runLauncher: (launch) => {
+        expect(launch).toEqual({
+          args: [entrypoint, "--version"],
+          command: process.execPath,
           environment,
           shell: false,
         });

@@ -49,6 +49,52 @@ describe("bundle environment pnpm runtime", () => {
     expect(entrypoint).toBe(jsEntrypoint);
   });
 
+  it("resolves a standard simulated Windows Corepack shim", async () => {
+    const shim = "C:\\Program Files\\nodejs\\pnpm.cmd";
+    const jsEntrypoint =
+      "C:\\Program Files\\nodejs\\node_modules\\corepack\\dist\\pnpm.js";
+    const entrypoint = await resolvePnpmEntrypoint({
+      environment: { PATH: "C:\\Program Files\\nodejs" },
+      platform: "win32",
+      probe: async (candidate) => {
+        if (candidate === shim || candidate === jsEntrypoint) {
+          return { isFile: true, realPath: candidate };
+        }
+        return undefined;
+      },
+    });
+
+    expect(entrypoint).toBe(jsEntrypoint);
+  });
+
+  it("prefers a PATH pnpm installation before a stale PNPM_HOME", async () => {
+    const pathDirectory = "C:\\path-pnpm";
+    const pathEntrypoint = `${pathDirectory}\\node_modules\\pnpm\\bin\\pnpm.cjs`;
+    const staleHome = "C:\\stale-pnpm-home";
+    const staleEntrypoint = `${staleHome}\\node_modules\\pnpm\\bin\\pnpm.cjs`;
+    const probed: string[] = [];
+
+    const entrypoint = await resolvePnpmEntrypoint({
+      environment: { PATH: pathDirectory, PNPM_HOME: staleHome },
+      platform: "win32",
+      probe: async (candidate) => {
+        probed.push(candidate);
+        if (
+          candidate === `${pathDirectory}\\pnpm.cmd` ||
+          candidate === pathEntrypoint ||
+          candidate === `${staleHome}\\pnpm.cmd` ||
+          candidate === staleEntrypoint
+        ) {
+          return { isFile: true, realPath: candidate };
+        }
+        return undefined;
+      },
+    });
+
+    expect(entrypoint).toBe(pathEntrypoint);
+    expect(probed).not.toContain(`${staleHome}\\pnpm.cmd`);
+  });
+
   it("constructs a Node-only launcher on simulated Windows", () => {
     expect(
       createPnpmLauncher({

@@ -40,6 +40,7 @@ async function resolveJavaScriptEntrypoint(
   ];
   const adjacentCandidates = directories.flatMap((directory) => [
     pathApi.join(directory, "node_modules", "pnpm", "bin", "pnpm.cjs"),
+    pathApi.join(directory, "node_modules", "corepack", "dist", "pnpm.js"),
     pathApi.join(
       directory,
       "..",
@@ -88,8 +89,8 @@ export async function resolvePnpmEntrypoint(options: {
   }
 
   const directories = [
-    options.environment.PNPM_HOME,
     ...(options.environment.PATH ?? "").split(pathApi.delimiter),
+    options.environment.PNPM_HOME,
   ].filter(
     (directory): directory is string =>
       Boolean(directory) && pathApi.isAbsolute(directory as string),
@@ -109,7 +110,7 @@ export async function resolvePnpmEntrypoint(options: {
   }
 
   throw new Error(
-    "Unable to resolve a regular pnpm .js/.cjs entrypoint from npm_execpath, PNPM_HOME, or PATH",
+    "Unable to resolve a regular pnpm .js/.cjs entrypoint from npm_execpath, PATH, or PNPM_HOME",
   );
 }
 
