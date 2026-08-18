@@ -261,6 +261,39 @@ function referencedRootScripts(body: string): string[] {
   );
 }
 
+function bareBootstrapImports(entrypoint: string): string[] {
+  const pending = [path.join(repositoryRoot, entrypoint)];
+  const visited = new Set<string>();
+  const bareImports: string[] = [];
+
+  while (pending.length > 0) {
+    const modulePath = pending.pop();
+    if (modulePath === undefined || visited.has(modulePath)) continue;
+    visited.add(modulePath);
+
+    if (path.extname(modulePath) === ".json") continue;
+    const source = fs.readFileSync(modulePath, "utf8");
+    const imports = [
+      ...source.matchAll(
+        /\b(?:import|export)\s+(?:type\s+)?(?:[^;]*?\sfrom\s+)?["']([^"']+)["']/g,
+      ),
+    ];
+    for (const match of imports) {
+      const specifier = match[1];
+      if (specifier === undefined || specifier.startsWith("node:")) continue;
+      if (!specifier.startsWith(".")) {
+        bareImports.push(
+          `${path.relative(repositoryRoot, modulePath)}: ${specifier}`,
+        );
+        continue;
+      }
+      pending.push(path.resolve(path.dirname(modulePath), specifier));
+    }
+  }
+
+  return bareImports;
+}
+
 describe("root Taskfile public API", () => {
   it("pins the parser and Task schema versions", () => {
     expect(packageJson.devDependencies.yaml).toBe("2.8.3");
@@ -320,9 +353,16 @@ describe("Task version gate and doctor", () => {
     );
 
     expect(gates).toEqual(["internal:require-task-version"]);
-    expect(taskCommands("internal:require-task-version")).toEqual([
-      { kind: "cmd", text: "pnpm exec tsx scripts/task-version-gate.ts" },
+    const gateCommands = taskCommands("internal:require-task-version");
+    expect(gateCommands).toEqual([
+      { kind: "cmd", text: "node scripts/task-version-gate.ts" },
     ]);
+    expect(
+      gateCommands
+        .filter((command) => command.kind === "cmd")
+        .map((command) => command.text)
+        .join("\n"),
+    ).not.toMatch(/\b(?:pnpm|tsx)\b/);
     expect(task("internal:require-task-version").env).toEqual({
       MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}",
       MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}",
@@ -337,13 +377,18 @@ describe("Task version gate and doctor", () => {
 
   it("runs doctor through one static typed entrypoint", () => {
     expect(taskCommands("doctor")).toEqual([
-      { kind: "cmd", text: "pnpm exec tsx scripts/task-doctor.ts" },
+      { kind: "cmd", text: "node scripts/task-doctor.ts" },
     ]);
     expect(task("doctor").env).toEqual({
       MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}",
       MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}",
       MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}",
     });
+  });
+
+  it("keeps both bootstrap helpers independent of node_modules", () => {
+    expect(bareBootstrapImports("scripts/task-version-gate.ts")).toEqual([]);
+    expect(bareBootstrapImports("scripts/task-doctor.ts")).toEqual([]);
   });
 
   it("never interpolates caller-controlled values into shell commands", () => {
@@ -442,7 +487,7 @@ describe("Task command leaves", () => {
           `${name} must not compose leaf commands`,
         ).not.toMatch(/(?:&&|\|\||[;|]|\n)/);
         expect(command.text, `${name} has an unsafe leaf command`).toMatch(
-          /^(?:pnpm\s+[\w:-]+:raw(?:\s+[^;&|\n]+)?|pnpm\s+(?:-F|--filter)\s+\S+\s+run\s+\S+|pnpm\s+install(?:\s+[^;&|\n]+)?|pnpm\s+exec(?:\s+[^;&|\n]+)?|pnpm\s+start:electron|go\s+[^;&|\n]+|docker\s+[^;&|\n]+)$/,
+          /^(?:node\s+scripts\/task-(?:version-gate|doctor)\.ts|pnpm\s+[\w:-]+:raw(?:\s+[^;&|\n]+)?|pnpm\s+(?:-F|--filter)\s+\S+\s+run\s+\S+|pnpm\s+install(?:\s+[^;&|\n]+)?|pnpm\s+exec(?:\s+[^;&|\n]+)?|pnpm\s+start:electron|go\s+[^;&|\n]+|docker\s+[^;&|\n]+)$/,
         );
       }
     }

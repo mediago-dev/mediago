@@ -1,8 +1,11 @@
 import {
+  copyFileSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +21,7 @@ const repositoryRoot = path.resolve(
   "..",
 );
 const rootTaskfilePath = path.join(repositoryRoot, "Taskfile.yml");
+const taskExecutable = resolveExecutable("task");
 
 test.each(["development", "test", "production"])(
   "native Task profile validation accepts %s",
@@ -89,6 +93,42 @@ test("typed Task version mismatch blocks its implementation leaf", () => {
   expect(result.output).toMatch(/taskfile\.dev\/installation|mise use/i);
 });
 
+test("setup version gate runs without pnpm, tsx, package metadata, or node_modules", () => {
+  const rootTaskfile = parse(readFileSync(rootTaskfilePath, "utf8")) as {
+    tasks: Record<string, Record<string, unknown>>;
+  };
+  const fixture = createFixture({
+    version: "3",
+    vars: { REQUIRED_TASK_VERSION: "3.51.1" },
+    tasks: {
+      setup: rootTaskfile.tasks.setup,
+      "internal:require-task-version":
+        rootTaskfile.tasks["internal:require-task-version"],
+      "internal:setup": {
+        internal: true,
+        cmds: ["echo SETUP_LEAF_EXECUTED"],
+      },
+    },
+  });
+  const scriptsDirectory = path.join(fixture.directory, "scripts");
+  mkdirSync(scriptsDirectory);
+  copyFileSync(
+    path.join(repositoryRoot, "scripts/task-version-gate.ts"),
+    path.join(scriptsDirectory, "task-version-gate.ts"),
+  );
+
+  expect(existsSync(path.join(fixture.directory, "package.json"))).toBe(false);
+  expect(existsSync(path.join(fixture.directory, "node_modules"))).toBe(false);
+
+  const result = runTask(fixture.taskfilePath, "setup", {
+    PATH: createNodeOnlyPath(),
+  });
+
+  expect(result.status).toBe(0);
+  expect(result.output).toContain("SETUP_LEAF_EXECUTED");
+  expect(result.output).not.toMatch(/\b(?:pnpm|tsx)\b/i);
+});
+
 const doctorInjectionTest = process.platform === "win32" ? test.skip : test;
 
 doctorInjectionTest(
@@ -121,6 +161,28 @@ doctorInjectionTest(
     expect(result.output).not.toContain("TASK_DOCTOR_SECRET_SENTINEL");
   },
 );
+
+test("doctor continues every diagnostic when pnpm is unavailable", () => {
+  const result = runTask(rootTaskfilePath, "doctor", {
+    MEDIAGO_DEPS_ROOT: createTemporaryDirectory(),
+    PATH: createNodeOnlyPath(),
+  });
+
+  expect(result.status).not.toBe(0);
+  expect(result.output).toContain("Task 3.51.1");
+  expect(result.output).toMatch(/Node .*ready/i);
+  expect(result.output).toMatch(/pnpm version unavailable/i);
+  expect(result.output).toMatch(/Go unavailable/i);
+  expect(result.output).toMatch(/Docker unavailable/i);
+  for (const toolName of RUNTIME_TOOLS) {
+    expect(result.output).toContain(toolName);
+  }
+  expect(result.output).toMatch(/hint:.*task deps:runtime.*task doctor/i);
+  expect(result.output).not.toMatch(/(?:exit status|code) 127/i);
+  expect(result.output.match(/exit status [1-9]\d*/g)).toEqual([
+    "exit status 1",
+  ]);
+});
 
 function createProfileFixture(): ReturnType<typeof createFixture> {
   const rootTaskfile = parse(readFileSync(rootTaskfilePath, "utf8")) as {
@@ -174,7 +236,7 @@ function runTask(
   overrides: NodeJS.ProcessEnv = {},
 ): { output: string; status: number | null } {
   const result = spawnSync(
-    "task",
+    taskExecutable,
     ["--color=false", "--taskfile", taskfilePath, taskName],
     {
       cwd: path.dirname(taskfilePath),
@@ -188,6 +250,32 @@ function runTask(
     output: `${result.stdout}${result.stderr}`,
     status: result.status,
   };
+}
+
+function createNodeOnlyPath(): string {
+  const directory = createTemporaryDirectory();
+  const executableName = process.platform === "win32" ? "node.exe" : "node";
+  const destination = path.join(directory, executableName);
+  try {
+    symlinkSync(process.execPath, destination, "file");
+  } catch {
+    copyFileSync(process.execPath, destination);
+  }
+  return directory;
+}
+
+function resolveExecutable(name: string): string {
+  const extensions =
+    process.platform === "win32"
+      ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")
+      : [""];
+  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+    for (const extension of extensions) {
+      const candidate = path.join(directory, `${name}${extension}`);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  throw new Error(`Required executable not found on PATH: ${name}`);
 }
 
 function sanitizedEnvironment(overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

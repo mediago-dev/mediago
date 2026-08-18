@@ -12,7 +12,7 @@ tasks:
       MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}"
       MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
     cmds:
-      - pnpm exec tsx scripts/task-doctor.ts
+      - node scripts/task-doctor.ts
 
   setup:
     desc: Install Node and current-platform runtime dependencies
@@ -194,7 +194,7 @@ tasks:
       MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}"
       MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}"
     cmds:
-      - pnpm exec tsx scripts/task-version-gate.ts
+      - node scripts/task-version-gate.ts
 
   internal:setup:
     internal: true
