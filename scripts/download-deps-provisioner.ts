@@ -9,14 +9,12 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
-  DEPENDENCY_TOOL_NAMES,
-  dependencyExecutableName,
   isWindowsPlatformKey,
+  manifestDependencyExecutableName,
   platformDepsDir,
   selectedToolNames,
   type DependencyManifest,
   type DependencyManifestEntry,
-  type DependencyToolName,
   type RuntimePlatform,
 } from "./dependency-layout.ts";
 import {
@@ -54,6 +52,7 @@ export interface ProvisionDependenciesOptions {
   manifest: DependencyManifest;
   selectedToolNames: readonly string[];
   platformKeys: readonly RuntimePlatform[];
+  hostPlatform?: NodeJS.Platform;
   prepareCandidate: (
     target: DependencyProvisionTarget,
     workDir: string,
@@ -65,8 +64,18 @@ export async function provisionDependencies({
   manifest,
   selectedToolNames: requestedToolNames,
   platformKeys,
+  hostPlatform = process.platform,
   prepareCandidate,
 }: ProvisionDependenciesOptions): Promise<void> {
+  const unsupportedUnixTarget = platformKeys.find(
+    (platformKey) => !isWindowsPlatformKey(platformKey),
+  );
+  if (hostPlatform === "win32" && unsupportedUnixTarget !== undefined) {
+    throw new Error(
+      `Windows host cannot provision Unix target ${unsupportedUnixTarget} with executable mode preservation; run this command on a native Unix host or select a win32 target`,
+    );
+  }
+
   const toolNames = selectedToolNames(manifest, requestedToolNames);
 
   for (const platformKey of platformKeys) {
@@ -83,7 +92,11 @@ export async function provisionDependencies({
 
       const destinationDirectory = platformDepsDir(depsRoot, platformKey);
       await mkdir(destinationDirectory, { recursive: true });
-      const executableName = executableNameFor(toolName, tool, platformKey);
+      const executableName = manifestDependencyExecutableName(
+        toolName,
+        tool,
+        platformKey,
+      );
       const target: DependencyProvisionTarget = {
         toolName,
         tool,
@@ -149,22 +162,6 @@ export async function provisionDependencies({
       }
     }
   }
-}
-
-function executableNameFor(
-  toolName: string,
-  tool: DependencyManifestEntry,
-  platformKey: RuntimePlatform,
-): string {
-  if ((DEPENDENCY_TOOL_NAMES as readonly string[]).includes(toolName)) {
-    return dependencyExecutableName(
-      toolName as DependencyToolName,
-      platformKey,
-    );
-  }
-  return isWindowsPlatformKey(platformKey)
-    ? (tool.binaryName.win32 ?? tool.binaryName.default)
-    : tool.binaryName.default;
 }
 
 function versionRecordFor(

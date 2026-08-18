@@ -234,6 +234,28 @@ test("never reads MEDIAGO_DEPS_DIR as a provisioning root", async () => {
   expect(existsSync(poisonedLeaf)).toBe(false);
 });
 
+test("rejects Unix targets on a Windows host before dependency state or file I/O", async () => {
+  const depsRoot = createDepsRoot();
+  let prepareCount = 0;
+
+  await expect(
+    provisionDependencies({
+      depsRoot,
+      manifest: createManifest(),
+      selectedToolNames: ["tool"],
+      platformKeys: [PLATFORM],
+      hostPlatform: "win32",
+      prepareCandidate: async (_target, workDir) => {
+        prepareCount += 1;
+        return writeCandidate(workDir, "unexpected tool");
+      },
+    }),
+  ).rejects.toThrow(/Windows host.*linux-x64.*native Unix host.*win32 target/i);
+
+  expect(prepareCount).toBe(0);
+  expect(readdirSync(depsRoot)).toEqual([]);
+});
+
 interface ManifestOptions {
   includeHelper?: boolean;
   toolSha256?: string;

@@ -2,6 +2,9 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import manifestJson from "./deps-versions.json" with { type: "json" };
 import {
+  E2E_TOOLS,
+  MEDIA_INTEGRATION_TOOLS,
+  RUNTIME_TOOLS,
   SUPPORTED_RUNTIME_PLATFORMS,
   dependencyExecutableName,
   dependencyExecutablePath,
@@ -27,13 +30,30 @@ const completeRuntimePlatforms: readonly RuntimePlatform[] = [
 ];
 
 describe("dependency layout", () => {
-  test("defines the complete selectable runtime platform contract", () => {
+  test("defines the complete pinned runtime tool groups", () => {
+    expect(RUNTIME_TOOLS).toEqual([
+      "ffmpeg",
+      "N_m3u8DL-RE",
+      "BBDown",
+      "aria2",
+      "yt-dlp",
+      "mediago",
+    ]);
+    expect(MEDIA_INTEGRATION_TOOLS).toEqual([
+      "aria2",
+      "N_m3u8DL-RE",
+      "ffmpeg",
+      "BBDown",
+    ]);
+    expect(E2E_TOOLS).toEqual(["aria2"]);
+  });
+
+  test("lists only platforms with complete runtime assets as supported", () => {
     expect(SUPPORTED_RUNTIME_PLATFORMS).toEqual([
-      "darwin-arm64",
       "darwin-x64",
-      "linux-arm64",
+      "darwin-arm64",
       "linux-x64",
-      "win32-arm64",
+      "linux-arm64",
       "win32-x64",
     ]);
   });
@@ -142,6 +162,30 @@ describe("dependency layout", () => {
     ).toThrow(
       /ffmpeg.*b6\.0.*win32-arm64.*[\\/]tmp[\\/]mediago-deps[\\/]win32-arm64[\\/]ffmpeg\.exe.*pnpm deps:download:raw --tools ffmpeg --platform win32-arm64/is,
     );
+  });
+
+  test("uses the canonical executable name in preflight diagnostics", () => {
+    const poisonedManifest: PinnedDependencyManifest = {
+      ...manifest,
+      ffmpeg: {
+        ...manifest.ffmpeg,
+        binaryName: { default: "poisoned", win32: "poisoned.exe" },
+      },
+    };
+
+    let diagnostic = "";
+    try {
+      preflightToolAssets(
+        ["ffmpeg"],
+        poisonedManifest,
+        ["win32-arm64"],
+        "/tmp/mediago-deps",
+      );
+    } catch (error) {
+      diagnostic = String(error);
+    }
+    expect(diagnostic).toContain(path.join("win32-arm64", "ffmpeg.exe"));
+    expect(diagnostic).not.toContain("poisoned.exe");
   });
 
   test("permits selective BBDown provisioning on win32-arm64", () => {

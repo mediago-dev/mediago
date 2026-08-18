@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export const SUPPORTED_RUNTIME_PLATFORMS = [
+const SELECTABLE_RUNTIME_PLATFORMS = [
   "darwin-arm64",
   "darwin-x64",
   "linux-arm64",
@@ -9,9 +9,17 @@ export const SUPPORTED_RUNTIME_PLATFORMS = [
   "win32-x64",
 ] as const;
 
-export type RuntimePlatform = (typeof SUPPORTED_RUNTIME_PLATFORMS)[number];
+export type RuntimePlatform = (typeof SELECTABLE_RUNTIME_PLATFORMS)[number];
 
-export const DEPENDENCY_TOOL_NAMES = [
+export const SUPPORTED_RUNTIME_PLATFORMS = [
+  "darwin-x64",
+  "darwin-arm64",
+  "linux-x64",
+  "linux-arm64",
+  "win32-x64",
+] as const satisfies readonly RuntimePlatform[];
+
+export const RUNTIME_TOOLS = [
   "ffmpeg",
   "N_m3u8DL-RE",
   "BBDown",
@@ -20,7 +28,20 @@ export const DEPENDENCY_TOOL_NAMES = [
   "mediago",
 ] as const;
 
-export type DependencyToolName = (typeof DEPENDENCY_TOOL_NAMES)[number];
+export type DependencyToolName = (typeof RUNTIME_TOOLS)[number];
+
+export const MEDIA_INTEGRATION_TOOLS = [
+  "aria2",
+  "N_m3u8DL-RE",
+  "ffmpeg",
+  "BBDown",
+] as const satisfies readonly DependencyToolName[];
+
+export const E2E_TOOLS = [
+  "aria2",
+] as const satisfies readonly DependencyToolName[];
+
+export const DEPENDENCY_TOOL_NAMES = RUNTIME_TOOLS;
 
 export interface DependencyManifestEntry {
   repo: string;
@@ -58,7 +79,7 @@ export function platformKeyFor(
   arch: string,
 ): RuntimePlatform {
   const key = `${platform}-${arch}`;
-  if (!(SUPPORTED_RUNTIME_PLATFORMS as readonly string[]).includes(key)) {
+  if (!(SELECTABLE_RUNTIME_PLATFORMS as readonly string[]).includes(key)) {
     throw new Error(`Unsupported runtime platform: ${key}`);
   }
   return key as RuntimePlatform;
@@ -103,6 +124,25 @@ export function dependencyExecutablePath(
   );
 }
 
+export function isDependencyToolName(
+  toolName: string,
+): toolName is DependencyToolName {
+  return (DEPENDENCY_TOOL_NAMES as readonly string[]).includes(toolName);
+}
+
+export function manifestDependencyExecutableName(
+  toolName: string,
+  tool: DependencyManifestEntry,
+  platformKey: RuntimePlatform,
+): string {
+  if (isDependencyToolName(toolName)) {
+    return dependencyExecutableName(toolName, platformKey);
+  }
+  return isWindowsPlatformKey(platformKey)
+    ? (tool.binaryName.win32 ?? tool.binaryName.default)
+    : tool.binaryName.default;
+}
+
 export function selectedToolNames(
   manifest: DependencyManifest,
   requestedTools?: readonly string[],
@@ -142,9 +182,11 @@ export function preflightToolAssets(
     for (const platformKey of platformKeys) {
       if (tool.assets[platformKey]) continue;
 
-      const executableName = isWindowsPlatformKey(platformKey)
-        ? (tool.binaryName.win32 ?? tool.binaryName.default)
-        : tool.binaryName.default;
+      const executableName = manifestDependencyExecutableName(
+        toolName,
+        tool,
+        platformKey,
+      );
       failures.push(
         [
           `${toolName} ${tool.version} has no pinned asset for ${platformKey}`,
