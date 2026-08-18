@@ -21,7 +21,9 @@ import {
   type DependencyProvisionTarget,
 } from "./download-deps-provisioner.ts";
 
-const PLATFORM: RuntimePlatform = "linux-x64";
+const PLATFORM: RuntimePlatform = "win32-x64";
+const UNIX_PLATFORM: RuntimePlatform = "linux-x64";
+const unixTest = process.platform === "win32" ? test.skip : test;
 
 test("prepares a missing dependency once and writes binary and platform state", async () => {
   const depsRoot = createDepsRoot();
@@ -40,9 +42,7 @@ test("prepares a missing dependency once and writes binary and platform state", 
   });
 
   expect(preparedTargets).toHaveLength(1);
-  expect(readFileSync(path.join(depsRoot, PLATFORM, "tool"), "utf8")).toBe(
-    "fresh tool",
-  );
+  expect(readFileSync(binaryPath(depsRoot, "tool"), "utf8")).toBe("fresh tool");
   expect(readState(depsRoot)).toEqual({
     schemaVersion: 1,
     tools: {
@@ -50,7 +50,7 @@ test("prepares a missing dependency once and writes binary and platform state", 
         repo: "example/tool",
         version: "v1",
         asset: "tool-archive",
-        binaryName: "tool",
+        binaryName: "tool.exe",
       },
     },
   });
@@ -70,7 +70,7 @@ test("reuses a matching executable binary and complete state", async () => {
         repo: "example/tool",
         version: "v1",
         asset: "tool-archive",
-        binaryName: "tool",
+        binaryName: "tool.exe",
         sha256: sha256(contents),
       },
     },
@@ -89,9 +89,7 @@ test("reuses a matching executable binary and complete state", async () => {
   });
 
   expect(prepareCount).toBe(0);
-  expect(readFileSync(path.join(depsRoot, PLATFORM, "tool"), "utf8")).toBe(
-    contents,
-  );
+  expect(readFileSync(binaryPath(depsRoot, "tool"), "utf8")).toBe(contents);
 });
 
 test("refreshes only the tool whose cached version is stale", async () => {
@@ -106,13 +104,13 @@ test("refreshes only the tool whose cached version is stale", async () => {
         repo: "example/tool",
         version: "v0",
         asset: "tool-archive",
-        binaryName: "tool",
+        binaryName: "tool.exe",
       },
       helper: {
         repo: "example/helper",
         version: "v1",
         asset: "helper-archive",
-        binaryName: "helper",
+        binaryName: "helper.exe",
       },
     },
   });
@@ -130,27 +128,31 @@ test("refreshes only the tool whose cached version is stale", async () => {
   });
 
   expect(preparedTools).toEqual(["tool"]);
-  expect(readFileSync(path.join(depsRoot, PLATFORM, "tool"), "utf8")).toBe(
-    "fresh tool",
-  );
-  expect(readFileSync(path.join(depsRoot, PLATFORM, "helper"), "utf8")).toBe(
+  expect(readFileSync(binaryPath(depsRoot, "tool"), "utf8")).toBe("fresh tool");
+  expect(readFileSync(binaryPath(depsRoot, "helper"), "utf8")).toBe(
     "cached helper",
   );
 });
 
-test("refreshes only a non-executable Unix dependency", async () => {
+unixTest("refreshes only a non-executable Unix dependency", async () => {
   const depsRoot = createDepsRoot();
   const manifest = createManifest({ includeHelper: true });
-  writeCachedBinary(depsRoot, "tool", "non-executable tool", 0o644);
-  writeCachedBinary(depsRoot, "helper", "cached helper", 0o755);
-  writeState(depsRoot, matchingState(true));
+  writeCachedBinary(
+    depsRoot,
+    "tool",
+    "non-executable tool",
+    0o644,
+    UNIX_PLATFORM,
+  );
+  writeCachedBinary(depsRoot, "helper", "cached helper", 0o755, UNIX_PLATFORM);
+  writeState(depsRoot, matchingState(true, UNIX_PLATFORM), UNIX_PLATFORM);
   const preparedTools: string[] = [];
 
   await provisionDependencies({
     depsRoot,
     manifest,
     selectedToolNames: ["tool", "helper"],
-    platformKeys: [PLATFORM],
+    platformKeys: [UNIX_PLATFORM],
     prepareCandidate: async (target, workDir) => {
       preparedTools.push(target.toolName);
       return writeCandidate(workDir, `fresh ${target.toolName}`);
@@ -158,9 +160,9 @@ test("refreshes only a non-executable Unix dependency", async () => {
   });
 
   expect(preparedTools).toEqual(["tool"]);
-  expect(readFileSync(path.join(depsRoot, PLATFORM, "helper"), "utf8")).toBe(
-    "cached helper",
-  );
+  expect(
+    readFileSync(binaryPath(depsRoot, "helper", UNIX_PLATFORM), "utf8"),
+  ).toBe("cached helper");
 });
 
 test("preserves prior binary and state bytes when a candidate hash mismatches", async () => {
@@ -177,7 +179,7 @@ test("preserves prior binary and state bytes when a candidate hash mismatches", 
           repo: "example/tool",
           version: "v0",
           asset: "old-archive",
-          binaryName: "tool",
+          binaryName: "tool.exe",
         },
       },
     },
@@ -230,7 +232,7 @@ test("never reads MEDIAGO_DEPS_DIR as a provisioning root", async () => {
       writeCandidate(workDir, "isolated tool"),
   });
 
-  expect(existsSync(path.join(depsRoot, PLATFORM, "tool"))).toBe(true);
+  expect(existsSync(binaryPath(depsRoot, "tool"))).toBe(true);
   expect(existsSync(poisonedLeaf)).toBe(false);
 });
 
@@ -243,7 +245,7 @@ test("rejects Unix targets on a Windows host before dependency state or file I/O
       depsRoot,
       manifest: createManifest(),
       selectedToolNames: ["tool"],
-      platformKeys: [PLATFORM],
+      platformKeys: [UNIX_PLATFORM],
       hostPlatform: "win32",
       prepareCandidate: async (_target, workDir) => {
         prepareCount += 1;
@@ -256,6 +258,59 @@ test("rejects Unix targets on a Windows host before dependency state or file I/O
   expect(readdirSync(depsRoot)).toEqual([]);
 });
 
+test("fails closed on version-state read errors before binary mutation", async () => {
+  const depsRoot = createDepsRoot();
+  const priorBinaryPath = writeCachedBinary(
+    depsRoot,
+    "tool",
+    "prior binary",
+    0o644,
+  );
+  const unreadableStatePath = path.join(depsRoot, ".state", `${PLATFORM}.json`);
+  mkdirSync(unreadableStatePath, { recursive: true });
+  let prepareCount = 0;
+
+  await expect(
+    provisionDependencies({
+      depsRoot,
+      manifest: createManifest(),
+      selectedToolNames: ["tool"],
+      platformKeys: [PLATFORM],
+      prepareCandidate: async (_target, workDir) => {
+        prepareCount += 1;
+        return writeCandidate(workDir, "replacement");
+      },
+    }),
+  ).rejects.toThrow(/Failed to read dependency version state.*win32-x64/i);
+
+  expect(prepareCount).toBe(0);
+  expect(readFileSync(priorBinaryPath, "utf8")).toBe("prior binary");
+  expect(existsSync(unreadableStatePath)).toBe(true);
+});
+
+test("treats invalid JSON version state as stale", async () => {
+  const depsRoot = createDepsRoot();
+  writeStateBytes(depsRoot, "{not-json\n");
+  let prepareCount = 0;
+
+  await provisionDependencies({
+    depsRoot,
+    manifest: createManifest(),
+    selectedToolNames: ["tool"],
+    platformKeys: [PLATFORM],
+    prepareCandidate: async (_target, workDir) => {
+      prepareCount += 1;
+      return writeCandidate(workDir, "fresh tool");
+    },
+  });
+
+  expect(prepareCount).toBe(1);
+  expect(readState(depsRoot)).toMatchObject({
+    schemaVersion: 1,
+    tools: { tool: { version: "v1", binaryName: "tool.exe" } },
+  });
+});
+
 interface ManifestOptions {
   includeHelper?: boolean;
   toolSha256?: string;
@@ -266,18 +321,29 @@ function createManifest(options: ManifestOptions = {}): DependencyManifest {
     tool: {
       repo: "example/tool",
       version: "v1",
-      assets: { [PLATFORM]: "tool-archive" },
+      assets: {
+        [PLATFORM]: "tool-archive",
+        [UNIX_PLATFORM]: "tool-archive-unix",
+      },
       binaryName: { default: "tool", win32: "tool.exe" },
       ...(options.toolSha256 === undefined
         ? {}
-        : { sha256: { [PLATFORM]: options.toolSha256 } }),
+        : {
+            sha256: {
+              [PLATFORM]: options.toolSha256,
+              [UNIX_PLATFORM]: options.toolSha256,
+            },
+          }),
     },
   };
   if (options.includeHelper) {
     manifest.helper = {
       repo: "example/helper",
       version: "v1",
-      assets: { [PLATFORM]: "helper-archive" },
+      assets: {
+        [PLATFORM]: "helper-archive",
+        [UNIX_PLATFORM]: "helper-archive-unix",
+      },
       binaryName: { default: "helper", win32: "helper.exe" },
     };
   }
@@ -301,23 +367,36 @@ function writeCachedBinary(
   toolName: string,
   contents: string,
   mode: number,
+  platform: RuntimePlatform = PLATFORM,
 ): string {
-  const platformDirectory = path.join(depsRoot, PLATFORM);
+  const platformDirectory = path.join(depsRoot, platform);
   mkdirSync(platformDirectory, { recursive: true });
-  const binaryPath = path.join(platformDirectory, toolName);
-  writeFileSync(binaryPath, contents);
-  chmodSync(binaryPath, mode);
-  return binaryPath;
+  const targetPath = binaryPath(depsRoot, toolName, platform);
+  writeFileSync(targetPath, contents);
+  chmodSync(targetPath, mode);
+  return targetPath;
 }
 
-function writeState(depsRoot: string, state: unknown): string {
-  return writeStateBytes(depsRoot, `${JSON.stringify(state, null, 2)}\n`);
+function writeState(
+  depsRoot: string,
+  state: unknown,
+  platform: RuntimePlatform = PLATFORM,
+): string {
+  return writeStateBytes(
+    depsRoot,
+    `${JSON.stringify(state, null, 2)}\n`,
+    platform,
+  );
 }
 
-function writeStateBytes(depsRoot: string, contents: string): string {
+function writeStateBytes(
+  depsRoot: string,
+  contents: string,
+  platform: RuntimePlatform = PLATFORM,
+): string {
   const stateDirectory = path.join(depsRoot, ".state");
   mkdirSync(stateDirectory, { recursive: true });
-  const statePath = path.join(stateDirectory, `${PLATFORM}.json`);
+  const statePath = path.join(stateDirectory, `${platform}.json`);
   writeFileSync(statePath, contents);
   return statePath;
 }
@@ -328,28 +407,43 @@ function readState(depsRoot: string): unknown {
   );
 }
 
-function matchingState(includeHelper = false): unknown {
+function matchingState(
+  includeHelper = false,
+  platform: RuntimePlatform = PLATFORM,
+): unknown {
+  const isWindows = platform.startsWith("win32-");
   return {
     schemaVersion: 1,
     tools: {
       tool: {
         repo: "example/tool",
         version: "v1",
-        asset: "tool-archive",
-        binaryName: "tool",
+        asset: isWindows ? "tool-archive" : "tool-archive-unix",
+        binaryName: isWindows ? "tool.exe" : "tool",
       },
       ...(includeHelper
         ? {
             helper: {
               repo: "example/helper",
               version: "v1",
-              asset: "helper-archive",
-              binaryName: "helper",
+              asset: isWindows ? "helper-archive" : "helper-archive-unix",
+              binaryName: isWindows ? "helper.exe" : "helper",
             },
           }
         : {}),
     },
   };
+}
+
+function binaryPath(
+  depsRoot: string,
+  toolName: string,
+  platform: RuntimePlatform = PLATFORM,
+): string {
+  const executableName = platform.startsWith("win32-")
+    ? `${toolName}.exe`
+    : toolName;
+  return path.join(depsRoot, platform, executableName);
 }
 
 function sha256(contents: string): string {

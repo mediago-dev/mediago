@@ -210,25 +210,41 @@ async function loadVersionManifest(
   depsRoot: string,
   platformKey: RuntimePlatform,
 ): Promise<VersionManifest> {
+  const manifestPath = versionManifestPath(depsRoot, platformKey);
+  let contents: string;
   try {
-    const parsed: unknown = JSON.parse(
-      await readFile(versionManifestPath(depsRoot, platformKey), "utf8"),
-    );
-    if (
-      isRecord(parsed) &&
-      parsed.schemaVersion === 1 &&
-      isRecord(parsed.tools)
-    ) {
-      return {
-        schemaVersion: 1,
-        tools: parsed.tools as Record<string, ToolVersionRecord>,
-      };
-    }
+    contents = await readFile(manifestPath, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      // Invalid or unreadable state is treated as an empty cache manifest.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return createVersionManifest();
     }
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to read dependency version state for ${platformKey} at ${manifestPath}: ${reason}`,
+      { cause: error },
+    );
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contents);
+  } catch {
+    // Malformed state is stale cache metadata and is safe to regenerate.
+    return createVersionManifest();
+  }
+
+  if (
+    isRecord(parsed) &&
+    parsed.schemaVersion === 1 &&
+    isRecord(parsed.tools)
+  ) {
+    return {
+      schemaVersion: 1,
+      tools: parsed.tools as Record<string, ToolVersionRecord>,
+    };
+  }
+
+  // Unknown schemas are stale cache metadata and are safe to regenerate.
   return createVersionManifest();
 }
 

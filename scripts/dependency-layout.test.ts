@@ -84,6 +84,21 @@ describe("dependency layout", () => {
     expect(resolveDepsRoot("/repo", {})).toBe(path.resolve("/repo/.deps"));
   });
 
+  test("treats an empty or whitespace-only MEDIAGO_DEPS_ROOT as unset", () => {
+    expect(resolveDepsRoot("/repo", { MEDIAGO_DEPS_ROOT: "" })).toBe(
+      path.resolve("/repo/.deps"),
+    );
+    expect(resolveDepsRoot("/repo", { MEDIAGO_DEPS_ROOT: "  \t " })).toBe(
+      path.resolve("/repo/.deps"),
+    );
+  });
+
+  test("preserves nonblank MEDIAGO_DEPS_ROOT path semantics", () => {
+    expect(resolveDepsRoot("/repo", { MEDIAGO_DEPS_ROOT: " ./custom " })).toBe(
+      path.resolve(" ./custom "),
+    );
+  });
+
   test("never accepts a poisoned MEDIAGO_DEPS_DIR as the root", () => {
     expect(
       resolveDepsRoot("/repo", {

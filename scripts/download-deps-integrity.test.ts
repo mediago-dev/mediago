@@ -31,6 +31,7 @@ const depsVersions = JSON.parse(
 >;
 const OFFICIAL_ARIA2_LINUX_X64_SHA256 =
   "b6f2cdadcd34ba16dd7fcb29de4b84c36f893f9b223a9a05157d1892687a45a0";
+const unixTest = process.platform === "win32" ? test.skip : test;
 
 test("pins the official linux-x64 aria2 binary SHA-256", () => {
   expect(depsVersions.aria2).toMatchObject({
@@ -83,7 +84,7 @@ test("keeps unconfigured platforms compatible but requires the E2E checksum", as
   ).toThrow(/aria2.*linux-x64.*SHA-256/i);
 });
 
-test("rejects a non-executable Unix dependency", async () => {
+unixTest("rejects a non-executable Unix dependency", async () => {
   const fixture = createFixture("unix tool", 0o644);
 
   expect(
@@ -98,7 +99,7 @@ test("rejects a non-executable Unix dependency", async () => {
   ).rejects.toThrow(/cached Unix tool.*executable/i);
 });
 
-test("accepts an executable Unix dependency", async () => {
+unixTest("accepts an executable Unix dependency", async () => {
   const fixture = createFixture("unix tool", 0o755);
 
   expect(

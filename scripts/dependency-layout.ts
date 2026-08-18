@@ -91,9 +91,12 @@ export function resolveDepsRoot(
   repositoryRoot: string,
   environment: NodeJS.ProcessEnv = process.env,
 ): string {
-  return path.resolve(
-    environment.MEDIAGO_DEPS_ROOT ?? path.join(repositoryRoot, ".deps"),
-  );
+  const configuredRoot = environment.MEDIAGO_DEPS_ROOT;
+  const root =
+    configuredRoot === undefined || configuredRoot.trim() === ""
+      ? path.join(repositoryRoot, ".deps")
+      : configuredRoot;
+  return path.resolve(root);
 }
 
 export function platformDepsDir(
