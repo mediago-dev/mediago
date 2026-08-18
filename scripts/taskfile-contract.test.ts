@@ -8,7 +8,7 @@ import {
   asRecord,
   createTaskFixture,
   dockerRepositoryCommands,
-  migratedPnpmCommandsInFences,
+  migratedPnpmCommandsInCodeBlocks,
   runTaskFixture as runFixtureTask,
   stringArray,
   taskCommands as parseTaskCommands,
@@ -1230,7 +1230,7 @@ describe("normative documentation Task contract", () => {
           `task ${taskName}`,
         );
       }
-      expect(migratedPnpmCommandsInFences(source), filename).toEqual([]);
+      expect(migratedPnpmCommandsInCodeBlocks(source), filename).toEqual([]);
 
       if (requirements.installsTask) {
         expect(source).toContain("macOS");
@@ -1254,7 +1254,7 @@ describe("normative documentation Task contract", () => {
 
   it("rejects migrated pnpm startup/build commands without matching substrings broadly", () => {
     expect(
-      migratedPnpmCommandsInFences(`
+      migratedPnpmCommandsInCodeBlocks(`
 \`\`\`shell
 pnpm dev:web
 pnpm build:web --mode production
@@ -1266,11 +1266,11 @@ cd mediago && pnpm build:web:raw
       "pnpm dev:web",
       "pnpm build:web --mode production",
       "env NODE_ENV=test pnpm run dev:electron",
-      "cd mediago && pnpm build:web:raw",
+      "pnpm build:web:raw",
     ]);
 
     expect(
-      migratedPnpmCommandsInFences(`
+      migratedPnpmCommandsInCodeBlocks(`
 \`pnpm dev:web\` is historical prose, not a recommendation block.
 
 \`\`\`shell
@@ -1286,7 +1286,7 @@ docker run --name mediago example/mediago
 
   it("rejects migrated pnpm commands split across POSIX and Windows continuations", () => {
     expect(
-      migratedPnpmCommandsInFences(`
+      migratedPnpmCommandsInCodeBlocks(`
 \`\`\`shell
 pnpm \\
   dev:web
@@ -1297,13 +1297,13 @@ pnpm run \\
     ).toEqual(["pnpm dev:web", "pnpm run build:electron"]);
 
     expect(
-      migratedPnpmCommandsInFences(
+      migratedPnpmCommandsInCodeBlocks(
         "```shell\r\npnpm \\\r\n  dev:electron\r\n```\r\n",
       ),
     ).toEqual(["pnpm dev:electron"]);
 
     expect(
-      migratedPnpmCommandsInFences(`
+      migratedPnpmCommandsInCodeBlocks(`
 \`\`\`shell
 pnpm install \\
   --frozen-lockfile
@@ -1314,6 +1314,72 @@ pnpm run \\
 \`\`\`
 `),
     ).toEqual([]);
+  });
+
+  it.each([
+    [
+      "PowerShell LF continuation",
+      "```powershell\npnpm `\n  dev:web\n```",
+      ["pnpm dev:web"],
+    ],
+    [
+      "PowerShell CRLF continuation",
+      "```powershell\r\npnpm `\r\n  run build:electron\r\n```",
+      ["pnpm run build:electron"],
+    ],
+    [
+      "CMD LF continuation",
+      "```bat\npnpm ^\n  dev:electron\n```",
+      ["pnpm dev:electron"],
+    ],
+    [
+      "CMD CRLF continuation",
+      "```bat\r\npnpm run ^\r\n  build:web\r\n```",
+      ["pnpm run build:web"],
+    ],
+    [
+      "pnpm global no-argument option",
+      "```shell\npnpm --silent dev:web\n```",
+      ["pnpm --silent dev:web"],
+    ],
+    [
+      "pnpm directory option",
+      "```shell\npnpm -C . build:web\n```",
+      ["pnpm -C . build:web"],
+    ],
+    [
+      "leading environment assignment",
+      "~~~shell\nNODE_ENV=test pnpm dev:web\n~~~",
+      ["NODE_ENV=test pnpm dev:web"],
+    ],
+    [
+      "Markdown indented code",
+      "Commands:\n\n    pnpm run dev:electron\n",
+      ["pnpm run dev:electron"],
+    ],
+    [
+      "HTML pre/code with entities",
+      '<pre class="example"><code class="language-shell"><span>cd</span> mediago &amp;&amp; pnpm --silent build:web</code></pre>',
+      ["pnpm --silent build:web"],
+    ],
+  ])("detects %s", (_name, source, expected) => {
+    expect(migratedPnpmCommandsInCodeBlocks(source)).toEqual(expected);
+  });
+
+  it.each([
+    ["echo arguments", "```shell\necho pnpm dev:web\n```"],
+    ["ordinary prose", "Use pnpm dev:web only in historical examples."],
+    ["three-space indentation", "   pnpm dev:web\n"],
+    ["canonical Task", "```shell\ntask dev:web\n```"],
+    ["workspace filter", "```shell\npnpm --filter @mediago/ui run build\n```"],
+    ["workspace shorthand", "```shell\npnpm -F @mediago/ui run dev\n```"],
+    [
+      "package install",
+      "<pre><code>pnpm install &amp;&amp; pnpm add yaml</code></pre>",
+    ],
+    ["component script", "    pnpm run npm:build\n"],
+  ])("allows %s without a migrated repository invocation", (_name, source) => {
+    expect(migratedPnpmCommandsInCodeBlocks(source)).toEqual([]);
   });
 });
 
