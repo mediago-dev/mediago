@@ -86,12 +86,15 @@ const profileImplementations = {
   "internal:build:web": "production",
   "internal:build:server": "production",
   "internal:build:electron": "production",
+  "internal:production:build:electron": "production",
   "internal:build:extension": "production",
   "internal:build:docs": "production",
   "internal:build:docker": "production",
   "internal:pack:extension": "production",
   "internal:pack:electron": "production",
+  "internal:production:pack:electron": "production",
   "internal:release:electron": "production",
+  "internal:production:release:electron": "production",
 } as const;
 
 const implementationGraph = {
@@ -264,6 +267,12 @@ const prerequisiteGraph = {
     leaves: ["pnpm exec playwright install chromium"],
   },
   "internal:docker:daemon": { deps: [], leaves: [] },
+} as const;
+
+const productionEntryGraph = {
+  "internal:production:build:electron": "internal:build:electron",
+  "internal:production:pack:electron": "internal:pack:electron",
+  "internal:production:release:electron": "internal:release:electron",
 } as const;
 
 const runtimeConsumers = [
@@ -466,7 +475,11 @@ describe("root Taskfile public API", () => {
     "%s checks Task before invoking one private implementation",
     (name) => {
       const implementation =
-        name === "dev:server" ? "internal:dev:web" : `internal:${name}`;
+        name === "dev:server"
+          ? "internal:dev:web"
+          : Object.hasOwn(productionEntryGraph, `internal:production:${name}`)
+            ? `internal:production:${name}`
+            : `internal:${name}`;
       expect(taskCommands(name)).toEqual([
         { kind: "task", task: "internal:require-task-version" },
         { kind: "task", task: implementation },
@@ -627,6 +640,7 @@ describe("Task command leaves", () => {
       [
         ...Object.keys(implementationGraph),
         ...Object.keys(prerequisiteGraph),
+        ...Object.keys(productionEntryGraph),
       ].toSorted(),
     );
 
@@ -641,6 +655,12 @@ describe("Task command leaves", () => {
         expected.deps,
       );
       expect(terminalLeaves(name), `${name} leaves`).toEqual(expected.leaves);
+    }
+    for (const [name, implementation] of Object.entries(productionEntryGraph)) {
+      expect(taskDependencies(name), `${name} prerequisites`).toEqual([]);
+      expect(taskCommands(name), `${name} implementation sequence`).toEqual([
+        { kind: "task", task: implementation },
+      ]);
     }
     expect(task("internal:test:go").dir).toBe("apps/core");
 
@@ -821,7 +841,10 @@ describe("production variable requirements", () => {
     "release:electron": ["APP_NAME", "APP_ID", "APP_COPYRIGHT"],
   } as const;
 
-  it("keeps reusable implementation requirements profile-only", () => {
+  it("keeps public wrappers and reusable implementations metadata-free", () => {
+    for (const name of Object.keys(expectedPackagingRequirements)) {
+      expect(task(name)).not.toHaveProperty("requires");
+    }
     for (const name of [
       "internal:build:electron",
       "internal:pack:electron",
@@ -832,57 +855,29 @@ describe("production variable requirements", () => {
   });
 
   it.each(Object.entries(expectedPackagingRequirements))(
-    "%s uses native requirements for exactly %s",
+    "%s validates exactly %s in its production profile entry",
     (name, expected) => {
-      expect(packagingRequirements(name)).toEqual(expected);
-
-      for (const missingName of expected) {
-        const fixture = createRequirementFixture(name);
-        const packagingEnvironment = Object.fromEntries(
-          expected
-            .filter((variableName) => variableName !== missingName)
-            .map((variableName, index) => [
-              variableName,
-              `TASK_REQUIREMENT_SECRET_${index}_SENTINEL`,
-            ]),
-        );
-        const result = runFixtureTask(
-          fixture,
-          {
-            MEDIAGO_PROFILE: "production",
-            ...packagingEnvironment,
-          },
-          true,
-        );
-
-        expect(result.status).not.toBe(0);
-        expect(result.output).toContain(missingName);
-        for (const presentName of expected) {
-          if (presentName !== missingName) {
-            expect(result.output).not.toContain(presentName);
-          }
-        }
-        expect(result.output).not.toContain("TASK_REQUIREMENT_SECRET_");
-      }
-
-      const readyFixture = createRequirementFixture(name);
-      const readyResult = runFixtureTask(
-        readyFixture,
-        {
-          MEDIAGO_PROFILE: "production",
-          ...Object.fromEntries(
-            expected.map((variableName, index) => [
-              variableName,
-              `TASK_REQUIREMENT_SECRET_${index}_SENTINEL`,
-            ]),
+      const entryName = `internal:production:${name}`;
+      const variables = asRecord(task(entryName).vars, `${entryName} vars`);
+      expect(packagingRequirements(entryName)).toEqual(expected);
+      for (const variableName of expected) {
+        expect(variables[variableName]).toEqual({
+          sh: `node scripts/task-production-metadata.ts ${variableName}`,
+        });
+        expect(
+          requiredVariables(entryName).find(
+            (requirement) => requirement.name === variableName,
           ),
-        },
-        true,
-      );
-      expect(readyResult.status).toBe(0);
-      expect(readyResult.output).not.toContain("TASK_REQUIREMENT_SECRET_");
+        ).toEqual({ name: variableName, enum: ["present"] });
+      }
     },
   );
+
+  it("keeps the production metadata probe dependency-free", () => {
+    expect(bareBootstrapImports("scripts/task-production-metadata.ts")).toEqual(
+      [],
+    );
+  });
 });
 
 function createDependencyRootFixture(): TaskFixture {
@@ -895,18 +890,6 @@ function createDependencyRootFixture(): TaskFixture {
         cmds: [
           `node -e "process.exit(process.env.MEDIAGO_DEPS_ROOT === process.env.EXPECTED_DEPS_ROOT ? 0 : 17)"`,
         ],
-      },
-    },
-  });
-}
-
-function createRequirementFixture(name: string): TaskFixture {
-  return createTaskFixture({
-    version: "3",
-    tasks: {
-      probe: {
-        requires: { vars: requiredVariables(name) },
-        cmds: [`node -e "process.exit(0)"`],
       },
     },
   });

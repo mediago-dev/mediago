@@ -152,12 +152,9 @@ tasks:
 
   build:electron:
     desc: Build the Electron desktop application
-    requires:
-      vars:
-        - name: APP_NAME
     cmds:
       - task: internal:require-task-version
-      - task: internal:build:electron
+      - task: internal:production:build:electron
 
   build:extension:
     desc: Build the browser extension
@@ -185,21 +182,15 @@ tasks:
 
   pack:electron:
     desc: Package the Electron desktop application
-    requires: &electron-package-requires
-      vars:
-        - name: APP_NAME
-        - name: APP_ID
-        - name: APP_COPYRIGHT
     cmds:
       - task: internal:require-task-version
-      - task: internal:pack:electron
+      - task: internal:production:pack:electron
 
   release:electron:
     desc: Build Electron release artifacts
-    requires: *electron-package-requires
     cmds:
       - task: internal:require-task-version
-      - task: internal:release:electron
+      - task: internal:production:release:electron
 
   internal:require-task-version:
     internal: true
@@ -529,6 +520,23 @@ tasks:
     cmds:
       - pnpm build:electron:raw
 
+  internal:production:build:electron:
+    internal: true
+    vars:
+      MEDIAGO_PROFILE: '{{default "production" .MEDIAGO_PROFILE}}'
+      APP_NAME:
+        sh: node scripts/task-production-metadata.ts APP_NAME
+    env: *profile-env
+    dotenv: *profile-dotenv
+    requires:
+      vars:
+        - name: MEDIAGO_PROFILE
+          enum: [development, test, production]
+        - name: APP_NAME
+          enum: [present]
+    cmds:
+      - task: internal:build:electron
+
   internal:build:extension:
     internal: true
     vars: *production-profile-vars
@@ -598,6 +606,31 @@ tasks:
     cmds:
       - pnpm -F @mediago/electron run pack
 
+  internal:production:pack:electron:
+    internal: true
+    vars: &production-package-metadata-vars
+      MEDIAGO_PROFILE: '{{default "production" .MEDIAGO_PROFILE}}'
+      APP_NAME:
+        sh: node scripts/task-production-metadata.ts APP_NAME
+      APP_ID:
+        sh: node scripts/task-production-metadata.ts APP_ID
+      APP_COPYRIGHT:
+        sh: node scripts/task-production-metadata.ts APP_COPYRIGHT
+    env: *profile-env
+    dotenv: *profile-dotenv
+    requires: &production-package-metadata-requires
+      vars:
+        - name: MEDIAGO_PROFILE
+          enum: [development, test, production]
+        - name: APP_NAME
+          enum: [present]
+        - name: APP_ID
+          enum: [present]
+        - name: APP_COPYRIGHT
+          enum: [present]
+    cmds:
+      - task: internal:pack:electron
+
   internal:release:electron:
     internal: true
     vars: *production-runtime-vars
@@ -607,3 +640,12 @@ tasks:
     deps: *electron-package-deps
     cmds:
       - pnpm -F @mediago/electron run release
+
+  internal:production:release:electron:
+    internal: true
+    vars: *production-package-metadata-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    requires: *production-package-metadata-requires
+    cmds:
+      - task: internal:release:electron

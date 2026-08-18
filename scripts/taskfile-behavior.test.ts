@@ -23,6 +23,23 @@ const repositoryRoot = path.resolve(
 );
 const rootTaskfilePath = path.join(repositoryRoot, "Taskfile.yml");
 const taskExecutable = resolveExecutable("task");
+const productionEntries = [
+  {
+    leaf: "pnpm build:electron:raw",
+    required: ["APP_NAME"],
+    task: "build:electron",
+  },
+  {
+    leaf: "pnpm -F @mediago/electron run pack",
+    required: ["APP_NAME", "APP_ID", "APP_COPYRIGHT"],
+    task: "pack:electron",
+  },
+  {
+    leaf: "pnpm -F @mediago/electron run release",
+    required: ["APP_NAME", "APP_ID", "APP_COPYRIGHT"],
+    task: "release:electron",
+  },
+] as const;
 
 test.each(["development", "test", "production"])(
   "native Task profile validation accepts %s",
@@ -93,6 +110,94 @@ test("typed Task version mismatch blocks its implementation leaf", () => {
   expect(result.output).toMatch(/requires 3\.51\.1/i);
   expect(result.output).toMatch(/taskfile\.dev\/installation|mise use/i);
 });
+
+test.each(productionEntries)(
+  "$task loads production metadata from profile dotenv after the public version gate",
+  ({ leaf, task }) => {
+    const result = runTask(rootTaskfilePath, task, {}, ["--force", "--dry"]);
+
+    expect(result.status).toBe(0);
+    const gateIndex = result.output.indexOf(
+      "node scripts/task-version-gate.ts",
+    );
+    const leafIndex = result.output.indexOf(leaf);
+    expect(gateIndex).toBeGreaterThanOrEqual(0);
+    expect(leafIndex).toBeGreaterThan(gateIndex);
+  },
+);
+
+test.each(
+  productionEntries.flatMap(({ leaf, required, task }) =>
+    required.map((missing) => ({ leaf, missing, required, task })),
+  ),
+)(
+  "$task reports only missing production metadata $missing without leaking configured values",
+  ({ leaf, missing, required, task }) => {
+    const configured = Object.fromEntries(
+      required
+        .filter((name) => name !== missing)
+        .map((name, index) => [
+          name,
+          `TASK_PRODUCTION_METADATA_SECRET_${index}_SENTINEL`,
+        ]),
+    );
+    const fixture = createRepositoryTaskfileFixture(configured);
+
+    const result = runTask(fixture.taskfilePath, task, {}, [
+      "--force",
+      "--dry",
+    ]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain(missing);
+    for (const presentName of required) {
+      if (presentName !== missing) {
+        expect(result.output).not.toContain(presentName);
+      }
+    }
+    expect(result.output).not.toContain("TASK_PRODUCTION_METADATA_SECRET_");
+    expect(result.output).not.toContain(leaf);
+  },
+);
+
+test.each(productionEntries)(
+  "$task version mismatch stops before production metadata and implementation leaves",
+  ({ leaf, task }) => {
+    const result = runTask(
+      rootTaskfilePath,
+      task,
+      {
+        APP_COPYRIGHT: "TASK_VERSION_SECRET_COPYRIGHT_SENTINEL",
+        APP_ID: "TASK_VERSION_SECRET_ID_SENTINEL",
+        APP_NAME: "TASK_VERSION_SECRET_NAME_SENTINEL",
+      },
+      ["REQUIRED_TASK_VERSION=0.0.0"],
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toMatch(/version gate is misconfigured/i);
+    expect(result.output).not.toContain(leaf);
+    expect(result.output).not.toContain("TASK_VERSION_SECRET_");
+  },
+);
+
+test.each([
+  ["dev:electron", "pnpm start:electron"],
+  ["dev:all", "pnpm dev:all:raw"],
+] as const)(
+  "%s reaches its development leaf without production metadata",
+  (task, leaf) => {
+    const fixture = createRepositoryTaskfileFixture({});
+    const result = runTask(fixture.taskfilePath, task, {}, [
+      "--force",
+      "--dry",
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.output).toContain(leaf);
+    expect(result.output).not.toMatch(/APP_(?:NAME|ID|COPYRIGHT)/);
+  },
+);
 
 test("setup version gate runs without pnpm, tsx, package metadata, or node_modules", () => {
   const rootTaskfile = parse(readFileSync(rootTaskfilePath, "utf8")) as {
@@ -254,6 +359,25 @@ function createProfileFixture(): ReturnType<typeof createFixture> {
   return fixture;
 }
 
+function createRepositoryTaskfileFixture(
+  environment: Record<string, string>,
+): ReturnType<typeof createFixture> {
+  const directory = createTemporaryDirectory();
+  const taskfilePath = path.join(directory, "Taskfile.yml");
+  copyFileSync(rootTaskfilePath, taskfilePath);
+  symlinkSync(
+    path.join(repositoryRoot, "scripts"),
+    path.join(directory, "scripts"),
+  );
+  writeFileSync(
+    path.join(directory, ".env"),
+    `${Object.entries(environment)
+      .map(([name, value]) => `${name}=${value}`)
+      .join("\n")}\n`,
+  );
+  return { directory, taskfilePath };
+}
+
 function createNodePrerequisiteFixture(target: "doctor" | "version gate"): {
   directory: string;
   helperName: string;
@@ -311,10 +435,11 @@ function runTask(
   taskfilePath: string,
   taskName: string,
   overrides: NodeJS.ProcessEnv = {},
+  taskArguments: string[] = [],
 ): { output: string; status: number | null } {
   const result = spawnSync(
     taskExecutable,
-    ["--color=false", "--taskfile", taskfilePath, taskName],
+    ["--color=false", "--taskfile", taskfilePath, ...taskArguments, taskName],
     {
       cwd: path.dirname(taskfilePath),
       encoding: "utf8",
