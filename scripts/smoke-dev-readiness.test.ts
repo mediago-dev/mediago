@@ -127,6 +127,24 @@ describe("MediaGo HTTP readiness", () => {
     expect(calls).toEqual([8500, 8501, 8500, 8501, 8500, 8501]);
   });
 
+  test("rejects when the child exits during a successful probe round", async () => {
+    const observation = new StartupObservation();
+    observation.append(
+      `${RUNTIME_MARKER}\n${PROCESSES_MARKER}\n${CORE_MARKER}`,
+    );
+    let exit: { code: number; signal: null } | undefined;
+
+    await expect(
+      waitForReadiness(observation, neverCloses, () => exit, {
+        probe: async () => {
+          exit = { code: 7, signal: null };
+          return true;
+        },
+        deadlineMs: 1_000,
+      }),
+    ).rejects.toThrow(/code 7/i);
+  });
+
   test("caps each same-round probe by the remaining total deadline", async () => {
     const observation = new StartupObservation();
     observation.append(

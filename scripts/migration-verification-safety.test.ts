@@ -10,6 +10,7 @@ import {
   CleanupGate,
   attachSignalCleanup,
   cleanupOwnedRuntimeRoot,
+  settleWithin,
   stopOwnedPosixProcessGroup,
   stopOwnedWindowsProcessTree,
   windowsTaskkillCommand,
@@ -88,6 +89,18 @@ describe("bounded streaming diagnostics", () => {
 });
 
 describe("cleanup coordination", () => {
+  test("clears the deadline timer when an operation settles first", async () => {
+    vi.useFakeTimers();
+    try {
+      await expect(settleWithin(Promise.resolve("done"), 5_000)).resolves.toBe(
+        "done",
+      );
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("runs one cleanup gate for repeated callers", async () => {
     let release!: () => void;
     const waiting = new Promise<void>((resolve) => {
@@ -327,6 +340,12 @@ test.runIf(process.platform !== "win32")(
     });
     let root: string | undefined;
     let childPid: number | undefined;
+    let groupConfirmedGone = false;
+    let groupOperationsAfterGone = 0;
+    const operateOnGroup = (pid: number, signal: NodeJS.Signals | 0): void => {
+      if (groupConfirmedGone) groupOperationsAfterGone += 1;
+      process.kill(-pid, signal);
+    };
     try {
       await vi.waitFor(() => {
         const line = output.split("\n").find((value) => value.startsWith("{"));
@@ -344,28 +363,28 @@ test.runIf(process.platform !== "win32")(
       child.kill("SIGTERM");
       await vi.waitFor(() => expect(output).toContain("CLEANUP\n"));
       child.kill("SIGINT");
-      const result = await Promise.race([
-        close,
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("signal fixture timed out")),
-            5_000,
-          ),
-        ),
-      ]);
+      const result = await settleWithin(close, 5_000);
+      if (!result) throw new Error("signal fixture timed out");
 
       expect(result).toEqual({ code: null, signal: "SIGTERM" });
       expect(output.match(/^CLEANUP$/gm)).toHaveLength(1);
       expect(existsSync(root)).toBe(false);
-      expect(() => process.kill(-ownedChildPid, 0)).toThrow(
+      let groupProbeError: unknown;
+      try {
+        operateOnGroup(ownedChildPid, 0);
+      } catch (error) {
+        groupProbeError = error;
+      }
+      expect(groupProbeError).toEqual(
         expect.objectContaining({ code: "ESRCH" }),
       );
+      groupConfirmedGone = true;
     } finally {
       if (child.exitCode === null && child.signalCode === null)
         child.kill("SIGKILL");
-      if (childPid) {
+      if (childPid && !groupConfirmedGone) {
         try {
-          process.kill(-childPid, "SIGKILL");
+          operateOnGroup(childPid, "SIGKILL");
         } catch {
           // Recovery only: the passing-path assertion above already proves ESRCH.
         }
@@ -376,6 +395,7 @@ test.runIf(process.platform !== "win32")(
         rmSync(root, { recursive: true, force: true });
       }
     }
+    expect(groupOperationsAfterGone).toBe(0);
   },
   15_000,
 );

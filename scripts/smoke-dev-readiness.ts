@@ -144,6 +144,10 @@ export async function waitForReadiness(
   const probe = options.probe ?? probeMediaGoHTTP;
   const timeoutMs = options.deadlineMs ?? STARTUP_TIMEOUT_MS;
   const deadline = now() + timeoutMs;
+  const childExited = closePromise.then((exit) => ({
+    kind: "exit" as const,
+    exit,
+  }));
 
   while (now() < deadline) {
     if (observation.invalidMarkerOrder) {
@@ -158,10 +162,24 @@ export async function waitForReadiness(
     if (observation.markersReady && remaining > 0) {
       const probeTimeout = Math.min(500, remaining);
       // oxlint-disable-next-line no-await-in-loop -- Every readiness round must revalidate both ports together.
-      const ready = await Promise.all(
-        UI_PORTS.map((port) => probe(port, probeTimeout)),
-      );
-      if (ready.every(Boolean)) return;
+      const round = await Promise.race([
+        Promise.all(UI_PORTS.map((port) => probe(port, probeTimeout))).then(
+          (ready) => ({ kind: "probes" as const, ready }),
+        ),
+        childExited,
+      ]);
+      if (round.kind === "exit") {
+        throw new Error(`dev:all ${formatExit(round.exit)} before readiness`);
+      }
+      // oxlint-disable-next-line no-await-in-loop -- Drain close-state microtasks at the probe/exit boundary before declaring readiness.
+      await Promise.resolve();
+      const exitAfterProbes = readExitState();
+      if (exitAfterProbes) {
+        throw new Error(
+          `dev:all ${formatExit(exitAfterProbes)} before readiness`,
+        );
+      }
+      if (round.ready.every(Boolean)) return;
     }
 
     remaining = deadline - now();
