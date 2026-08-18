@@ -19,6 +19,8 @@ const migratedRootPnpmScripts = new Set([
 
 const pnpmNoArgumentOptions = new Set(["--silent"]);
 const pnpmDirectoryOptions = new Set(["-C", "--dir"]);
+const pnpmRepositoryOptions = new Set(["-w", "--workspace-root"]);
+const shellCommandWrappers = new Set(["command", "env", "sudo"]);
 
 export function migratedPnpmCommandSegments(source: string): string[] {
   return shellCommandSegments(source)
@@ -131,34 +133,50 @@ function pushToken(tokens: string[], candidate: string): void {
 }
 
 function isMigratedPnpmInvocation(tokens: string[]): boolean {
-  let index = skipEnvironmentAssignments(tokens, 0);
-  if (tokens[index] === "env") {
-    index = skipEnvironmentAssignments(tokens, index + 1);
-  }
+  let index = skipInvocationPrefixes(tokens);
   const executable = tokens[index]?.toLowerCase();
   if (executable !== "pnpm" && executable !== "pnpm.exe") return false;
   index += 1;
 
+  let packageScoped = false;
+  let componentDirectory = false;
+  let repositoryRootForced = false;
+
   while (index < tokens.length) {
     const argument = tokens[index];
     if (argument === undefined) return false;
-    if (
-      argument === "--filter" ||
-      argument === "-F" ||
-      argument.startsWith("--filter=")
-    ) {
-      return false;
+    if (argument === "--filter" || argument === "-F") {
+      if (tokens[index + 1] === undefined) return false;
+      packageScoped = true;
+      index += 2;
+      continue;
+    }
+    if (argument.startsWith("--filter=")) {
+      if (argument.length === "--filter=".length) return false;
+      packageScoped = true;
+      index += 1;
+      continue;
     }
     if (pnpmNoArgumentOptions.has(argument)) {
       index += 1;
       continue;
     }
+    if (pnpmRepositoryOptions.has(argument)) {
+      repositoryRootForced = true;
+      index += 1;
+      continue;
+    }
     if (pnpmDirectoryOptions.has(argument)) {
-      if (tokens[index + 1] === undefined) return false;
+      const directory = tokens[index + 1];
+      if (directory === undefined) return false;
+      componentDirectory ||= !isLexicalRepositoryRoot(directory);
       index += 2;
       continue;
     }
     if (argument.startsWith("--dir=")) {
+      const directory = argument.slice("--dir=".length);
+      if (directory.length === 0) return false;
+      componentDirectory ||= !isLexicalRepositoryRoot(directory);
       index += 1;
       continue;
     }
@@ -167,7 +185,31 @@ function isMigratedPnpmInvocation(tokens: string[]): boolean {
 
   if (tokens[index] === "run") index += 1;
   const scriptName = tokens[index]?.replace(/:raw$/, "");
-  return scriptName !== undefined && migratedRootPnpmScripts.has(scriptName);
+  const componentScoped =
+    packageScoped || (componentDirectory && !repositoryRootForced);
+  return (
+    !componentScoped &&
+    scriptName !== undefined &&
+    migratedRootPnpmScripts.has(scriptName)
+  );
+}
+
+function skipInvocationPrefixes(tokens: string[]): number {
+  let index = skipEnvironmentAssignments(tokens, 0);
+  while (shellCommandWrappers.has(tokens[index] ?? "")) {
+    index = skipEnvironmentAssignments(tokens, index + 1);
+  }
+  return index;
+}
+
+function isLexicalRepositoryRoot(directory: string): boolean {
+  // Documentation is untrusted input: classify only literal dot path segments
+  // instead of resolving paths against the checkout or the filesystem.
+  const segments = directory
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((segment) => segment.length > 0);
+  return segments.length > 0 && segments.every((segment) => segment === ".");
 }
 
 function skipEnvironmentAssignments(tokens: string[], start: number): number {

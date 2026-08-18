@@ -1362,6 +1362,56 @@ pnpm run \\
       '<pre class="example"><code class="language-shell"><span>cd</span> mediago &amp;&amp; pnpm --silent build:web</code></pre>',
       ["pnpm --silent build:web"],
     ],
+    [
+      "repository root shorthand",
+      "```shell\npnpm -w run build\n```",
+      ["pnpm -w run build"],
+    ],
+    [
+      "repository root long option",
+      "```shell\npnpm --workspace-root run test\n```",
+      ["pnpm --workspace-root run test"],
+    ],
+    [
+      "repository root long option after another global option",
+      "```shell\npnpm --silent --workspace-root run test\n```",
+      ["pnpm --silent --workspace-root run test"],
+    ],
+    [
+      "repository root option before another global option",
+      "```shell\npnpm --workspace-root --silent run check\n```",
+      ["pnpm --workspace-root --silent run check"],
+    ],
+    [
+      "lexical dot-slash repository directory",
+      "```shell\npnpm --silent -C ./ run build:web\n```",
+      ["pnpm --silent -C ./ run build:web"],
+    ],
+    [
+      "lexical backslash repository directory",
+      "```powershell\npnpm --dir '.\\' run dev\n```",
+      ["pnpm --dir '.\\' run dev"],
+    ],
+    [
+      "blockquote fenced code",
+      "> ```shell\n> pnpm dev:web\n> ```\n",
+      ["pnpm dev:web"],
+    ],
+    [
+      "sudo wrapper",
+      "```shell\nsudo pnpm dev:electron\n```",
+      ["sudo pnpm dev:electron"],
+    ],
+    [
+      "command wrapper",
+      "```shell\ncommand pnpm run build\n```",
+      ["command pnpm run build"],
+    ],
+    [
+      "HTML attributes containing greater-than signs",
+      `<pre title="a > b"><code data-example='c > d'>pnpm build:web</code></pre>`,
+      ["pnpm build:web"],
+    ],
   ])("detects %s", (_name, source, expected) => {
     expect(migratedPnpmCommandsInCodeBlocks(source)).toEqual(expected);
   });
@@ -1373,6 +1423,27 @@ pnpm run \\
     ["canonical Task", "```shell\ntask dev:web\n```"],
     ["workspace filter", "```shell\npnpm --filter @mediago/ui run build\n```"],
     ["workspace shorthand", "```shell\npnpm -F @mediago/ui run dev\n```"],
+    [
+      "named project filter",
+      "```shell\npnpm --filter @mediago/project run build:web\n```",
+    ],
+    ["component directory", "```shell\npnpm -C apps/ui run build\n```"],
+    [
+      "component directory long option",
+      "```shell\npnpm --dir apps/electron run dev\n```",
+    ],
+    [
+      "component directory with global options",
+      "```shell\npnpm --silent --dir apps/electron run dev\n```",
+    ],
+    [
+      "component directory before a global option",
+      "```shell\npnpm --dir apps/electron --silent run dev\n```",
+    ],
+    [
+      "workspace filter before a global option",
+      "```shell\npnpm --filter @mediago/project --silent run build:web\n```",
+    ],
     [
       "package install",
       "<pre><code>pnpm install &amp;&amp; pnpm add yaml</code></pre>",

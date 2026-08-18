@@ -42,7 +42,7 @@ function extractHtmlCodeBlocks(
   while (cursor < source.length) {
     const tagStart = source.indexOf("<", cursor);
     if (tagStart < 0) break;
-    const tagEnd = source.indexOf(">", tagStart + 1);
+    const tagEnd = findHtmlTagEnd(source, tagStart);
     if (tagEnd < 0) break;
     const textBeforeTag = source.slice(cursor, tagStart);
     const tag = parseHtmlTag(source.slice(tagStart + 1, tagEnd));
@@ -101,14 +101,37 @@ function extractHtmlCodeBlocks(
 }
 
 function stripHtmlTags(source: string): string {
-  let content = "";
-  let insideTag = false;
-  for (const character of source) {
-    if (!insideTag && character === "<") insideTag = true;
-    else if (insideTag && character === ">") insideTag = false;
-    else if (!insideTag) content += character;
+  const pieces: string[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const tagStart = source.indexOf("<", cursor);
+    if (tagStart < 0) {
+      pieces.push(source.slice(cursor));
+      break;
+    }
+    const tagEnd = findHtmlTagEnd(source, tagStart);
+    if (tagEnd < 0) {
+      pieces.push(source.slice(cursor));
+      break;
+    }
+    pieces.push(source.slice(cursor, tagStart));
+    cursor = tagEnd + 1;
   }
-  return content;
+  return pieces.join("");
+}
+
+function findHtmlTagEnd(source: string, tagStart: number): number {
+  let quote: "'" | '"' | undefined;
+  for (let index = tagStart + 1; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "'" || character === '"') quote = character;
+    else if (character === ">") return index;
+  }
+  return -1;
 }
 
 type HtmlCodeState =
@@ -167,8 +190,13 @@ function extractMarkdownCodeBlocks(source: string): CodeBlock[] {
       while (index < lines.length) {
         const candidate = lines[index];
         if (candidate === undefined) break;
-        if (isClosingFence(candidate.text, fence)) break;
-        body.push(candidate.text);
+        const content = stripBlockquotePrefix(candidate.text, fence.quoteDepth);
+        if (content === undefined) {
+          index -= 1;
+          break;
+        }
+        if (isClosingFence(content, fence)) break;
+        body.push(content);
         index += 1;
       }
       blocks.push({ body: body.join("\n"), index: blockIndex });
@@ -214,16 +242,20 @@ function sourceLines(source: string): Array<{ index: number; text: string }> {
 interface Fence {
   character: "`" | "~";
   length: number;
+  quoteDepth: number;
 }
 
 function openingFence(line: string): Fence | undefined {
-  const indentation = leadingSpaces(line);
+  const blockquote = blockquoteLine(line);
+  const indentation = leadingSpaces(blockquote.content);
   if (indentation > 3) return undefined;
-  const content = line.slice(indentation);
+  const content = blockquote.content.slice(indentation);
   const character = content[0];
   if (character !== "`" && character !== "~") return undefined;
   const length = markerLength(content, character);
-  return length >= 3 ? { character, length } : undefined;
+  return length >= 3
+    ? { character, length, quoteDepth: blockquote.depth }
+    : undefined;
 }
 
 function isClosingFence(line: string, fence: Fence): boolean {
@@ -244,6 +276,35 @@ function leadingSpaces(source: string): number {
   let length = 0;
   while (source[length] === " ") length += 1;
   return length;
+}
+
+function blockquoteLine(line: string): { content: string; depth: number } {
+  let cursor = 0;
+  let depth = 0;
+  while (true) {
+    let indentation = 0;
+    while (indentation < 3 && line[cursor] === " ") {
+      cursor += 1;
+      indentation += 1;
+    }
+    if (line[cursor] !== ">") {
+      cursor -= indentation;
+      break;
+    }
+    depth += 1;
+    cursor += 1;
+    if (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+  }
+  return { content: line.slice(cursor), depth };
+}
+
+function stripBlockquotePrefix(
+  line: string,
+  requiredDepth: number,
+): string | undefined {
+  if (requiredDepth === 0) return line;
+  const blockquote = blockquoteLine(line);
+  return blockquote.depth >= requiredDepth ? blockquote.content : undefined;
 }
 
 function deindentCodeLine(line: string): string | undefined {
