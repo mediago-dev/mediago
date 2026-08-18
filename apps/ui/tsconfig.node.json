@@ -1,11 +1,13 @@
 {
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "strict": true,
     "composite": true,
     "forceConsistentCasingInFileNames": true,
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "rootDir": "../.."
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "../../scripts/load-profile-env.ts"]
 }

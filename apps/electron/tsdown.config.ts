@@ -3,18 +3,16 @@ import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import electron from "electron";
 import { defineConfig } from "tsdown";
-import dotenvFlow from "dotenv-flow";
 import copy from "rollup-plugin-copy";
 import fs from "node:fs/promises";
+import { loadProfileEnv } from "../../scripts/load-profile-env.ts";
 
 const isDev = process.env.NODE_ENV === "development";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = path.resolve(__dirname, "../..");
-const env = dotenvFlow.config({
-  path: projectRoot,
-});
+loadProfileEnv(projectRoot);
 const appRoot = path.resolve(projectRoot, "apps/electron/app");
 const packageJsonPath = path.resolve(appRoot, "package.json");
 const pkg = JSON.parse(await fs.readFile(packageJsonPath, "utf-8"));
@@ -86,7 +84,6 @@ export default defineConfig({
     ".png": "asset",
     ".ico": "asset",
   },
-  env: { ...env.parsed },
   hooks: {
     "build:done": () => {
       if (isDev) {

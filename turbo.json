@@ -1,7 +1,19 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
-  "globalEnv": ["APP_TARGET", "MEDIAGO_CORE_BIN"],
+  "globalEnv": [
+    "APP_TARGET",
+    "NODE_ENV",
+    "MEDIAGO_PROFILE",
+    "APP_VERSION",
+    "APP_NAME",
+    "APP_TD_APPID"
+  ],
+  "globalPassThroughEnv": [
+    "MEDIAGO_DEPS_ROOT",
+    "MEDIAGO_DEPS_DIR",
+    "MEDIAGO_CORE_BIN"
+  ],
   "tasks": {
     "dev": {
       "cache": false,
@@ -13,8 +25,7 @@
       "cache": true,
       "persistent": false,
       "outputs": ["build/**", "dist/**"],
-      "dependsOn": ["^build"],
-      "env": ["NODE_ENV"]
+      "dependsOn": ["^build"]
     },
     "lint": {
       "cache": true,

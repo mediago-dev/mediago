@@ -23,6 +23,9 @@ importers:
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
+      dotenv-flow:
+        specifier: 4.1.0
+        version: 4.1.0
       husky:
         specifier: ^9.1.7
         version: 9.1.7

@@ -81,6 +81,7 @@
     "@vitest/coverage-v8": "^4.1.2",
     "concurrently": "^10.0.4",
     "cross-env": "^10.1.0",
+    "dotenv-flow": "4.1.0",
     "husky": "^9.1.7",
     "knip": "^6.1.1",
     "lint-staged": "^16.4.0",

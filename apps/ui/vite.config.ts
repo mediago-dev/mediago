@@ -3,8 +3,10 @@ import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
+import { loadProfileEnv } from "../../scripts/load-profile-env.ts";
 
 const projectRoot = path.resolve(__dirname, "../..");
+loadProfileEnv(projectRoot);
 const appRoot = path.resolve(projectRoot, "apps/electron/app");
 const isWeb = process.env.APP_TARGET === "server";
 
@@ -22,10 +24,10 @@ export default defineConfig({
   define: {
     "import.meta.env.APP_VERSION": JSON.stringify(pkg.version),
     "import.meta.env.APP_TARGET": JSON.stringify(process.env.APP_TARGET),
+    "import.meta.env.APP_TD_APPID": JSON.stringify(process.env.APP_TD_APPID),
   },
   plugins: [react(), tailwindcss()],
   envDir: projectRoot,
-  envPrefix: "APP",
   build: {
     outDir: isWeb ? "build/server" : "build/electron",
     emptyOutDir: true,

@@ -5,8 +5,8 @@ import os from "node:os";
 import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import dotenvFlow from "dotenv-flow";
 import { type Configuration, build } from "electron-builder";
+import { loadProfileEnv } from "../../../scripts/load-profile-env.ts";
 
 const args = process.argv.slice(2);
 const isDir = args.includes("--dir");
@@ -42,9 +42,7 @@ const { appBuilderPath } = electronBuilderRequire("app-builder-bin") as {
   appBuilderPath: string;
 };
 
-dotenvFlow.config({
-  path: projectRoot,
-});
+loadProfileEnv(projectRoot);
 
 const pkg = JSON.parse(await fs.readFile("./app/package.json", "utf-8"));
 

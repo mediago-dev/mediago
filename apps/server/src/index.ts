@@ -3,18 +3,16 @@ import os from "node:os";
 import path, { dirname } from "node:path";
 import fs from "node:fs";
 import { ServiceRunner } from "@mediago/service-runner";
+import { loadProfileEnv } from "../../../scripts/load-profile-env.ts";
 import { resolveCoreBinaries, resolveDepsBinaries } from "./binaryResolver";
 import { resolveServerPaths } from "./server-paths";
-import dotenvFlow from "dotenv-flow";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = path.resolve(__dirname, "../../..");
 const CORE_SHUTDOWN_TIMEOUT_MS = 1_000;
-dotenvFlow.config({
-  path: projectRoot,
-});
+loadProfileEnv(projectRoot);
 
 if (!process.env.APP_NAME) {
   throw new Error("APP_NAME is not defined in environment variables");

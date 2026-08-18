@@ -1,34 +1,34 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { type ChildProcessByStdio, spawn } from "node:child_process";
 import path, { dirname } from "node:path";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsdown";
-import dotenvFlow from "dotenv-flow";
+import { loadProfileEnv } from "../../scripts/load-profile-env.ts";
 
 const isDev = process.env.NODE_ENV === "development";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = path.resolve(__dirname, "../..");
-const env = dotenvFlow.config({
-  path: projectRoot,
-});
+loadProfileEnv(projectRoot);
 
 class NodeApp {
-  process: ChildProcessWithoutNullStreams | null = null;
+  process: ChildProcessByStdio<null, Readable, Readable> | null = null;
 
   start() {
     const args = [path.resolve(__dirname, "./build/index.js")];
 
-    this.process = spawn("node", args, {
+    const child = spawn("node", args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env },
     });
+    this.process = child;
 
-    this.process.stdout.on("data", (data) => {
+    child.stdout.on("data", (data) => {
       process.stdout.write(String(data));
     });
 
-    this.process.stderr.on("data", (data) => {
+    child.stderr.on("data", (data) => {
       process.stderr.write(String(data));
     });
   }
@@ -68,7 +68,6 @@ export default defineConfig({
     ),
     "process.env.APP_TARGET": JSON.stringify("server"),
   },
-  env: { ...env.parsed },
   hooks: {
     "build:done": () => {
       if (isDev) {
