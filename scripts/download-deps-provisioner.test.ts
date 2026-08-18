@@ -12,11 +12,15 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, onTestFinished, test } from "vitest";
-import type {
-  DependencyManifest,
-  RuntimePlatform,
+import manifestJson from "./deps-versions.json" with { type: "json" };
+import {
+  RUNTIME_TOOLS,
+  type DependencyManifest,
+  type PinnedDependencyManifest,
+  type RuntimePlatform,
 } from "./dependency-layout.ts";
 import {
+  inspectDependencyReadiness,
   provisionDependencies,
   type DependencyProvisionTarget,
 } from "./download-deps-provisioner.ts";
@@ -311,6 +315,147 @@ test("treats invalid JSON version state as stale", async () => {
   });
 });
 
+test("reports a dependency ready only when file integrity and state match", async () => {
+  const depsRoot = createDepsRoot();
+  const contents = "ready tool";
+  const manifest = createManifest({ toolSha256: sha256(contents) });
+  writeCachedBinary(depsRoot, "tool", contents, 0o755);
+  writeState(depsRoot, matchingStateWithSha256(sha256(contents)));
+
+  await expect(
+    inspectDependencyReadiness({
+      depsRoot,
+      manifest,
+      selectedToolNames: ["tool"],
+      platformKey: PLATFORM,
+    }),
+  ).resolves.toEqual([
+    expect.objectContaining({
+      executablePath: binaryPath(depsRoot, "tool"),
+      platformKey: PLATFORM,
+      status: "ready",
+      toolName: "tool",
+      version: "v1",
+    }),
+  ]);
+});
+
+test.each([
+  {
+    name: "missing final file",
+    prepare(depsRoot: string) {
+      writeState(depsRoot, matchingState());
+    },
+    status: "missing",
+  },
+  {
+    name: "stale state",
+    prepare(depsRoot: string) {
+      writeCachedBinary(depsRoot, "tool", "cached", 0o755);
+      writeState(depsRoot, {
+        schemaVersion: 1,
+        tools: {
+          tool: {
+            repo: "example/tool",
+            version: "v0",
+            asset: "tool-archive",
+            binaryName: "tool.exe",
+          },
+        },
+      });
+    },
+    status: "stale",
+  },
+] as const)(
+  "reports $name without mutating the cache",
+  async ({ prepare, status }) => {
+    const depsRoot = createDepsRoot();
+    prepare(depsRoot);
+
+    const [readiness] = await inspectDependencyReadiness({
+      depsRoot,
+      manifest: createManifest(),
+      selectedToolNames: ["tool"],
+      platformKey: PLATFORM,
+    });
+
+    expect(readiness?.status).toBe(status);
+  },
+);
+
+test("distinguishes corrupt content from stale state", async () => {
+  const depsRoot = createDepsRoot();
+  const expectedSha256 = sha256("expected");
+  const manifest = createManifest({ toolSha256: expectedSha256 });
+  writeCachedBinary(depsRoot, "tool", "corrupt", 0o755);
+  writeState(depsRoot, matchingStateWithSha256(expectedSha256));
+
+  const [readiness] = await inspectDependencyReadiness({
+    depsRoot,
+    manifest,
+    selectedToolNames: ["tool"],
+    platformKey: PLATFORM,
+  });
+
+  expect(readiness?.status).toBe("corrupt");
+});
+
+unixTest("distinguishes a non-executable final file", async () => {
+  const depsRoot = createDepsRoot();
+  writeCachedBinary(depsRoot, "tool", "cached", 0o644, UNIX_PLATFORM);
+  writeState(depsRoot, matchingState(false, UNIX_PLATFORM), UNIX_PLATFORM);
+
+  const [readiness] = await inspectDependencyReadiness({
+    depsRoot,
+    manifest: createManifest(),
+    selectedToolNames: ["tool"],
+    platformKey: UNIX_PLATFORM,
+  });
+
+  expect(readiness?.status).toBe("not-executable");
+});
+
+test("reports an incomplete pinned manifest before touching the filesystem", async () => {
+  const depsRoot = createDepsRoot();
+  const manifest = createManifest();
+  manifest.tool.assets["win32-arm64"] = undefined;
+
+  const [readiness] = await inspectDependencyReadiness({
+    depsRoot,
+    manifest,
+    selectedToolNames: ["tool"],
+    platformKey: "win32-arm64",
+  });
+
+  expect(readiness).toMatchObject({
+    platformKey: "win32-arm64",
+    status: "manifest-incomplete",
+    toolName: "tool",
+    version: "v1",
+  });
+  expect(readdirSync(depsRoot)).toEqual([]);
+});
+
+test("reports the real win32-arm64 FFmpeg manifest gap across the full runtime", async () => {
+  const depsRoot = createDepsRoot();
+  const readiness = await inspectDependencyReadiness({
+    depsRoot,
+    manifest: manifestJson as PinnedDependencyManifest,
+    selectedToolNames: RUNTIME_TOOLS,
+    platformKey: "win32-arm64",
+  });
+
+  expect(readiness).toHaveLength(RUNTIME_TOOLS.length);
+  expect(readiness.find(({ toolName }) => toolName === "ffmpeg")?.status).toBe(
+    "manifest-incomplete",
+  );
+  expect(
+    readiness
+      .filter(({ toolName }) => toolName !== "ffmpeg")
+      .map(({ status }) => status),
+  ).toEqual(Array.from({ length: RUNTIME_TOOLS.length - 1 }, () => "missing"));
+});
+
 interface ManifestOptions {
   includeHelper?: boolean;
   toolSha256?: string;
@@ -433,6 +578,14 @@ function matchingState(
         : {}),
     },
   };
+}
+
+function matchingStateWithSha256(expectedSha256: string): unknown {
+  const state = matchingState() as {
+    tools: { tool: Record<string, unknown> };
+  };
+  state.tools.tool.sha256 = expectedSha256;
+  return state;
 }
 
 function binaryPath(

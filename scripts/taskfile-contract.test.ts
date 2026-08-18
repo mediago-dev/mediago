@@ -241,14 +241,6 @@ function taskCommands(name: string): TaskCommand[] {
   });
 }
 
-function taskCommandText(name: string): string {
-  return taskCommands(name)
-    .map((command) =>
-      command.kind === "task" ? `task ${command.task}` : command.text,
-    )
-    .join("\n");
-}
-
 function stringArray(value: unknown, context: string): string[] {
   if (
     !Array.isArray(value) ||
@@ -322,22 +314,19 @@ describe("root Taskfile public API", () => {
 });
 
 describe("Task version gate and doctor", () => {
-  it("contains exactly one explicit 3.51.1 gate", () => {
-    const gatedCommands = Object.entries(tasks).flatMap(([name]) =>
-      taskCommands(name)
-        .filter(
-          (command): command is Extract<TaskCommand, { kind: "cmd" }> =>
-            command.kind === "cmd" &&
-            command.text.includes("{{.TASK_VERSION}}") &&
-            command.text.includes("{{.REQUIRED_TASK_VERSION}}") &&
-            /\bexit\s+[1-9]\d*\b/.test(command.text),
-        )
-        .map((command) => ({ name, text: command.text })),
+  it("contains exactly one typed 3.51.1 gate with environment-only inputs", () => {
+    const gates = Object.keys(tasks).filter(
+      (name) => name === "internal:require-task-version",
     );
 
-    expect(gatedCommands).toHaveLength(1);
-    expect(gatedCommands[0]?.name).toBe("internal:require-task-version");
-    expect(gatedCommands[0]?.text).toContain("3.51.1");
+    expect(gates).toEqual(["internal:require-task-version"]);
+    expect(taskCommands("internal:require-task-version")).toEqual([
+      { kind: "cmd", text: "pnpm exec tsx scripts/task-version-gate.ts" },
+    ]);
+    expect(task("internal:require-task-version").env).toEqual({
+      MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}",
+      MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}",
+    });
   });
 
   it("keeps root, doctor, and the version gate dotenv-free", () => {
@@ -346,31 +335,29 @@ describe("Task version gate and doctor", () => {
     expect(task("internal:require-task-version")).not.toHaveProperty("dotenv");
   });
 
-  it("makes doctor aggregate every local tool diagnostic", () => {
-    const doctor = taskCommandText("doctor");
-    expect(doctor).toContain("{{.TASK_VERSION}}");
-    expect(doctor).toContain("{{.REQUIRED_TASK_VERSION}}");
-    expect(doctor).toMatch(/\bnode\s+--version\b/);
-    expect(doctor).toMatch(/\bpnpm\s+--version\b/);
-    expect(doctor).toMatch(/\bgo\s+version\b/);
-    expect(doctor).toMatch(/\bdocker\s+--version\b/);
-    expect(doctor).toContain("scripts/print-platform-key.ts");
-    for (const executable of [
-      "ffmpeg",
-      "N_m3u8DL-RE",
-      "BBDown",
-      "aria2c",
-      "yt-dlp",
-      "mediago",
-    ]) {
-      expect(doctor).toContain(executable);
+  it("runs doctor through one static typed entrypoint", () => {
+    expect(taskCommands("doctor")).toEqual([
+      { kind: "cmd", text: "pnpm exec tsx scripts/task-doctor.ts" },
+    ]);
+    expect(task("doctor").env).toEqual({
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}",
+      MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}",
+      MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}",
+    });
+  });
+
+  it("never interpolates caller-controlled values into shell commands", () => {
+    for (const name of Object.keys(tasks)) {
+      for (const command of taskCommands(name)) {
+        if (command.kind !== "cmd") continue;
+        expect(
+          command.text,
+          `${name} command contains shell interpolation`,
+        ).not.toMatch(
+          /\{\{\.(?:MEDIAGO_PROFILE|MEDIAGO_DEPS_ROOT|TASK_VERSION|REQUIRED_TASK_VERSION)\}\}/,
+        );
+      }
     }
-    const exitStatements = doctor
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => /^exit\b/.test(line));
-    expect(exitStatements).toEqual(['exit "$status"']);
-    expect(doctor.trim().endsWith('exit "$status"')).toBe(true);
   });
 });
 
@@ -395,12 +382,15 @@ describe("profile loading", () => {
       expect(stringArray(definition.dotenv, `${name} dotenv`)).toEqual(
         dotenvOrder,
       );
-      expect(definition.preconditions).toEqual([
-        {
-          sh: 'case "{{.MEDIAGO_PROFILE}}" in development|test|production) exit 0 ;; *) exit 1 ;; esac',
-          msg: "Unsupported MEDIAGO_PROFILE: {{.MEDIAGO_PROFILE}}",
-        },
-      ]);
+      expect(definition).not.toHaveProperty("preconditions");
+      expect(definition.requires).toEqual({
+        vars: [
+          {
+            name: "MEDIAGO_PROFILE",
+            enum: ["development", "test", "production"],
+          },
+        ],
+      });
     },
   );
 
@@ -439,9 +429,6 @@ describe("Task command leaves", () => {
 
   it("uses only approved command classes", () => {
     for (const name of Object.keys(tasks)) {
-      if (name === "doctor" || name === "internal:require-task-version") {
-        continue;
-      }
       for (const command of taskCommands(name)) {
         if (command.kind === "task") {
           expect(command.task, `${name} must invoke an internal task`).toMatch(

@@ -7,77 +7,12 @@ vars:
 tasks:
   doctor:
     desc: Diagnose the local MediaGo toolchain and runtime dependencies
+    env:
+      MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}"
+      MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}"
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
     cmds:
-      - |
-        status=0
-
-        if [ "{{.TASK_VERSION}}" = "{{.REQUIRED_TASK_VERSION}}" ]; then
-          printf 'ok: Task %s\n' "{{.TASK_VERSION}}"
-        else
-          printf 'error: Task %s is installed; MediaGo requires %s\n' "{{.TASK_VERSION}}" "{{.REQUIRED_TASK_VERSION}}" >&2
-          status=1
-        fi
-
-        diagnose_command() {
-          label="$1"
-          shift
-          if output=$("$@" 2>&1); then
-            printf 'ok: %s: %s\n' "$label" "$output"
-          else
-            printf 'error: %s is unavailable\n' "$label" >&2
-            status=1
-          fi
-        }
-
-        diagnose_command Node node --version
-        diagnose_command pnpm pnpm --version
-        diagnose_command Go go version
-        diagnose_command Docker docker --version
-
-        if ! platform_key=$(pnpm exec node --import tsx scripts/print-platform-key.ts 2>/dev/null); then
-          case "{{OS}}-{{ARCH}}" in
-            darwin-amd64) platform_key=darwin-x64 ;;
-            darwin-arm64) platform_key=darwin-arm64 ;;
-            linux-amd64) platform_key=linux-x64 ;;
-            linux-arm64) platform_key=linux-arm64 ;;
-            windows-amd64) platform_key=win32-x64 ;;
-            windows-arm64) platform_key=win32-arm64 ;;
-            *) platform_key= ;;
-          esac
-        fi
-
-        if [ -n "$platform_key" ]; then
-          runtime_dir="{{.MEDIAGO_DEPS_ROOT}}/$platform_key"
-          case "$platform_key" in
-            win32-*) runtime_tools='ffmpeg.exe N_m3u8DL-RE.exe BBDown.exe aria2c.exe yt-dlp.exe mediago.exe' ;;
-            *) runtime_tools='ffmpeg N_m3u8DL-RE BBDown aria2c yt-dlp mediago' ;;
-          esac
-
-          for executable in $runtime_tools; do
-            executable_path="$runtime_dir/$executable"
-            if [ -f "$executable_path" ]; then
-              case "$platform_key" in
-                win32-*) printf 'ok: runtime %s\n' "$executable_path" ;;
-                *)
-                  if [ -x "$executable_path" ]; then
-                    printf 'ok: runtime %s\n' "$executable_path"
-                  else
-                    printf 'error: runtime %s is not executable\n' "$executable_path" >&2
-                    status=1
-                  fi
-                  ;;
-              esac
-            else
-              printf 'error: runtime %s is missing\n' "$executable_path" >&2
-              status=1
-            fi
-          done
-        else
-          printf 'error: current runtime platform could not be determined\n' >&2
-          status=1
-        fi
-
-        exit "$status"
+      - pnpm exec tsx scripts/task-doctor.ts
 
   setup:
     desc: Install Node and current-platform runtime dependencies
@@ -255,12 +190,11 @@ tasks:
 
   internal:require-task-version:
     internal: true
+    env:
+      MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}"
+      MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}"
     cmds:
-      - |
-        if [ "{{.TASK_VERSION}}" != "{{.REQUIRED_TASK_VERSION}}" ]; then
-          printf 'error: MediaGo requires Task 3.51.1, found %s\n' "{{.TASK_VERSION}}" >&2
-          exit 1
-        fi
+      - pnpm exec tsx scripts/task-version-gate.ts
 
   internal:setup:
     internal: true
@@ -273,9 +207,10 @@ tasks:
       - ".env.local"
       - ".env.{{.MEDIAGO_PROFILE}}"
       - ".env"
-    preconditions: &profile-preconditions
-      - sh: 'case "{{.MEDIAGO_PROFILE}}" in development|test|production) exit 0 ;; *) exit 1 ;; esac'
-        msg: "Unsupported MEDIAGO_PROFILE: {{.MEDIAGO_PROFILE}}"
+    requires: &profile-requires
+      vars:
+        - name: MEDIAGO_PROFILE
+          enum: [development, test, production]
     cmds:
       - task: internal:deps:node
       - task: internal:deps:runtime
@@ -296,7 +231,7 @@ tasks:
       MEDIAGO_PROFILE: '{{default "test" .MEDIAGO_PROFILE}}'
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm deps:download:raw --tools aria2,N_m3u8DL-RE,ffmpeg
 
@@ -305,7 +240,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm deps:download:raw --tools aria2
 
@@ -314,7 +249,7 @@ tasks:
     vars: *development-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm dev:all:raw
 
@@ -323,7 +258,7 @@ tasks:
     vars: *development-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm dev:web:raw
 
@@ -332,7 +267,7 @@ tasks:
     vars: *development-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm dev:electron:raw
 
@@ -341,7 +276,7 @@ tasks:
     vars: *development-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm dev:extension:raw
 
@@ -350,7 +285,7 @@ tasks:
     vars: *development-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm docs:dev:raw
 
@@ -359,7 +294,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm check:raw
 
@@ -368,7 +303,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm test:raw
 
@@ -377,7 +312,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm test:ts:raw
 
@@ -386,7 +321,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm test:go:raw
 
@@ -395,7 +330,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm test:integration:raw
 
@@ -404,7 +339,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm test:e2e:raw
 
@@ -413,7 +348,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm test:e2e:web:raw
 
@@ -422,7 +357,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm test:e2e:electron:raw
 
@@ -431,7 +366,7 @@ tasks:
     vars: *test-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm test:e2e:extension:raw
 
@@ -441,7 +376,7 @@ tasks:
       MEDIAGO_PROFILE: '{{default "production" .MEDIAGO_PROFILE}}'
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm build:web:raw
 
@@ -450,7 +385,7 @@ tasks:
     vars: *production-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm build:server:raw
 
@@ -459,7 +394,7 @@ tasks:
     vars: *production-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm build:electron:raw
 
@@ -468,7 +403,7 @@ tasks:
     vars: *production-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm build:extension:raw
 
@@ -477,7 +412,7 @@ tasks:
     vars: *production-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm docs:build:raw
 
@@ -486,7 +421,7 @@ tasks:
     vars: *production-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm build:docker:raw
 
@@ -495,7 +430,7 @@ tasks:
     vars: *production-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm pack:extension:raw
 
@@ -504,7 +439,7 @@ tasks:
     vars: *production-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm pack:electron:raw
 
@@ -513,6 +448,6 @@ tasks:
     vars: *production-profile-vars
     env: *profile-env
     dotenv: *profile-dotenv
-    preconditions: *profile-preconditions
+    requires: *profile-requires
     cmds:
       - pnpm release:electron:raw

@@ -9,6 +9,12 @@ export interface DependencyIntegrityOptions {
   requireExecutable?: boolean;
 }
 
+export type DependencyFileIntegrityStatus =
+  | "ready"
+  | "missing"
+  | "corrupt"
+  | "not-executable";
+
 export function resolveDependencySha256(
   toolName: string,
   platformKey: string,
@@ -44,6 +50,20 @@ export async function dependencyFileMatchesIntegrity(
   expectedSha256?: string,
   options: DependencyIntegrityOptions = {},
 ): Promise<boolean> {
+  return (
+    (await inspectDependencyFileIntegrity(
+      filePath,
+      expectedSha256,
+      options,
+    )) === "ready"
+  );
+}
+
+export async function inspectDependencyFileIntegrity(
+  filePath: string,
+  expectedSha256?: string,
+  options: DependencyIntegrityOptions = {},
+): Promise<DependencyFileIntegrityStatus> {
   if (expectedSha256 !== undefined && !SHA256_PATTERN.test(expectedSha256)) {
     throw new Error("Expected SHA-256 must be 64 lowercase hexadecimal digits");
   }
@@ -51,9 +71,9 @@ export async function dependencyFileMatchesIntegrity(
   let fileStat;
   try {
     fileStat = await stat(filePath);
-    if (!fileStat.isFile() || fileStat.size === 0) return false;
+    if (!fileStat.isFile() || fileStat.size === 0) return "corrupt";
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
     throw error;
   }
 
@@ -61,10 +81,13 @@ export async function dependencyFileMatchesIntegrity(
     expectedSha256 !== undefined &&
     (await sha256File(filePath)) !== expectedSha256
   ) {
-    return false;
+    return "corrupt";
   }
 
-  return !options.requireExecutable || (fileStat.mode & 0o111) !== 0;
+  if (options.requireExecutable && (fileStat.mode & 0o111) === 0) {
+    return "not-executable";
+  }
+  return "ready";
 }
 
 export async function assertDependencyFileIntegrity(

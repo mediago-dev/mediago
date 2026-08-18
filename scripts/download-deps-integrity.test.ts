@@ -5,6 +5,7 @@ import { expect, onTestFinished, test } from "vitest";
 import {
   assertDependencyFileIntegrity,
   dependencyFileMatchesIntegrity,
+  inspectDependencyFileIntegrity,
   resolveDependencySha256,
   sha256File,
 } from "./download-deps-integrity.ts";
@@ -58,6 +59,18 @@ test("rejects restored files whose SHA-256 does not match", async () => {
       OFFICIAL_ARIA2_LINUX_X64_SHA256,
     ),
   ).toBe(false);
+  await expect(
+    inspectDependencyFileIntegrity(fixture, OFFICIAL_ARIA2_LINUX_X64_SHA256),
+  ).resolves.toBe("corrupt");
+});
+
+test("distinguishes a missing final file from corrupt content", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mediago-deps-missing-"));
+  onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+
+  await expect(
+    inspectDependencyFileIntegrity(path.join(directory, "missing")),
+  ).resolves.toBe("missing");
 });
 
 test("fails closed for downloaded candidate mismatches", async () => {
@@ -92,6 +105,11 @@ unixTest("rejects a non-executable Unix dependency", async () => {
       requireExecutable: true,
     }),
   ).toBe(false);
+  await expect(
+    inspectDependencyFileIntegrity(fixture, undefined, {
+      requireExecutable: true,
+    }),
+  ).resolves.toBe("not-executable");
   await expect(
     assertDependencyFileIntegrity(fixture, undefined, "cached Unix tool", {
       requireExecutable: true,

@@ -20,6 +20,7 @@ import {
 import {
   assertDependencyFileIntegrity,
   dependencyFileMatchesIntegrity,
+  inspectDependencyFileIntegrity,
   resolveDependencySha256,
 } from "./download-deps-integrity.ts";
 
@@ -57,6 +58,125 @@ export interface ProvisionDependenciesOptions {
     target: DependencyProvisionTarget,
     workDir: string,
   ) => Promise<string>;
+}
+
+export type DependencyReadinessStatus =
+  | "ready"
+  | "missing"
+  | "stale"
+  | "corrupt"
+  | "not-executable"
+  | "manifest-incomplete";
+
+export interface DependencyReadiness {
+  executablePath: string;
+  platformKey: RuntimePlatform;
+  status: DependencyReadinessStatus;
+  toolName: string;
+  version: string;
+}
+
+export interface InspectDependencyReadinessOptions {
+  depsRoot: string;
+  manifest: DependencyManifest;
+  selectedToolNames: readonly string[];
+  platformKey: RuntimePlatform;
+}
+
+export async function inspectDependencyReadiness({
+  depsRoot,
+  manifest,
+  selectedToolNames: requestedToolNames,
+  platformKey,
+}: InspectDependencyReadinessOptions): Promise<DependencyReadiness[]> {
+  const toolNames = selectedToolNames(manifest, requestedToolNames);
+  let versionManifest: VersionManifest;
+  let stateReadable = true;
+  try {
+    versionManifest = await loadVersionManifest(depsRoot, platformKey);
+  } catch {
+    versionManifest = createVersionManifest();
+    stateReadable = false;
+  }
+
+  const results: DependencyReadiness[] = [];
+  for (const toolName of toolNames) {
+    const tool = manifest[toolName];
+    const executableName = manifestDependencyExecutableName(
+      toolName,
+      tool,
+      platformKey,
+    );
+    const executablePath = path.join(
+      platformDepsDir(depsRoot, platformKey),
+      executableName,
+    );
+    const assetName = tool.assets[platformKey];
+    if (assetName === undefined) {
+      results.push({
+        executablePath,
+        platformKey,
+        status: "manifest-incomplete",
+        toolName,
+        version: tool.version,
+      });
+      continue;
+    }
+
+    let expectedSha256: string | undefined;
+    try {
+      expectedSha256 = resolveDependencySha256(
+        toolName,
+        platformKey,
+        tool.sha256,
+      );
+    } catch {
+      results.push({
+        executablePath,
+        platformKey,
+        status: "manifest-incomplete",
+        toolName,
+        version: tool.version,
+      });
+      continue;
+    }
+
+    let fileStatus: Awaited<ReturnType<typeof inspectDependencyFileIntegrity>>;
+    try {
+      fileStatus = await inspectDependencyFileIntegrity(
+        executablePath,
+        expectedSha256,
+        { requireExecutable: !isWindowsPlatformKey(platformKey) },
+      );
+    } catch {
+      fileStatus = "corrupt";
+    }
+    const expectedVersion: ToolVersionRecord = {
+      repo: tool.repo,
+      version: tool.version,
+      asset: assetName,
+      binaryName: executableName,
+      ...(expectedSha256 === undefined ? {} : { sha256: expectedSha256 }),
+    };
+    const status: DependencyReadinessStatus =
+      fileStatus !== "ready"
+        ? fileStatus
+        : !stateReadable ||
+            !matchesVersionRecord(
+              versionManifest.tools[toolName],
+              expectedVersion,
+            )
+          ? "stale"
+          : "ready";
+    results.push({
+      executablePath,
+      platformKey,
+      status,
+      toolName,
+      version: tool.version,
+    });
+  }
+  return results;
 }
 
 export async function provisionDependencies({
