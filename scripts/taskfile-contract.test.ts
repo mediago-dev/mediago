@@ -1,8 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
+import {
+  asRecord,
+  createTaskFixture,
+  runTaskFixture as runFixtureTask,
+  stringArray,
+  taskCommands as parseTaskCommands,
+  taskDependencies as parseTaskDependencies,
+  type TaskCommand,
+  type TaskFixture,
+} from "./taskfile-test-helpers.ts";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -83,172 +94,291 @@ const profileImplementations = {
   "internal:release:electron": "production",
 } as const;
 
-const implementationCommands = {
-  "internal:setup": [
-    { kind: "task", task: "internal:deps:node" },
-    { kind: "task", task: "internal:deps:runtime" },
-  ],
-  "internal:deps:node": [
-    { kind: "cmd", text: "pnpm install --frozen-lockfile" },
-  ],
-  "internal:deps:runtime": [
-    {
-      kind: "cmd",
-      text: "pnpm deps:download:raw --tools ffmpeg,N_m3u8DL-RE,BBDown,aria2,yt-dlp,mediago",
-    },
-  ],
-  "internal:deps:media-integration": [
-    {
-      kind: "cmd",
-      text: "pnpm deps:download:raw --tools aria2,N_m3u8DL-RE,ffmpeg",
-    },
-  ],
-  "internal:deps:e2e": [
-    { kind: "cmd", text: "pnpm deps:download:raw --tools aria2" },
-  ],
-  "internal:dev:all": [{ kind: "cmd", text: "pnpm dev:all:raw" }],
-  "internal:dev:web": [{ kind: "cmd", text: "pnpm dev:web:raw" }],
-  "internal:dev:electron": [{ kind: "cmd", text: "pnpm dev:electron:raw" }],
-  "internal:dev:extension": [{ kind: "cmd", text: "pnpm dev:extension:raw" }],
-  "internal:docs:dev": [{ kind: "cmd", text: "pnpm docs:dev:raw" }],
-  "internal:check": [{ kind: "cmd", text: "pnpm check:raw" }],
-  "internal:test": [{ kind: "cmd", text: "pnpm test:raw" }],
-  "internal:test:ts": [{ kind: "cmd", text: "pnpm test:ts:raw" }],
-  "internal:test:go": [{ kind: "cmd", text: "pnpm test:go:raw" }],
-  "internal:test:integration": [
-    { kind: "cmd", text: "pnpm test:integration:raw" },
-  ],
-  "internal:test:e2e": [{ kind: "cmd", text: "pnpm test:e2e:raw" }],
-  "internal:test:e2e:web": [{ kind: "cmd", text: "pnpm test:e2e:web:raw" }],
-  "internal:test:e2e:electron": [
-    { kind: "cmd", text: "pnpm test:e2e:electron:raw" },
-  ],
-  "internal:test:e2e:extension": [
-    { kind: "cmd", text: "pnpm test:e2e:extension:raw" },
-  ],
-  "internal:build:web": [{ kind: "cmd", text: "pnpm build:web:raw" }],
-  "internal:build:server": [{ kind: "cmd", text: "pnpm build:server:raw" }],
-  "internal:build:electron": [{ kind: "cmd", text: "pnpm build:electron:raw" }],
-  "internal:build:extension": [
-    { kind: "cmd", text: "pnpm build:extension:raw" },
-  ],
-  "internal:build:docs": [{ kind: "cmd", text: "pnpm docs:build:raw" }],
-  "internal:build:docker": [{ kind: "cmd", text: "pnpm build:docker:raw" }],
-  "internal:pack:extension": [{ kind: "cmd", text: "pnpm pack:extension:raw" }],
-  "internal:pack:electron": [{ kind: "cmd", text: "pnpm pack:electron:raw" }],
-  "internal:release:electron": [
-    { kind: "cmd", text: "pnpm release:electron:raw" },
-  ],
-} as const satisfies Record<string, readonly TaskCommand[]>;
-
-const preservedScriptBodies = {
-  "dev:electron":
-    "pnpm core:build && cross-env APP_TARGET=electron NODE_ENV=development pnpm build:electron && pnpm start:electron",
-  "build:electron":
-    "cross-env APP_TARGET=electron NODE_ENV=production turbo run build -F @mediago/electron -F @mediago/ui -F @mediago/extension",
-  "dev:server":
-    "pnpm core:build && cross-env APP_TARGET=server NODE_ENV=development turbo run dev -F @mediago/server -F @mediago/ui",
-  "build:web":
-    "cross-env APP_TARGET=server NODE_ENV=production turbo run build -F @mediago/ui",
-  "dev:extension": "pnpm -F @mediago/extension run dev",
-  "build:extension": "turbo run build -F @mediago/extension",
-  "dev:all":
-    'pnpm core:build && pnpm build:electron && concurrently --kill-others-on-fail --names backend,electron-ui,server-ui "cross-env APP_TARGET=electron turbo run dev -F @mediago/server -F @mediago/electron" "cross-env APP_TARGET=electron pnpm -F @mediago/ui run dev" "cross-env APP_TARGET=server pnpm -F @mediago/ui run dev"',
-  "pack:extension": "pnpm build:extension && tsx scripts/pack-extension.ts",
-  check: "pnpm lint && pnpm format:check && pnpm type:check",
-  test: "pnpm test:ts && pnpm test:go",
-  "test:ts": "vitest run",
-  "test:go": "cd apps/core && go test ./...",
-  "test:integration": "pnpm test:integration:media",
-  "test:e2e": "playwright test",
-  "test:e2e:web": "playwright test --project=web",
-  "test:e2e:electron": "playwright test --project=electron",
-  "test:e2e:extension": "playwright test --project=extension",
-  "pack:electron":
-    "pnpm core:build && pnpm build:electron && pnpm -F @mediago/electron run pack",
-  "release:electron":
-    "pnpm core:build && pnpm build:electron && pnpm -F @mediago/electron run release",
-  "build:docker": "docker build -t mediago:local .",
-  "docs:dev": "pnpm -F @mediago/docs run docs:dev",
-  "docs:build": "pnpm -F @mediago/docs run docs:build",
-  "deps:download": "tsx scripts/download-deps.ts",
+const implementationGraph = {
+  "internal:setup": {
+    deps: ["internal:deps:node", "internal:deps:runtime"],
+    leaves: [],
+  },
+  "internal:deps:node": {
+    deps: [],
+    leaves: ["pnpm install --frozen-lockfile"],
+  },
+  "internal:deps:runtime": {
+    deps: ["internal:deps:node"],
+    leaves: [
+      "pnpm deps:download:raw --tools ffmpeg,N_m3u8DL-RE,BBDown,aria2,yt-dlp,mediago",
+    ],
+  },
+  "internal:deps:media-integration": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm deps:download:raw --tools aria2,N_m3u8DL-RE,ffmpeg,BBDown"],
+  },
+  "internal:deps:e2e": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm deps:download:raw --tools aria2"],
+  },
+  "internal:dev:all": {
+    deps: [
+      "internal:deps:node",
+      "internal:deps:runtime",
+      "internal:core:build",
+      "internal:build:electron",
+    ],
+    leaves: ["pnpm dev:all:raw"],
+  },
+  "internal:dev:web": {
+    deps: [
+      "internal:deps:node",
+      "internal:deps:runtime",
+      "internal:core:build",
+    ],
+    leaves: ["pnpm dev:web:raw"],
+  },
+  "internal:dev:electron": {
+    deps: [
+      "internal:deps:node",
+      "internal:deps:runtime",
+      "internal:core:build",
+      "internal:build:electron",
+    ],
+    leaves: ["pnpm start:electron"],
+  },
+  "internal:dev:extension": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm -F @mediago/extension run dev"],
+  },
+  "internal:docs:dev": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm -F @mediago/docs run docs:dev"],
+  },
+  "internal:check": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm lint", "pnpm format:check", "pnpm type:check"],
+  },
+  "internal:test": {
+    deps: ["internal:deps:node", "internal:test:ts", "internal:test:go"],
+    leaves: [],
+  },
+  "internal:test:ts": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm exec vitest run"],
+  },
+  "internal:test:go": { deps: [], leaves: ["go test ./..."] },
+  "internal:test:integration": {
+    deps: ["internal:deps:media-integration"],
+    leaves: ["pnpm test:integration:media:run:raw"],
+  },
+  "internal:test:e2e": {
+    deps: [
+      "internal:deps:e2e",
+      "internal:core:build",
+      "internal:test:e2e:build",
+      "internal:test:e2e:chromium",
+    ],
+    leaves: ["pnpm test:e2e:raw"],
+  },
+  "internal:test:e2e:web": {
+    deps: [
+      "internal:deps:e2e",
+      "internal:core:build",
+      "internal:test:e2e:build",
+      "internal:test:e2e:chromium",
+    ],
+    leaves: ["pnpm test:e2e:web:raw"],
+  },
+  "internal:test:e2e:electron": {
+    deps: [
+      "internal:deps:e2e",
+      "internal:core:build",
+      "internal:test:e2e:build",
+      "internal:test:e2e:chromium",
+    ],
+    leaves: ["pnpm test:e2e:electron:raw"],
+  },
+  "internal:test:e2e:extension": {
+    deps: [
+      "internal:deps:e2e",
+      "internal:core:build",
+      "internal:test:e2e:build",
+      "internal:test:e2e:chromium",
+    ],
+    leaves: ["pnpm test:e2e:extension:raw"],
+  },
+  "internal:build:web": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm build:web:raw"],
+  },
+  "internal:build:server": {
+    deps: ["internal:deps:node", "internal:core:build"],
+    leaves: ["pnpm build:server:raw"],
+  },
+  "internal:build:electron": {
+    deps: ["internal:deps:node", "internal:core:build"],
+    leaves: ["pnpm build:electron:raw"],
+  },
+  "internal:build:extension": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm -F @mediago/extension run build"],
+  },
+  "internal:build:docs": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm -F @mediago/docs run docs:build"],
+  },
+  "internal:build:docker": {
+    deps: ["internal:docker:daemon"],
+    leaves: ["docker build -t mediago:local ."],
+  },
+  "internal:pack:extension": {
+    deps: ["internal:build:extension"],
+    leaves: ["pnpm exec tsx scripts/pack-extension.ts"],
+  },
+  "internal:pack:electron": {
+    deps: [
+      "internal:deps:runtime",
+      "internal:core:build",
+      "internal:build:electron",
+    ],
+    leaves: ["pnpm -F @mediago/electron run pack"],
+  },
+  "internal:release:electron": {
+    deps: [
+      "internal:deps:runtime",
+      "internal:core:build",
+      "internal:build:electron",
+    ],
+    leaves: ["pnpm -F @mediago/electron run release"],
+  },
 } as const;
 
-const rawScriptSources = {
-  "dev:electron:raw": "dev:electron",
-  "build:electron:raw": "build:electron",
-  "dev:web:raw": "dev:server",
-  "build:web:raw": "build:web",
-  "dev:extension:raw": "dev:extension",
-  "build:extension:raw": "build:extension",
-  "dev:all:raw": "dev:all",
-  "pack:extension:raw": "pack:extension",
-  "check:raw": "check",
-  "test:raw": "test",
-  "test:ts:raw": "test:ts",
-  "test:go:raw": "test:go",
-  "test:integration:raw": "test:integration",
-  "test:e2e:raw": "test:e2e",
-  "test:e2e:web:raw": "test:e2e:web",
-  "test:e2e:electron:raw": "test:e2e:electron",
-  "test:e2e:extension:raw": "test:e2e:extension",
-  "pack:electron:raw": "pack:electron",
-  "release:electron:raw": "release:electron",
-  "build:docker:raw": "build:docker",
-  "docs:dev:raw": "docs:dev",
-  "docs:build:raw": "docs:build",
-  "deps:download:raw": "deps:download",
-} as const satisfies Record<string, keyof typeof preservedScriptBodies>;
+const prerequisiteGraph = {
+  "internal:core:build": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm core:build"],
+  },
+  "internal:test:e2e:build": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm test:e2e:build:raw"],
+  },
+  "internal:test:e2e:chromium": {
+    deps: ["internal:deps:node"],
+    leaves: ["pnpm exec playwright install chromium"],
+  },
+  "internal:docker:daemon": { deps: [], leaves: [] },
+} as const;
 
-const newRawScriptBodies = {
+const runtimeConsumers = [
+  "internal:deps:runtime",
+  "internal:deps:media-integration",
+  "internal:deps:e2e",
+  "internal:dev:all",
+  "internal:dev:web",
+  "internal:dev:electron",
+  "internal:test:integration",
+  "internal:test:e2e",
+  "internal:test:e2e:web",
+  "internal:test:e2e:electron",
+  "internal:test:e2e:extension",
+  "internal:pack:electron",
+  "internal:release:electron",
+] as const;
+
+const wrapperScripts = {
+  "dev:all": "task dev:all",
+  "dev:web": "task dev:web",
+  "dev:server": "task dev:web",
+  "dev:electron": "task dev:electron",
+  "dev:extension": "task dev:extension",
+  "docs:dev": "task docs:dev",
+  check: "task check",
+  test: "task test",
+  "test:unit": "task test",
+  "test:integration:media:setup": "task deps:media-integration",
+  "test:integration:media:run": "task test:integration",
+  "test:integration:media": "task test:integration",
+  "test:integration": "task test:integration",
+  "test:e2e": "task test:e2e",
+  "test:e2e:web": "task test:e2e:web",
+  "test:e2e:electron": "task test:e2e:electron",
+  "test:e2e:extension": "task test:e2e:extension",
+  "test:ci": "task test",
+  "build:web": "task build:web",
+  "build:server": "task build:server",
+  "build:electron": "task build:electron",
+  "build:extension": "task build:extension",
+  "build:docker": "task build:docker",
+  "docs:build": "task build:docs",
+  "pack:extension": "task pack:extension",
+  "pack:electron": "task pack:electron",
+  "release:electron": "task release:electron",
+  "deps:download": "task deps:runtime",
+} as const;
+
+const rawScriptBodies = {
+  "dev:all:raw":
+    'concurrently --kill-others-on-fail --names backend,electron-ui,server-ui "cross-env APP_TARGET=electron turbo run dev -F @mediago/server -F @mediago/electron" "cross-env APP_TARGET=electron pnpm -F @mediago/ui run dev" "cross-env APP_TARGET=server pnpm -F @mediago/ui run dev"',
+  "dev:web:raw":
+    "cross-env APP_TARGET=server NODE_ENV=development turbo run dev -F @mediago/server -F @mediago/ui",
+  "build:web:raw":
+    "cross-env APP_TARGET=server NODE_ENV=production turbo run build -F @mediago/ui",
   "build:server:raw":
     "cross-env APP_TARGET=server NODE_ENV=production turbo run build -F @mediago/server -F @mediago/ui",
+  "build:electron:raw":
+    "cross-env APP_TARGET=electron NODE_ENV=production turbo run build -F @mediago/electron -F @mediago/ui -F @mediago/extension",
+  "deps:download:raw": "tsx scripts/download-deps.ts",
+  "test:integration:media:run:raw":
+    "vitest run --config vitest.integration.config.ts",
+  "test:e2e:build:raw":
+    "cross-env APP_TARGET=electron NODE_ENV=production turbo run build -F @mediago/server -F @mediago/electron -F @mediago/electron-preload -F @mediago/extension",
+  "test:e2e:raw": "playwright test",
+  "test:e2e:web:raw": "playwright test --project=web",
+  "test:e2e:electron:raw": "playwright test --project=electron",
+  "test:e2e:extension:raw": "playwright test --project=extension",
 } as const;
-
-type TaskCommand =
-  | { kind: "cmd"; text: string }
-  | { kind: "task"; task: string };
-
-function asRecord(value: unknown, context: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${context} must be a mapping`);
-  }
-  return value as Record<string, unknown>;
-}
 
 function task(name: string): Record<string, unknown> {
   return asRecord(tasks[name], `task ${name}`);
 }
 
 function taskCommands(name: string): TaskCommand[] {
-  const commands = task(name).cmds;
-  if (!Array.isArray(commands)) {
-    throw new Error(`task ${name} must declare a cmds array`);
-  }
-  return commands.map((command, index) => {
-    if (typeof command === "string") return { kind: "cmd", text: command };
+  return parseTaskCommands(tasks, name);
+}
 
-    const mapping = asRecord(command, `task ${name} command ${index + 1}`);
-    if (typeof mapping.task === "string") {
-      return { kind: "task", task: mapping.task };
+function taskDependencies(name: string): string[] {
+  return parseTaskDependencies(tasks, name);
+}
+
+function terminalLeaves(name: string): string[] {
+  return taskCommands(name).flatMap((command) => {
+    if (command.kind === "task") return [];
+    if (
+      command.text.startsWith(`node -e "console.log('MEDIAGO_RUNTIME_READY'`) ||
+      command.text === `node -e "console.log('MEDIAGO_DEV_PROCESSES_STARTING')"`
+    ) {
+      return [];
     }
-    if (typeof mapping.cmd === "string") {
-      return { kind: "cmd", text: mapping.cmd };
-    }
-    throw new Error(
-      `task ${name} command ${index + 1} must contain cmd or task`,
-    );
+    return [command.text];
   });
 }
 
-function stringArray(value: unknown, context: string): string[] {
-  if (
-    !Array.isArray(value) ||
-    value.some((entry) => typeof entry !== "string")
-  ) {
-    throw new Error(`${context} must be a string array`);
+function requiredVariables(name: string): Array<Record<string, unknown>> {
+  const requires = asRecord(task(name).requires, `${name} requires`);
+  if (!Array.isArray(requires.vars)) {
+    throw new Error(`${name} requires.vars must be an array`);
   }
-  return value as string[];
+  return requires.vars.map((entry, index) =>
+    typeof entry === "string"
+      ? { name: entry }
+      : asRecord(entry, `${name} requires variable ${index + 1}`),
+  );
+}
+
+function packagingRequirements(name: string): string[] {
+  return requiredVariables(name)
+    .map((requirement) => requirement.name)
+    .filter(
+      (variableName): variableName is string =>
+        typeof variableName === "string" && variableName !== "MEDIAGO_PROFILE",
+    );
 }
 
 function referencedRootScripts(body: string): string[] {
@@ -414,10 +544,31 @@ describe("Task version gate and doctor", () => {
           command.text,
           `${name} command contains shell interpolation`,
         ).not.toMatch(
-          /\{\{\.(?:MEDIAGO_PROFILE|MEDIAGO_DEPS_ROOT|TASK_VERSION|REQUIRED_TASK_VERSION)\}\}/,
+          /\{\{\.(?:MEDIAGO_PROFILE|MEDIAGO_DEPS_ROOT|MEDIAGO_DEPS_DIR|MEDIAGO_PLATFORM_KEY|APP_NAME|APP_ID|APP_COPYRIGHT|TASK_VERSION|REQUIRED_TASK_VERSION)\}\}/,
         );
       }
     }
+  });
+
+  it("defaults the dependency root to the repository and preserves a caller override", () => {
+    const defaultFixture = createDependencyRootFixture();
+    expect(
+      runFixtureTask(defaultFixture, {
+        EXPECTED_DEPS_ROOT: path.join(defaultFixture.directory, ".deps"),
+      }).status,
+    ).toBe(0);
+
+    const overrideFixture = createDependencyRootFixture();
+    const callerRoot = path.join(
+      overrideFixture.directory,
+      "caller-selected-deps",
+    );
+    expect(
+      runFixtureTask(overrideFixture, {
+        EXPECTED_DEPS_ROOT: callerRoot,
+        MEDIAGO_DEPS_ROOT: callerRoot,
+      }).status,
+    ).toBe(0);
   });
 });
 
@@ -443,13 +594,9 @@ describe("profile loading", () => {
         dotenvOrder,
       );
       expect(definition).not.toHaveProperty("preconditions");
-      expect(definition.requires).toEqual({
-        vars: [
-          {
-            name: "MEDIAGO_PROFILE",
-            enum: ["development", "test", "production"],
-          },
-        ],
+      expect(requiredVariables(name)[0]).toEqual({
+        name: "MEDIAGO_PROFILE",
+        enum: ["development", "test", "production"],
       });
     },
   );
@@ -468,7 +615,7 @@ describe("profile loading", () => {
 });
 
 describe("Task command leaves", () => {
-  it("locks every private implementation to its exact Task 3 commands", () => {
+  it("locks the complete ordered local dependency graph and terminal leaves", () => {
     const actualImplementations = Object.keys(tasks)
       .filter(
         (name) =>
@@ -477,14 +624,126 @@ describe("Task command leaves", () => {
       )
       .toSorted();
     expect(actualImplementations).toEqual(
-      Object.keys(implementationCommands).toSorted(),
+      [
+        ...Object.keys(implementationGraph),
+        ...Object.keys(prerequisiteGraph),
+      ].toSorted(),
     );
 
-    for (const [name, expectedCommands] of Object.entries(
-      implementationCommands,
-    )) {
-      expect(taskCommands(name)).toEqual(expectedCommands);
+    for (const [name, expected] of Object.entries(implementationGraph)) {
+      expect(taskDependencies(name), `${name} prerequisites`).toEqual(
+        expected.deps,
+      );
+      expect(terminalLeaves(name), `${name} leaves`).toEqual(expected.leaves);
     }
+    for (const [name, expected] of Object.entries(prerequisiteGraph)) {
+      expect(taskDependencies(name), `${name} prerequisites`).toEqual(
+        expected.deps,
+      );
+      expect(terminalLeaves(name), `${name} leaves`).toEqual(expected.leaves);
+    }
+    expect(task("internal:test:go").dir).toBe("apps/core");
+
+    const visited = new Set<string>();
+    const active = new Set<string>();
+    const visit = (name: string) => {
+      expect(active.has(name), `Task dependency cycle through ${name}`).toBe(
+        false,
+      );
+      if (visited.has(name)) return;
+      active.add(name);
+      for (const dependency of taskDependencies(name)) visit(dependency);
+      active.delete(name);
+      visited.add(name);
+    };
+    for (const name of Object.keys(tasks)) visit(name);
+  });
+
+  it("tracks every workspace manifest for the pnpm install marker", () => {
+    expect(task("internal:deps:node").method).toBe("timestamp");
+    expect(
+      stringArray(task("internal:deps:node").sources, "deps:node sources"),
+    ).toEqual([
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "docs/package.json",
+      "apps/*/package.json",
+      "apps/*/app/package.json",
+      "packages/*/package.json",
+      "packages/*/*/package.json",
+    ]);
+    expect(
+      stringArray(task("internal:deps:node").generates, "deps:node generates"),
+    ).toEqual(["node_modules/.pnpm/lock.yaml"]);
+  });
+
+  it("runs shared mutating prerequisites only once per invocation graph", () => {
+    expect(task("internal:deps:node").run).toBe("once");
+    expect(task("internal:core:build").run).toBe("once");
+  });
+
+  it("ignores Task's reproducible local timestamp cache", () => {
+    const ignored = spawnSync(
+      "git",
+      ["check-ignore", ".task/timestamp/internal-deps-node"],
+      {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+      },
+    );
+
+    expect(ignored.error).toBeUndefined();
+    expect(ignored.status).toBe(0);
+    expect(ignored.stdout.trim()).toBe(".task/timestamp/internal-deps-node");
+  });
+
+  it("uses a native Docker daemon precondition", () => {
+    expect(task("internal:docker:daemon").preconditions).toEqual([
+      {
+        sh: "docker info >/dev/null 2>&1",
+        msg: "Docker daemon is unavailable. Start Docker and retry task build:docker.",
+      },
+    ]);
+  });
+
+  it("passes the canonical dependency root and current-platform leaf safely", () => {
+    for (const name of runtimeConsumers) {
+      const variables = asRecord(task(name).vars, `${name} vars`);
+      const platform = asRecord(
+        variables.MEDIAGO_PLATFORM_KEY,
+        `${name} platform variable`,
+      );
+      const environment = asRecord(task(name).env, `${name} env`);
+      expect(platform).toEqual({ sh: "node scripts/print-platform-key.ts" });
+      expect(environment.MEDIAGO_DEPS_ROOT).toBe("{{.MEDIAGO_DEPS_ROOT}}");
+      expect(environment.MEDIAGO_DEPS_DIR).toBe(
+        "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}",
+      );
+      expect(String(environment.MEDIAGO_DEPS_ROOT)).not.toContain(
+        "MEDIAGO_PLATFORM_KEY",
+      );
+    }
+  });
+
+  it("prints stable readiness boundaries without shell-rendering dependency paths", () => {
+    for (const name of [
+      "internal:deps:runtime",
+      "internal:deps:media-integration",
+      "internal:deps:e2e",
+    ]) {
+      expect(taskCommands(name).at(-1)).toEqual({
+        kind: "cmd",
+        text: `node -e "console.log('MEDIAGO_RUNTIME_READY', process.env.MEDIAGO_DEPS_DIR)"`,
+      });
+    }
+    expect(taskCommands("internal:dev:all").slice(-2)).toEqual([
+      {
+        kind: "cmd",
+        text: `node -e "console.log('MEDIAGO_DEV_PROCESSES_STARTING')"`,
+      },
+      { kind: "cmd", text: "pnpm dev:all:raw" },
+    ]);
   });
 
   it("uses only approved command classes", () => {
@@ -500,27 +759,21 @@ describe("Task command leaves", () => {
         expect(
           command.text,
           `${name} must not compose leaf commands`,
-        ).not.toMatch(/(?:&&|\|\||[;|]|\n)/);
+        ).not.toMatch(/(?:&&|\|\||[|]|\n)/);
         expect(command.text, `${name} has an unsafe leaf command`).toMatch(
-          /^(?:node\s+scripts\/task-(?:version-gate|doctor)\.ts|pnpm\s+[\w:-]+:raw(?:\s+[^;&|\n]+)?|pnpm\s+(?:-F|--filter)\s+\S+\s+run\s+\S+|pnpm\s+install(?:\s+[^;&|\n]+)?|pnpm\s+exec(?:\s+[^;&|\n]+)?|pnpm\s+start:electron|go\s+[^;&|\n]+|docker\s+[^;&|\n]+)$/,
+          /^(?:node\s+scripts\/task-(?:version-gate|doctor)\.ts|node -e "console\.log\('MEDIAGO_(?:RUNTIME_READY', process\.env\.MEDIAGO_DEPS_DIR|DEV_PROCESSES_STARTING')\)"|pnpm\s+[\w:-]+(?::raw)?(?:\s+[^;&|\n]+)?|pnpm\s+(?:-F|--filter)\s+\S+\s+run\s+\S+|pnpm\s+install(?:\s+[^;&|\n]+)?|pnpm\s+exec(?:\s+[^;&|\n]+)?|go\s+[^;&|\n]+|docker\s+[^;&|\n]+)$/,
         );
       }
     }
   });
 
-  it("keeps historical entrypoints and their raw copies byte-for-byte", () => {
-    for (const [name, expectedBody] of Object.entries(preservedScriptBodies)) {
-      expect(packageJson.scripts[name], `${name} changed at Task 3`).toBe(
+  it("routes historical orchestrators to public Tasks and preserves exact leaves", () => {
+    for (const [name, expectedBody] of Object.entries(wrapperScripts)) {
+      expect(packageJson.scripts[name], `${name} is not a Task wrapper`).toBe(
         expectedBody,
       );
     }
-    for (const [rawName, sourceName] of Object.entries(rawScriptSources)) {
-      expect(
-        packageJson.scripts[rawName],
-        `${rawName} is not an exact copy`,
-      ).toBe(preservedScriptBodies[sourceName]);
-    }
-    for (const [name, expectedBody] of Object.entries(newRawScriptBodies)) {
+    for (const [name, expectedBody] of Object.entries(rawScriptBodies)) {
       expect(packageJson.scripts[name]).toBe(expectedBody);
     }
   });
@@ -560,3 +813,101 @@ describe("Task command leaves", () => {
     }
   });
 });
+
+describe("production variable requirements", () => {
+  const expectedPackagingRequirements = {
+    "build:electron": ["APP_NAME"],
+    "pack:electron": ["APP_NAME", "APP_ID", "APP_COPYRIGHT"],
+    "release:electron": ["APP_NAME", "APP_ID", "APP_COPYRIGHT"],
+  } as const;
+
+  it("keeps reusable implementation requirements profile-only", () => {
+    for (const name of [
+      "internal:build:electron",
+      "internal:pack:electron",
+      "internal:release:electron",
+    ]) {
+      expect(packagingRequirements(name)).toEqual([]);
+    }
+  });
+
+  it.each(Object.entries(expectedPackagingRequirements))(
+    "%s uses native requirements for exactly %s",
+    (name, expected) => {
+      expect(packagingRequirements(name)).toEqual(expected);
+
+      for (const missingName of expected) {
+        const fixture = createRequirementFixture(name);
+        const packagingEnvironment = Object.fromEntries(
+          expected
+            .filter((variableName) => variableName !== missingName)
+            .map((variableName, index) => [
+              variableName,
+              `TASK_REQUIREMENT_SECRET_${index}_SENTINEL`,
+            ]),
+        );
+        const result = runFixtureTask(
+          fixture,
+          {
+            MEDIAGO_PROFILE: "production",
+            ...packagingEnvironment,
+          },
+          true,
+        );
+
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain(missingName);
+        for (const presentName of expected) {
+          if (presentName !== missingName) {
+            expect(result.output).not.toContain(presentName);
+          }
+        }
+        expect(result.output).not.toContain("TASK_REQUIREMENT_SECRET_");
+      }
+
+      const readyFixture = createRequirementFixture(name);
+      const readyResult = runFixtureTask(
+        readyFixture,
+        {
+          MEDIAGO_PROFILE: "production",
+          ...Object.fromEntries(
+            expected.map((variableName, index) => [
+              variableName,
+              `TASK_REQUIREMENT_SECRET_${index}_SENTINEL`,
+            ]),
+          ),
+        },
+        true,
+      );
+      expect(readyResult.status).toBe(0);
+      expect(readyResult.output).not.toContain("TASK_REQUIREMENT_SECRET_");
+    },
+  );
+});
+
+function createDependencyRootFixture(): TaskFixture {
+  return createTaskFixture({
+    version: "3",
+    vars: taskfile.vars,
+    tasks: {
+      probe: {
+        env: { MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}" },
+        cmds: [
+          `node -e "process.exit(process.env.MEDIAGO_DEPS_ROOT === process.env.EXPECTED_DEPS_ROOT ? 0 : 17)"`,
+        ],
+      },
+    },
+  });
+}
+
+function createRequirementFixture(name: string): TaskFixture {
+  return createTaskFixture({
+    version: "3",
+    tasks: {
+      probe: {
+        requires: { vars: requiredVariables(name) },
+        cmds: [`node -e "process.exit(0)"`],
+      },
+    },
+  });
+}

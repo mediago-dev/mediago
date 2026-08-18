@@ -24,12 +24,17 @@ const expectedE2EScripts = {
   "test:e2e:setup": "pnpm test:e2e:setup:deps && pnpm test:e2e:setup:browser",
   "test:e2e:build:core":
     "cd apps/core && go build -o bin/mediago-core ./cmd/server",
-  "test:e2e:build":
-    "pnpm test:e2e:build:core && cross-env APP_TARGET=electron NODE_ENV=production turbo run build -F @mediago/server -F @mediago/electron -F @mediago/electron-preload -F @mediago/extension",
-  "test:e2e": "playwright test",
-  "test:e2e:web": "playwright test --project=web",
-  "test:e2e:electron": "playwright test --project=electron",
-  "test:e2e:extension": "playwright test --project=extension",
+  "test:e2e:build": "pnpm test:e2e:build:core && pnpm test:e2e:build:raw",
+  "test:e2e:build:raw":
+    "cross-env APP_TARGET=electron NODE_ENV=production turbo run build -F @mediago/server -F @mediago/electron -F @mediago/electron-preload -F @mediago/extension",
+  "test:e2e": "task test:e2e",
+  "test:e2e:raw": "playwright test",
+  "test:e2e:web": "task test:e2e:web",
+  "test:e2e:web:raw": "playwright test --project=web",
+  "test:e2e:electron": "task test:e2e:electron",
+  "test:e2e:electron:raw": "playwright test --project=electron",
+  "test:e2e:extension": "task test:e2e:extension",
+  "test:e2e:extension:raw": "playwright test --project=extension",
   "test:e2e:ui": "playwright test --ui",
   "type:check:e2e": "tsc -p tsconfig.e2e.json",
 } as const;

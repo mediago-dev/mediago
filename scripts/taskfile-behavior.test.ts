@@ -229,11 +229,12 @@ function createProfileFixture(): ReturnType<typeof createFixture> {
   };
   const realProfile = rootTaskfile.tasks["internal:test:ts"];
   expect(realProfile).toBeDefined();
+  const { deps: _graphDependencies, ...isolatedProfile } = realProfile;
   const fixture = createFixture({
     version: "3",
     tasks: {
       profile: {
-        ...realProfile,
+        ...isolatedProfile,
         internal: false,
         cmds: [
           `node -e "process.exit(process.env.TASK_FIXTURE_WINNER === 'process' ? 0 : 17)"`,

@@ -6,6 +6,7 @@ node_modules
 .DS_Store
 log
 .turbo
+.task/
 .claude
 .store
 release

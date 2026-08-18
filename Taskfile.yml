@@ -152,6 +152,9 @@ tasks:
 
   build:electron:
     desc: Build the Electron desktop application
+    requires:
+      vars:
+        - name: APP_NAME
     cmds:
       - task: internal:require-task-version
       - task: internal:build:electron
@@ -182,12 +185,18 @@ tasks:
 
   pack:electron:
     desc: Package the Electron desktop application
+    requires: &electron-package-requires
+      vars:
+        - name: APP_NAME
+        - name: APP_ID
+        - name: APP_COPYRIGHT
     cmds:
       - task: internal:require-task-version
       - task: internal:pack:electron
 
   release:electron:
     desc: Build Electron release artifacts
+    requires: *electron-package-requires
     cmds:
       - task: internal:require-task-version
       - task: internal:release:electron
@@ -216,65 +225,122 @@ tasks:
       vars:
         - name: MEDIAGO_PROFILE
           enum: [development, test, production]
-    cmds:
+    deps:
       - task: internal:deps:node
       - task: internal:deps:runtime
 
   internal:deps:node:
     internal: true
+    run: once
+    method: timestamp
+    sources:
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - docs/package.json
+      - apps/*/package.json
+      - apps/*/app/package.json
+      - packages/*/package.json
+      - packages/*/*/package.json
+    generates:
+      - node_modules/.pnpm/lock.yaml
     cmds:
       - pnpm install --frozen-lockfile
 
   internal:deps:runtime:
     internal: true
+    vars: &runtime-vars
+      MEDIAGO_PLATFORM_KEY:
+        sh: node scripts/print-platform-key.ts
+    env: &runtime-env
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
+      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
+    deps:
+      - task: internal:deps:node
     cmds:
       - pnpm deps:download:raw --tools ffmpeg,N_m3u8DL-RE,BBDown,aria2,yt-dlp,mediago
+      - 'node -e "console.log(''MEDIAGO_RUNTIME_READY'', process.env.MEDIAGO_DEPS_DIR)"'
 
   internal:deps:media-integration:
     internal: true
-    vars: &test-profile-vars
+    vars: &test-runtime-vars
       MEDIAGO_PROFILE: '{{default "test" .MEDIAGO_PROFILE}}'
-    env: *profile-env
+      MEDIAGO_PLATFORM_KEY:
+        sh: node scripts/print-platform-key.ts
+    env:
+      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
+      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
-      - pnpm deps:download:raw --tools aria2,N_m3u8DL-RE,ffmpeg
+      - pnpm deps:download:raw --tools aria2,N_m3u8DL-RE,ffmpeg,BBDown
+      - 'node -e "console.log(''MEDIAGO_RUNTIME_READY'', process.env.MEDIAGO_DEPS_DIR)"'
 
   internal:deps:e2e:
     internal: true
-    vars: *test-profile-vars
-    env: *profile-env
+    vars: *test-runtime-vars
+    env:
+      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
+      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
       - pnpm deps:download:raw --tools aria2
+      - 'node -e "console.log(''MEDIAGO_RUNTIME_READY'', process.env.MEDIAGO_DEPS_DIR)"'
 
   internal:dev:all:
     internal: true
-    vars: *development-profile-vars
-    env: *profile-env
+    vars: &development-runtime-vars
+      MEDIAGO_PROFILE: '{{default "development" .MEDIAGO_PROFILE}}'
+      MEDIAGO_PLATFORM_KEY:
+        sh: node scripts/print-platform-key.ts
+    env: &development-runtime-env
+      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
+      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
+      - task: internal:deps:runtime
+      - task: internal:core:build
+      - task: internal:build:electron
     cmds:
+      - 'node -e "console.log(''MEDIAGO_DEV_PROCESSES_STARTING'')"'
       - pnpm dev:all:raw
 
   internal:dev:web:
     internal: true
-    vars: *development-profile-vars
-    env: *profile-env
+    vars: *development-runtime-vars
+    env: *development-runtime-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
+      - task: internal:deps:runtime
+      - task: internal:core:build
     cmds:
       - pnpm dev:web:raw
 
   internal:dev:electron:
     internal: true
-    vars: *development-profile-vars
-    env: *profile-env
+    vars: *development-runtime-vars
+    env: *development-runtime-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
+      - task: internal:deps:runtime
+      - task: internal:core:build
+      - task: internal:build:electron
     cmds:
-      - pnpm dev:electron:raw
+      - pnpm start:electron
 
   internal:dev:extension:
     internal: true
@@ -282,8 +348,10 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
-      - pnpm dev:extension:raw
+      - pnpm -F @mediago/extension run dev
 
   internal:docs:dev:
     internal: true
@@ -291,17 +359,24 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
-      - pnpm docs:dev:raw
+      - pnpm -F @mediago/docs run docs:dev
 
   internal:check:
     internal: true
-    vars: *test-profile-vars
+    vars: &test-profile-vars
+      MEDIAGO_PROFILE: '{{default "test" .MEDIAGO_PROFILE}}'
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
-      - pnpm check:raw
+      - pnpm lint
+      - pnpm format:check
+      - pnpm type:check
 
   internal:test:
     internal: true
@@ -309,8 +384,10 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
-    cmds:
-      - pnpm test:raw
+    deps:
+      - task: internal:deps:node
+      - task: internal:test:ts
+      - task: internal:test:go
 
   internal:test:ts:
     internal: true
@@ -318,8 +395,10 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
-      - pnpm test:ts:raw
+      - pnpm exec vitest run
 
   internal:test:go:
     internal: true
@@ -327,53 +406,92 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    dir: apps/core
     cmds:
-      - pnpm test:go:raw
+      - go test ./...
 
   internal:test:integration:
     internal: true
-    vars: *test-profile-vars
-    env: *profile-env
+    vars: *test-runtime-vars
+    env:
+      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
+      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:media-integration
     cmds:
-      - pnpm test:integration:raw
+      - pnpm test:integration:media:run:raw
 
   internal:test:e2e:
     internal: true
-    vars: *test-profile-vars
-    env: *profile-env
+    vars: *test-runtime-vars
+    env: &test-runtime-env
+      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
+      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps: &e2e-deps
+      - task: internal:deps:e2e
+      - task: internal:core:build
+      - task: internal:test:e2e:build
+      - task: internal:test:e2e:chromium
     cmds:
       - pnpm test:e2e:raw
 
   internal:test:e2e:web:
     internal: true
-    vars: *test-profile-vars
-    env: *profile-env
+    vars: *test-runtime-vars
+    env: *test-runtime-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps: *e2e-deps
     cmds:
       - pnpm test:e2e:web:raw
 
   internal:test:e2e:electron:
     internal: true
-    vars: *test-profile-vars
-    env: *profile-env
+    vars: *test-runtime-vars
+    env: *test-runtime-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps: *e2e-deps
     cmds:
       - pnpm test:e2e:electron:raw
 
   internal:test:e2e:extension:
     internal: true
-    vars: *test-profile-vars
-    env: *profile-env
+    vars: *test-runtime-vars
+    env: *test-runtime-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps: *e2e-deps
     cmds:
       - pnpm test:e2e:extension:raw
+
+  internal:core:build:
+    internal: true
+    run: once
+    deps:
+      - task: internal:deps:node
+    cmds:
+      - pnpm core:build
+
+  internal:test:e2e:build:
+    internal: true
+    deps:
+      - task: internal:deps:node
+    cmds:
+      - pnpm test:e2e:build:raw
+
+  internal:test:e2e:chromium:
+    internal: true
+    deps:
+      - task: internal:deps:node
+    cmds:
+      - pnpm exec playwright install chromium
 
   internal:build:web:
     internal: true
@@ -382,6 +500,8 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
       - pnpm build:web:raw
 
@@ -391,6 +511,9 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
+      - task: internal:core:build
     cmds:
       - pnpm build:server:raw
 
@@ -400,6 +523,9 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
+      - task: internal:core:build
     cmds:
       - pnpm build:electron:raw
 
@@ -409,8 +535,10 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
-      - pnpm build:extension:raw
+      - pnpm -F @mediago/extension run build
 
   internal:build:docs:
     internal: true
@@ -418,8 +546,10 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:deps:node
     cmds:
-      - pnpm docs:build:raw
+      - pnpm -F @mediago/docs run docs:build
 
   internal:build:docker:
     internal: true
@@ -427,8 +557,16 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:docker:daemon
     cmds:
-      - pnpm build:docker:raw
+      - docker build -t mediago:local .
+
+  internal:docker:daemon:
+    internal: true
+    preconditions:
+      - sh: docker info >/dev/null 2>&1
+        msg: Docker daemon is unavailable. Start Docker and retry task build:docker.
 
   internal:pack:extension:
     internal: true
@@ -436,23 +574,36 @@ tasks:
     env: *profile-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps:
+      - task: internal:build:extension
     cmds:
-      - pnpm pack:extension:raw
+      - pnpm exec tsx scripts/pack-extension.ts
 
   internal:pack:electron:
     internal: true
-    vars: *production-profile-vars
-    env: *profile-env
+    vars: &production-runtime-vars
+      MEDIAGO_PROFILE: '{{default "production" .MEDIAGO_PROFILE}}'
+      MEDIAGO_PLATFORM_KEY:
+        sh: node scripts/print-platform-key.ts
+    env: &production-runtime-env
+      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
+      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
+      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps: &electron-package-deps
+      - task: internal:deps:runtime
+      - task: internal:core:build
+      - task: internal:build:electron
     cmds:
-      - pnpm pack:electron:raw
+      - pnpm -F @mediago/electron run pack
 
   internal:release:electron:
     internal: true
-    vars: *production-profile-vars
-    env: *profile-env
+    vars: *production-runtime-vars
+    env: *production-runtime-env
     dotenv: *profile-dotenv
     requires: *profile-requires
+    deps: *electron-package-deps
     cmds:
-      - pnpm release:electron:raw
+      - pnpm -F @mediago/electron run release
