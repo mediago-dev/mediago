@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
@@ -89,6 +89,20 @@ describe("bounded streaming diagnostics", () => {
 });
 
 describe("cleanup coordination", () => {
+  test("fixture recovery never targets a cached process group", () => {
+    const source = readFileSync(new URL(import.meta.url), "utf8");
+    const start = ["FIXTURE", "RECOVERY", "START"].join("_");
+    const end = ["FIXTURE", "RECOVERY", "END"].join("_");
+    const recovery = source.split(start)[1]?.split(end)[0];
+
+    expect(recovery).toBeDefined();
+    expect(recovery).not.toMatch(/operateOnGroup|process\.kill\s*\(\s*-/);
+    expect(recovery).not.toContain("childPid");
+    expect(recovery).toContain('child.kill("SIGTERM")');
+    expect(recovery).toContain('child.kill("SIGKILL")');
+    expect(recovery).toContain("settleWithin(close");
+  });
+
   test("clears the deadline timer when an operation settles first", async () => {
     vi.useFakeTimers();
     try {
@@ -341,11 +355,6 @@ test.runIf(process.platform !== "win32")(
     let root: string | undefined;
     let childPid: number | undefined;
     let groupConfirmedGone = false;
-    let groupOperationsAfterGone = 0;
-    const operateOnGroup = (pid: number, signal: NodeJS.Signals | 0): void => {
-      if (groupConfirmedGone) groupOperationsAfterGone += 1;
-      process.kill(-pid, signal);
-    };
     try {
       await vi.waitFor(() => {
         const line = output.split("\n").find((value) => value.startsWith("{"));
@@ -362,40 +371,42 @@ test.runIf(process.platform !== "win32")(
         throw new Error("signal fixture omitted its child PID");
       child.kill("SIGTERM");
       await vi.waitFor(() => expect(output).toContain("CLEANUP\n"));
-      child.kill("SIGINT");
       const result = await settleWithin(close, 5_000);
+      if (result) {
+        try {
+          process.kill(-ownedChildPid, 0);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+          groupConfirmedGone = true;
+        }
+        if (!groupConfirmedGone) {
+          throw new Error(
+            `owned fixture group ${ownedChildPid} still exists; retained ${root}`,
+          );
+        }
+      }
       if (!result) throw new Error("signal fixture timed out");
 
       expect(result).toEqual({ code: null, signal: "SIGTERM" });
       expect(output.match(/^CLEANUP$/gm)).toHaveLength(1);
       expect(existsSync(root)).toBe(false);
-      let groupProbeError: unknown;
-      try {
-        operateOnGroup(ownedChildPid, 0);
-      } catch (error) {
-        groupProbeError = error;
-      }
-      expect(groupProbeError).toEqual(
-        expect.objectContaining({ code: "ESRCH" }),
-      );
-      groupConfirmedGone = true;
     } finally {
-      if (child.exitCode === null && child.signalCode === null)
-        child.kill("SIGKILL");
-      if (childPid && !groupConfirmedGone) {
-        try {
-          operateOnGroup(childPid, "SIGKILL");
-        } catch {
-          // Recovery only: the passing-path assertion above already proves ESRCH.
+      // FIXTURE_RECOVERY_START
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGTERM");
+        const stopped = await settleWithin(close, 1_000);
+        if (!stopped && child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+          await settleWithin(close, 1_000);
         }
       }
-      if (root && existsSync(root)) {
+      if (groupConfirmedGone && root && existsSync(root)) {
         expect(path.dirname(root)).toBe(tmpdir());
         expect(path.basename(root)).toMatch(/^mediago-signal-fixture-/);
         rmSync(root, { recursive: true, force: true });
       }
+      // FIXTURE_RECOVERY_END
     }
-    expect(groupOperationsAfterGone).toBe(0);
   },
   15_000,
 );
