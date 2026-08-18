@@ -1,0 +1,518 @@
+version: "3"
+
+vars:
+  REQUIRED_TASK_VERSION: 3.51.1
+  MEDIAGO_DEPS_ROOT: '{{default (printf "%s/.deps" .ROOT_DIR) .MEDIAGO_DEPS_ROOT}}'
+
+tasks:
+  doctor:
+    desc: Diagnose the local MediaGo toolchain and runtime dependencies
+    cmds:
+      - |
+        status=0
+
+        if [ "{{.TASK_VERSION}}" = "{{.REQUIRED_TASK_VERSION}}" ]; then
+          printf 'ok: Task %s\n' "{{.TASK_VERSION}}"
+        else
+          printf 'error: Task %s is installed; MediaGo requires %s\n' "{{.TASK_VERSION}}" "{{.REQUIRED_TASK_VERSION}}" >&2
+          status=1
+        fi
+
+        diagnose_command() {
+          label="$1"
+          shift
+          if output=$("$@" 2>&1); then
+            printf 'ok: %s: %s\n' "$label" "$output"
+          else
+            printf 'error: %s is unavailable\n' "$label" >&2
+            status=1
+          fi
+        }
+
+        diagnose_command Node node --version
+        diagnose_command pnpm pnpm --version
+        diagnose_command Go go version
+        diagnose_command Docker docker --version
+
+        if ! platform_key=$(pnpm exec node --import tsx scripts/print-platform-key.ts 2>/dev/null); then
+          case "{{OS}}-{{ARCH}}" in
+            darwin-amd64) platform_key=darwin-x64 ;;
+            darwin-arm64) platform_key=darwin-arm64 ;;
+            linux-amd64) platform_key=linux-x64 ;;
+            linux-arm64) platform_key=linux-arm64 ;;
+            windows-amd64) platform_key=win32-x64 ;;
+            windows-arm64) platform_key=win32-arm64 ;;
+            *) platform_key= ;;
+          esac
+        fi
+
+        if [ -n "$platform_key" ]; then
+          runtime_dir="{{.MEDIAGO_DEPS_ROOT}}/$platform_key"
+          case "$platform_key" in
+            win32-*) runtime_tools='ffmpeg.exe N_m3u8DL-RE.exe BBDown.exe aria2c.exe yt-dlp.exe mediago.exe' ;;
+            *) runtime_tools='ffmpeg N_m3u8DL-RE BBDown aria2c yt-dlp mediago' ;;
+          esac
+
+          for executable in $runtime_tools; do
+            executable_path="$runtime_dir/$executable"
+            if [ -f "$executable_path" ]; then
+              case "$platform_key" in
+                win32-*) printf 'ok: runtime %s\n' "$executable_path" ;;
+                *)
+                  if [ -x "$executable_path" ]; then
+                    printf 'ok: runtime %s\n' "$executable_path"
+                  else
+                    printf 'error: runtime %s is not executable\n' "$executable_path" >&2
+                    status=1
+                  fi
+                  ;;
+              esac
+            else
+              printf 'error: runtime %s is missing\n' "$executable_path" >&2
+              status=1
+            fi
+          done
+        else
+          printf 'error: current runtime platform could not be determined\n' >&2
+          status=1
+        fi
+
+        exit "$status"
+
+  setup:
+    desc: Install Node and current-platform runtime dependencies
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:setup
+
+  deps:node:
+    desc: Install the pinned pnpm workspace dependencies
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:deps:node
+
+  deps:runtime:
+    desc: Install all current-platform runtime tools
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:deps:runtime
+
+  deps:media-integration:
+    desc: Install tools used by media integration tests
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:deps:media-integration
+
+  deps:e2e:
+    desc: Install tools used by end-to-end tests
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:deps:e2e
+
+  dev:all:
+    desc: Start every MediaGo development surface
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:dev:all
+
+  dev:web:
+    desc: Start the server adapter and web UI
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:dev:web
+
+  dev:server:
+    desc: Alias for dev:web
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:dev:web
+
+  dev:electron:
+    desc: Start the Electron desktop application
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:dev:electron
+
+  dev:extension:
+    desc: Start the browser extension development server
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:dev:extension
+
+  docs:dev:
+    desc: Start the documentation development server
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:docs:dev
+
+  check:
+    desc: Run lint, formatting, and type checks
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:check
+
+  test:
+    desc: Run the TypeScript and Go test suites
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:test
+
+  test:ts:
+    desc: Run the TypeScript test suite
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:test:ts
+
+  test:go:
+    desc: Run the Go test suite
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:test:go
+
+  test:integration:
+    desc: Run media integration tests
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:test:integration
+
+  test:e2e:
+    desc: Run all Playwright end-to-end projects
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:test:e2e
+
+  test:e2e:web:
+    desc: Run the Playwright web project
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:test:e2e:web
+
+  test:e2e:electron:
+    desc: Run the Playwright Electron project
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:test:e2e:electron
+
+  test:e2e:extension:
+    desc: Run the Playwright extension project
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:test:e2e:extension
+
+  build:web:
+    desc: Build the web UI
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:build:web
+
+  build:server:
+    desc: Build the server adapter and web UI
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:build:server
+
+  build:electron:
+    desc: Build the Electron desktop application
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:build:electron
+
+  build:extension:
+    desc: Build the browser extension
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:build:extension
+
+  build:docs:
+    desc: Build the documentation site
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:build:docs
+
+  build:docker:
+    desc: Build the local MediaGo Docker image
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:build:docker
+
+  pack:extension:
+    desc: Build and package the browser extension
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:pack:extension
+
+  pack:electron:
+    desc: Package the Electron desktop application
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:pack:electron
+
+  release:electron:
+    desc: Build Electron release artifacts
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:release:electron
+
+  internal:require-task-version:
+    internal: true
+    cmds:
+      - |
+        if [ "{{.TASK_VERSION}}" != "{{.REQUIRED_TASK_VERSION}}" ]; then
+          printf 'error: MediaGo requires Task 3.51.1, found %s\n' "{{.TASK_VERSION}}" >&2
+          exit 1
+        fi
+
+  internal:setup:
+    internal: true
+    vars: &development-profile-vars
+      MEDIAGO_PROFILE: '{{default "development" .MEDIAGO_PROFILE}}'
+    env: &profile-env
+      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
+    dotenv: &profile-dotenv
+      - ".env.{{.MEDIAGO_PROFILE}}.local"
+      - ".env.local"
+      - ".env.{{.MEDIAGO_PROFILE}}"
+      - ".env"
+    preconditions: &profile-preconditions
+      - sh: 'case "{{.MEDIAGO_PROFILE}}" in development|test|production) exit 0 ;; *) exit 1 ;; esac'
+        msg: "Unsupported MEDIAGO_PROFILE: {{.MEDIAGO_PROFILE}}"
+    cmds:
+      - task: internal:deps:node
+      - task: internal:deps:runtime
+
+  internal:deps:node:
+    internal: true
+    cmds:
+      - pnpm install --frozen-lockfile
+
+  internal:deps:runtime:
+    internal: true
+    cmds:
+      - pnpm deps:download:raw --tools ffmpeg,N_m3u8DL-RE,BBDown,aria2,yt-dlp,mediago
+
+  internal:deps:media-integration:
+    internal: true
+    vars: &test-profile-vars
+      MEDIAGO_PROFILE: '{{default "test" .MEDIAGO_PROFILE}}'
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm deps:download:raw --tools aria2,N_m3u8DL-RE,ffmpeg
+
+  internal:deps:e2e:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm deps:download:raw --tools aria2
+
+  internal:dev:all:
+    internal: true
+    vars: *development-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm dev:all:raw
+
+  internal:dev:web:
+    internal: true
+    vars: *development-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm dev:web:raw
+
+  internal:dev:electron:
+    internal: true
+    vars: *development-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm dev:electron:raw
+
+  internal:dev:extension:
+    internal: true
+    vars: *development-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm dev:extension:raw
+
+  internal:docs:dev:
+    internal: true
+    vars: *development-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm docs:dev:raw
+
+  internal:check:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm check:raw
+
+  internal:test:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm test:raw
+
+  internal:test:ts:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm test:ts:raw
+
+  internal:test:go:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm test:go:raw
+
+  internal:test:integration:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm test:integration:raw
+
+  internal:test:e2e:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm test:e2e:raw
+
+  internal:test:e2e:web:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm test:e2e:web:raw
+
+  internal:test:e2e:electron:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm test:e2e:electron:raw
+
+  internal:test:e2e:extension:
+    internal: true
+    vars: *test-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm test:e2e:extension:raw
+
+  internal:build:web:
+    internal: true
+    vars: &production-profile-vars
+      MEDIAGO_PROFILE: '{{default "production" .MEDIAGO_PROFILE}}'
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm build:web:raw
+
+  internal:build:server:
+    internal: true
+    vars: *production-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm build:server:raw
+
+  internal:build:electron:
+    internal: true
+    vars: *production-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm build:electron:raw
+
+  internal:build:extension:
+    internal: true
+    vars: *production-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm build:extension:raw
+
+  internal:build:docs:
+    internal: true
+    vars: *production-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm docs:build:raw
+
+  internal:build:docker:
+    internal: true
+    vars: *production-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm build:docker:raw
+
+  internal:pack:extension:
+    internal: true
+    vars: *production-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm pack:extension:raw
+
+  internal:pack:electron:
+    internal: true
+    vars: *production-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm pack:electron:raw
+
+  internal:release:electron:
+    internal: true
+    vars: *production-profile-vars
+    env: *profile-env
+    dotenv: *profile-dotenv
+    preconditions: *profile-preconditions
+    cmds:
+      - pnpm release:electron:raw
