@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   RUNTIME_TOOLS,
   dependencyExecutablePath,
@@ -8,6 +8,7 @@ import {
   collectDoctorDiagnostics,
   parsePackageManagerPnpmVersion,
   parsePnpmUserAgentVersion,
+  probePnpmVersion,
   type DoctorCommandProbe,
 } from "./task-doctor.ts";
 
@@ -72,13 +73,14 @@ test("aggregates every diagnostic and never reflects unrelated environment", asy
       MEDIAGO_DEPS_ROOT: "/validated/deps",
       MEDIAGO_REQUIRED_TASK_VERSION: "3.51.1",
       MEDIAGO_TASK_VERSION: "3.50.0",
-      npm_config_user_agent: "pnpm/10.14.0 npm/? node/v25.4.0 linux x64",
+      npm_config_user_agent: "pnpm/10.15.0 npm/? node/v25.4.0 linux x64",
       UNRELATED_SECRET: "DOCTOR_SECRET_SENTINEL",
     },
     inspectRuntime: async () => readiness,
     nodeVersion: "v25.4.0",
     packageManager: "pnpm@10.15.0",
     platform: "linux",
+    pnpmProbe: async () => "10.14.0",
   });
 
   expect(result.exitCode).toBe(1);
@@ -119,14 +121,114 @@ test("returns success only when every exact tool and runtime check is ready", as
       MEDIAGO_DEPS_ROOT: "/validated/deps",
       MEDIAGO_REQUIRED_TASK_VERSION: "3.51.1",
       MEDIAGO_TASK_VERSION: "3.51.1",
-      npm_config_user_agent: "pnpm/10.15.0 npm/? node/v25.4.0 linux x64",
+      npm_config_user_agent: "pnpm/99.0.0 npm/? node/v25.4.0 linux x64",
     },
     inspectRuntime: async () => readiness,
     nodeVersion: "v25.4.0",
     packageManager: "pnpm@10.15.0",
     platform: "linux",
+    pnpmProbe: async () => "10.15.0",
   });
 
   expect(result.exitCode).toBe(0);
   expect(result.lines).toHaveLength(5 + RUNTIME_TOOLS.length);
 });
+
+test("does not trust a matching pnpm user agent when no executable resolves", async () => {
+  const result = await collectDoctorDiagnostics({
+    architecture: "x64",
+    commandProbe: availableSystemProbe,
+    environment: {
+      MEDIAGO_DEPS_ROOT: "/validated/deps",
+      MEDIAGO_REQUIRED_TASK_VERSION: "3.51.1",
+      MEDIAGO_TASK_VERSION: "3.51.1",
+      npm_config_user_agent: "pnpm/10.15.0 npm/? node/v25.4.0 linux x64",
+    },
+    inspectRuntime: async () => readyReadiness("linux-x64"),
+    nodeVersion: "v25.4.0",
+    packageManager: "pnpm@10.15.0",
+    platform: "linux",
+    pnpmProbe: async () => undefined,
+  });
+
+  expect(result.exitCode).toBe(1);
+  expect(result.lines).toContain("error: pnpm version unavailable");
+  expect(result.lines.join("\n")).not.toMatch(/ok: pnpm/i);
+});
+
+test("resolves and probes a simulated Windows pnpm.cmd through Node", async () => {
+  const entrypoint = "C:\\tools\\pnpm\\node_modules\\pnpm\\bin\\pnpm.cjs";
+  const environment = {
+    PATH: "C:\\Windows\\System32",
+    PNPM_HOME: "C:\\tools\\pnpm",
+  };
+
+  await expect(
+    probePnpmVersion({
+      environment,
+      nodeExecutable: "C:\\node\\node.exe",
+      platform: "win32",
+      probePath: async (candidate) => {
+        if (candidate === "C:\\tools\\pnpm\\pnpm.cmd") {
+          return { isFile: true, realPath: candidate };
+        }
+        if (candidate === entrypoint) {
+          return { isFile: true, realPath: candidate };
+        }
+        return undefined;
+      },
+      runLauncher: (launch) => {
+        expect(launch).toEqual({
+          args: [entrypoint, "--version"],
+          command: "C:\\node\\node.exe",
+          environment,
+          shell: false,
+        });
+        return { ok: true, stdout: "10.15.0\n" };
+      },
+    }),
+  ).resolves.toBe("10.15.0");
+});
+
+test("reports an unsupported runtime platform once without repair noise", async () => {
+  const inspectRuntime = vi.fn();
+  const result = await collectDoctorDiagnostics({
+    architecture: "x64",
+    commandProbe: availableSystemProbe,
+    environment: {
+      MEDIAGO_REQUIRED_TASK_VERSION: "3.51.1",
+      MEDIAGO_TASK_VERSION: "3.51.1",
+    },
+    inspectRuntime,
+    nodeVersion: "v25.4.0",
+    packageManager: "pnpm@10.15.0",
+    platform: "freebsd",
+    pnpmProbe: async () => "10.15.0",
+  });
+
+  expect(result.exitCode).toBe(1);
+  expect(result.lines).toContain(
+    "error: current runtime platform is unsupported",
+  );
+  expect(result.lines.filter((line) => line.includes("runtime "))).toHaveLength(
+    1,
+  );
+  expect(result.lines.join("\n")).not.toContain("task deps:runtime");
+  expect(inspectRuntime).not.toHaveBeenCalled();
+});
+
+function readyReadiness(platformKey: "linux-x64"): DependencyReadiness[] {
+  return RUNTIME_TOOLS.map(
+    (toolName): DependencyReadiness => ({
+      executablePath: dependencyExecutablePath(
+        "/validated/deps",
+        platformKey,
+        toolName,
+      ),
+      platformKey,
+      status: "ready",
+      toolName,
+      version: "v1.0.0",
+    }),
+  );
+}

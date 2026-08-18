@@ -15,6 +15,12 @@ import {
   inspectDependencyReadiness,
   type DependencyReadiness,
 } from "./download-deps-provisioner.ts";
+import {
+  createPnpmLauncher,
+  probePnpmPath,
+  resolvePnpmEntrypoint,
+  type PnpmProbeResult,
+} from "./bundle-env-runtime.ts";
 import { evaluateTaskVersion } from "./task-version-gate.ts";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
@@ -36,9 +42,21 @@ export interface DoctorProbeResult {
 }
 
 export type DoctorCommandProbe = (
-  command: "pnpm" | "go" | "docker",
+  command: "go" | "docker",
   args: readonly string[],
 ) => DoctorProbeResult;
+
+export interface DoctorPnpmLaunch {
+  args: string[];
+  command: string;
+  environment: NodeJS.ProcessEnv;
+  shell: false;
+}
+
+export type DoctorPnpmVersionProbe = (options: {
+  environment: NodeJS.ProcessEnv;
+  platform: NodeJS.Platform;
+}) => Promise<string | undefined>;
 
 export type DoctorRuntimeInspector = (options: {
   depsRoot: string;
@@ -52,7 +70,8 @@ export interface CollectDoctorDiagnosticsOptions {
   inspectRuntime?: DoctorRuntimeInspector;
   nodeVersion?: string;
   packageManager?: string;
-  platform?: string;
+  platform?: NodeJS.Platform;
+  pnpmProbe?: DoctorPnpmVersionProbe;
   repositoryRoot?: string;
 }
 
@@ -73,6 +92,37 @@ export function parsePnpmUserAgentVersion(
 ): string | undefined {
   if (typeof userAgent !== "string") return undefined;
   return /(?:^|\s)pnpm\/(\d+\.\d+\.\d+)(?=\s|$)/.exec(userAgent)?.[1];
+}
+
+export async function probePnpmVersion(options: {
+  environment: NodeJS.ProcessEnv;
+  nodeExecutable?: string;
+  platform?: NodeJS.Platform;
+  probePath?: (candidate: string) => Promise<PnpmProbeResult>;
+  runLauncher?: (launch: DoctorPnpmLaunch) => DoctorProbeResult;
+}): Promise<string | undefined> {
+  const platform = options.platform ?? process.platform;
+  try {
+    const entrypoint = await resolvePnpmEntrypoint({
+      environment: options.environment,
+      platform,
+      probe: options.probePath ?? probePnpmPath,
+    });
+    const launcher = createPnpmLauncher({
+      args: ["--version"],
+      entrypoint,
+      nodeExecutable: options.nodeExecutable ?? process.execPath,
+      platform,
+    });
+    const result = (options.runLauncher ?? runPnpmVersionLauncher)({
+      ...launcher,
+      environment: options.environment,
+      shell: false,
+    });
+    return result.ok ? validatedPlainVersion(result.stdout) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function collectDoctorDiagnostics(
@@ -110,14 +160,14 @@ export async function collectDoctorDiagnostics(
     lines.push(`ok: Node ${nodeVersion} ready`);
   }
 
-  let actualPnpmVersion = parsePnpmUserAgentVersion(
-    environment.npm_config_user_agent,
-  );
-  if (actualPnpmVersion === undefined) {
-    const pnpmProbe = commandProbe("pnpm", ["--version"]);
-    actualPnpmVersion = pnpmProbe.ok
-      ? validatedPlainVersion(pnpmProbe.stdout)
-      : undefined;
+  let actualPnpmVersion: string | undefined;
+  try {
+    actualPnpmVersion = await (options.pnpmProbe ?? probePnpmVersion)({
+      environment,
+      platform,
+    });
+  } catch {
+    actualPnpmVersion = undefined;
   }
   if (expectedPnpmVersion === undefined || actualPnpmVersion === undefined) {
     failed = true;
@@ -150,14 +200,16 @@ export async function collectDoctorDiagnostics(
   }
 
   let platformKey: RuntimePlatform | undefined;
+  let runtimeRepairNeeded = false;
   try {
     platformKey = platformKeyFor(platform, architecture);
   } catch {
     failed = true;
+    lines.push("error: current runtime platform is unsupported");
   }
   const depsRoot = resolveDepsRoot(projectRoot, environment);
-  let readiness: DependencyReadiness[] = [];
   if (platformKey !== undefined) {
+    let readiness: DependencyReadiness[] = [];
     try {
       readiness = await (options.inspectRuntime ?? defaultRuntimeInspector)({
         depsRoot,
@@ -166,30 +218,33 @@ export async function collectDoctorDiagnostics(
     } catch {
       failed = true;
     }
-  }
-  const readinessByTool = new Map(
-    readiness.map((entry) => [entry.toolName, entry]),
-  );
-  for (const toolName of RUNTIME_TOOLS) {
-    const entry = readinessByTool.get(toolName);
-    if (
-      entry === undefined ||
-      platformKey === undefined ||
-      !validReadinessEntry(entry, depsRoot, platformKey, toolName)
-    ) {
-      failed = true;
-      lines.push(`error: runtime ${toolName}: corrupt`);
-      continue;
-    }
-
-    const prefix = entry.status === "ready" ? "ok" : "error";
-    if (entry.status !== "ready") failed = true;
-    lines.push(
-      `${prefix}: runtime ${toolName} ${entry.version}: ${entry.status} at ${JSON.stringify(entry.executablePath)}`,
+    const readinessByTool = new Map(
+      readiness.map((entry) => [entry.toolName, entry]),
     );
+    for (const toolName of RUNTIME_TOOLS) {
+      const entry = readinessByTool.get(toolName);
+      if (
+        entry === undefined ||
+        !validReadinessEntry(entry, depsRoot, platformKey, toolName)
+      ) {
+        failed = true;
+        runtimeRepairNeeded = true;
+        lines.push(`error: runtime ${toolName}: corrupt`);
+        continue;
+      }
+
+      const prefix = entry.status === "ready" ? "ok" : "error";
+      if (entry.status !== "ready") {
+        failed = true;
+        runtimeRepairNeeded = true;
+      }
+      lines.push(
+        `${prefix}: runtime ${toolName} ${entry.version}: ${entry.status} at ${JSON.stringify(entry.executablePath)}`,
+      );
+    }
   }
 
-  if (failed) {
+  if (runtimeRepairNeeded) {
     lines.push(
       "hint: Run task deps:runtime to repair runtime dependencies, then run task doctor again.",
     );
@@ -220,12 +275,25 @@ function readRootPackageManager(projectRoot: string): unknown {
 }
 
 function probeCommand(
-  command: "pnpm" | "go" | "docker",
+  command: "go" | "docker",
   args: readonly string[],
 ): DoctorProbeResult {
   const result = spawnSync(command, [...args], {
     encoding: "utf8",
     shell: false,
+    windowsHide: true,
+  });
+  return {
+    ok: result.error === undefined && result.status === 0,
+    stdout: typeof result.stdout === "string" ? result.stdout : "",
+  };
+}
+
+function runPnpmVersionLauncher(launch: DoctorPnpmLaunch): DoctorProbeResult {
+  const result = spawnSync(launch.command, launch.args, {
+    encoding: "utf8",
+    env: launch.environment,
+    shell: launch.shell,
     windowsHide: true,
   });
   return {

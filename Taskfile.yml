@@ -7,6 +7,10 @@ vars:
 tasks:
   doctor:
     desc: Diagnose the local MediaGo toolchain and runtime dependencies
+    preconditions: &node-preconditions
+      - sh: >-
+          node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 24 || (major === 24 && minor >= 14) ? 0 : 1)"
+        msg: Node 24.14.0 or newer is required to run MediaGo tasks. Install or switch Node (for example, mise use node@24.14.0), then retry.
     env:
       MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}"
       MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}"
@@ -190,6 +194,7 @@ tasks:
 
   internal:require-task-version:
     internal: true
+    preconditions: *node-preconditions
     env:
       MEDIAGO_TASK_VERSION: "{{.TASK_VERSION}}"
       MEDIAGO_REQUIRED_TASK_VERSION: "{{.REQUIRED_TASK_VERSION}}"

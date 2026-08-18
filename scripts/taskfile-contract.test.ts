@@ -347,6 +347,11 @@ describe("root Taskfile public API", () => {
 });
 
 describe("Task version gate and doctor", () => {
+  const nodePrerequisite = {
+    sh: `node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 24 || (major === 24 && minor >= 14) ? 0 : 1)"`,
+    msg: "Node 24.14.0 or newer is required to run MediaGo tasks. Install or switch Node (for example, mise use node@24.14.0), then retry.",
+  };
+
   it("contains exactly one typed 3.51.1 gate with environment-only inputs", () => {
     const gates = Object.keys(tasks).filter(
       (name) => name === "internal:require-task-version",
@@ -373,6 +378,13 @@ describe("Task version gate and doctor", () => {
     expect(taskfile).not.toHaveProperty("dotenv");
     expect(task("doctor")).not.toHaveProperty("dotenv");
     expect(task("internal:require-task-version")).not.toHaveProperty("dotenv");
+  });
+
+  it("checks the static Node prerequisite before either typed helper", () => {
+    for (const name of ["doctor", "internal:require-task-version"]) {
+      expect(task(name).preconditions).toEqual([nodePrerequisite]);
+      expect(JSON.stringify(task(name).preconditions)).not.toContain("{{");
+    }
   });
 
   it("runs doctor through one static typed entrypoint", () => {

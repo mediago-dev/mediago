@@ -20,6 +20,26 @@ test("requires every worker result in the bounded PR gate contract", () => {
   assertPrGateContract(workflow);
 });
 
+test("pins Task before repository commands in the TypeScript test job", () => {
+  const testJob = extractJob(workflow, "test-ts");
+  expect(testJob).toBeDefined();
+  if (testJob === undefined) return;
+
+  const taskSetup = [
+    "      - uses: go-task/setup-task@v1",
+    "        with:",
+    '          version: "3.51.1"',
+  ].join("\n");
+  expect(testJob.match(/uses: go-task\/setup-task@v1/g) ?? []).toHaveLength(1);
+  expect(testJob).toContain(taskSetup);
+  expect(testJob.indexOf(taskSetup)).toBeLessThan(
+    testJob.indexOf("run: pnpm install --frozen-lockfile"),
+  );
+  expect(testJob.indexOf(taskSetup)).toBeLessThan(
+    testJob.indexOf("run: pnpm test:ts"),
+  );
+});
+
 test("rejects misplaced failure conditions and unrelated later-job tokens", () => {
   const runStep = extractNamedStep(
     extractJob(workflow, "test-e2e"),

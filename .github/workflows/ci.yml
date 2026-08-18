@@ -43,6 +43,9 @@ jobs:
         with:
           node-version: "24.14.0"
           cache: pnpm
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:ts
 

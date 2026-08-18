@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdtempSync,
@@ -129,6 +130,44 @@ test("setup version gate runs without pnpm, tsx, package metadata, or node_modul
   expect(result.output).not.toMatch(/\b(?:pnpm|tsx)\b/i);
 });
 
+test.each(["doctor", "version gate"] as const)(
+  "%s reports the Node prerequisite before its helper when Node is absent",
+  (target) => {
+    const fixture = createNodePrerequisiteFixture(target);
+    const result = runTask(fixture.taskfilePath, fixture.taskName, {
+      PATH: createTemporaryDirectory(),
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toMatch(
+      /Node 24\.14\.0 or newer.*mise use node@24\.14\.0/i,
+    );
+    expect(result.output).not.toMatch(/(?:exit status|code) 127/i);
+    expect(result.output).not.toContain(fixture.helperName);
+  },
+);
+
+test.each(["doctor", "version gate"] as const)(
+  "%s reports the Node prerequisite before its helper when Node is too old",
+  (target) => {
+    const fixture = createNodePrerequisiteFixture(target);
+    const fakeNode = createFailingNodePath();
+    const result = runTask(fixture.taskfilePath, fixture.taskName, {
+      PATH: fakeNode.path,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toMatch(
+      /Node 24\.14\.0 or newer.*mise use node@24\.14\.0/i,
+    );
+    expect(result.output).not.toMatch(/(?:exit status|code) 127/i);
+    expect(result.output).not.toContain(fixture.helperName);
+    expect(readFileSync(fakeNode.log, "utf8")).not.toContain(
+      fixture.helperName,
+    );
+  },
+);
+
 const doctorInjectionTest = process.platform === "win32" ? test.skip : test;
 
 doctorInjectionTest(
@@ -214,6 +253,43 @@ function createProfileFixture(): ReturnType<typeof createFixture> {
   return fixture;
 }
 
+function createNodePrerequisiteFixture(target: "doctor" | "version gate"): {
+  directory: string;
+  helperName: string;
+  taskfilePath: string;
+  taskName: string;
+} {
+  const rootTaskfile = parse(readFileSync(rootTaskfilePath, "utf8")) as {
+    tasks: Record<string, Record<string, unknown>>;
+    vars: Record<string, unknown>;
+  };
+  if (target === "doctor") {
+    return {
+      ...createFixture({
+        version: "3",
+        vars: rootTaskfile.vars,
+        tasks: { doctor: rootTaskfile.tasks.doctor },
+      }),
+      helperName: "scripts/task-doctor.ts",
+      taskName: "doctor",
+    };
+  }
+
+  return {
+    ...createFixture({
+      version: "3",
+      vars: rootTaskfile.vars,
+      tasks: {
+        entry: { cmds: [{ task: "internal:require-task-version" }] },
+        "internal:require-task-version":
+          rootTaskfile.tasks["internal:require-task-version"],
+      },
+    }),
+    helperName: "scripts/task-version-gate.ts",
+    taskName: "entry",
+  };
+}
+
 function createFixture(taskfile: unknown): {
   directory: string;
   taskfilePath: string;
@@ -262,6 +338,20 @@ function createNodeOnlyPath(): string {
     copyFileSync(process.execPath, destination);
   }
   return directory;
+}
+
+function createFailingNodePath(): { log: string; path: string } {
+  const directory = createTemporaryDirectory();
+  const log = path.join(directory, "node-invocations.log");
+  const executableName = process.platform === "win32" ? "node.cmd" : "node";
+  const executable = path.join(directory, executableName);
+  const contents =
+    process.platform === "win32"
+      ? `@echo off\r\necho %*>>"${log}"\r\nexit /b 1\r\n`
+      : `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexit 1\n`;
+  writeFileSync(executable, contents, "utf8");
+  if (process.platform !== "win32") chmodSync(executable, 0o755);
+  return { log, path: directory };
 }
 
 function resolveExecutable(name: string): string {
