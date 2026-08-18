@@ -60,6 +60,7 @@
     "player:dev": "pnpm --filter @mediago/core-build run dev",
     "player:build": "pnpm --filter @mediago/core-build run build",
     "deps:download": "tsx scripts/download-deps.ts",
+    "deps:download:raw": "tsx scripts/download-deps.ts",
     "deps:download:all": "tsx scripts/download-deps.ts --all",
     "prepare": "husky"
   },

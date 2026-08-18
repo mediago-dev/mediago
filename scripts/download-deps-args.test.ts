@@ -35,6 +35,12 @@ describe("selectToolsFromArgs", () => {
     ).toEqual(["ffmpeg", "aria2"]);
   });
 
+  test("selects BBDown by itself", () => {
+    expect(selectToolsFromArgs(["--tools", "BBDown"], AVAILABLE_TOOLS)).toEqual(
+      ["BBDown"],
+    );
+  });
+
   test("trims and de-duplicates tool names", () => {
     expect(
       selectToolsFromArgs(

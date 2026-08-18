@@ -5,6 +5,10 @@ import { stat } from "node:fs/promises";
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const REQUIRED_SHA256_DEPENDENCIES = new Set(["aria2:linux-x64"]);
 
+export interface DependencyIntegrityOptions {
+  requireExecutable?: boolean;
+}
+
 export function resolveDependencySha256(
   toolName: string,
   platformKey: string,
@@ -38,33 +42,43 @@ export async function sha256File(filePath: string): Promise<string> {
 export async function dependencyFileMatchesIntegrity(
   filePath: string,
   expectedSha256?: string,
+  options: DependencyIntegrityOptions = {},
 ): Promise<boolean> {
   if (expectedSha256 !== undefined && !SHA256_PATTERN.test(expectedSha256)) {
     throw new Error("Expected SHA-256 must be 64 lowercase hexadecimal digits");
   }
 
+  let fileStat;
   try {
-    const fileStat = await stat(filePath);
+    fileStat = await stat(filePath);
     if (!fileStat.isFile() || fileStat.size === 0) return false;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
 
-  return (
-    expectedSha256 === undefined ||
-    (await sha256File(filePath)) === expectedSha256
-  );
+  if (
+    expectedSha256 !== undefined &&
+    (await sha256File(filePath)) !== expectedSha256
+  ) {
+    return false;
+  }
+
+  return !options.requireExecutable || (fileStat.mode & 0o111) !== 0;
 }
 
 export async function assertDependencyFileIntegrity(
   filePath: string,
   expectedSha256: string | undefined,
   description: string,
+  options: DependencyIntegrityOptions = {},
 ): Promise<void> {
-  if (await dependencyFileMatchesIntegrity(filePath, expectedSha256)) return;
-  const requirement = expectedSha256 === undefined ? "file" : "SHA-256";
+  if (await dependencyFileMatchesIntegrity(filePath, expectedSha256, options)) {
+    return;
+  }
+  const requirements = [expectedSha256 === undefined ? "file" : "SHA-256"];
+  if (options.requireExecutable) requirements.push("executable");
   throw new Error(
-    `${description} failed ${requirement} integrity verification`,
+    `${description} failed ${requirements.join(" and ")} integrity verification`,
   );
 }

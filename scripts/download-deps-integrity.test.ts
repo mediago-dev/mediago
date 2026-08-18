@@ -11,6 +11,10 @@ import {
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const provisioner = readFileSync(
+  path.join(repositoryRoot, "scripts/download-deps-provisioner.ts"),
+  "utf8",
+);
+const downloadCli = readFileSync(
   path.join(repositoryRoot, "scripts/download-deps.ts"),
   "utf8",
 );
@@ -79,26 +83,53 @@ test("keeps unconfigured platforms compatible but requires the E2E checksum", as
   ).toThrow(/aria2.*linux-x64.*SHA-256/i);
 });
 
-test("verifies cached and downloaded binaries before reuse or state writes", () => {
-  const downloadTool = provisioner.match(
-    /async function downloadTool\([\s\S]*?(?=^async function findBinaryInDir)/m,
-  )?.[0];
-  expect(downloadTool).toBeDefined();
-  if (downloadTool === undefined) return;
+test("rejects a non-executable Unix dependency", async () => {
+  const fixture = createFixture("unix tool", 0o644);
 
-  const cachedVerification = downloadTool.search(
-    /dependencyFileMatchesIntegrity\(\s*binaryPath,\s*expectedSha256,?\s*\)/,
+  expect(
+    await dependencyFileMatchesIntegrity(fixture, undefined, {
+      requireExecutable: true,
+    }),
+  ).toBe(false);
+  await expect(
+    assertDependencyFileIntegrity(fixture, undefined, "cached Unix tool", {
+      requireExecutable: true,
+    }),
+  ).rejects.toThrow(/cached Unix tool.*executable/i);
+});
+
+test("accepts an executable Unix dependency", async () => {
+  const fixture = createFixture("unix tool", 0o755);
+
+  expect(
+    await dependencyFileMatchesIntegrity(fixture, undefined, {
+      requireExecutable: true,
+    }),
+  ).toBe(true);
+});
+
+test("does not apply POSIX execute-bit validation to a Windows target", async () => {
+  const fixture = createFixture("windows tool", 0o644);
+
+  expect(
+    await dependencyFileMatchesIntegrity(fixture, undefined, {
+      requireExecutable: false,
+    }),
+  ).toBe(true);
+});
+
+test("verifies cached and downloaded binaries before reuse or state writes", () => {
+  const cachedVerification = provisioner.indexOf(
+    "dependencyFileMatchesIntegrity(",
   );
-  const cachedReuse = downloadTool.indexOf("already exists for");
-  const candidateVerification = downloadTool.indexOf(
+  const cachedReuse = provisioner.search(/if\s*\(\s*binaryIsUsable\s*&&/);
+  const candidateVerification = provisioner.indexOf(
     "assertDependencyFileIntegrity(",
   );
-  const replaceBinary = downloadTool.indexOf(
-    "await rename(candidateFile, binaryPath)",
+  const replaceBinary = provisioner.indexOf(
+    "await rename(candidateFile, target.executablePath)",
   );
-  const writeState = downloadTool.indexOf(
-    "await saveVersionManifest(platformKey, updatedVersionManifest)",
-  );
+  const writeState = provisioner.indexOf("await saveVersionManifest(");
 
   expect(cachedVerification).toBeGreaterThan(-1);
   expect(cachedReuse).toBeGreaterThan(cachedVerification);
@@ -107,10 +138,16 @@ test("verifies cached and downloaded binaries before reuse or state writes", () 
   expect(writeState).toBeGreaterThan(replaceBinary);
 });
 
-function createFixture(contents: string): string {
+test("passes the real candidate preparer into the isolated provisioner", () => {
+  expect(downloadCli).toMatch(
+    /provisionDependencies\(\{[\s\S]*?prepareCandidate,[\s\S]*?\}\)/,
+  );
+});
+
+function createFixture(contents: string, mode?: number): string {
   const directory = mkdtempSync(path.join(tmpdir(), "mediago-deps-integrity-"));
   onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
   const fixture = path.join(directory, "dependency");
-  writeFileSync(fixture, contents);
+  writeFileSync(fixture, contents, mode === undefined ? undefined : { mode });
   return fixture;
 }
