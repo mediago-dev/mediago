@@ -196,6 +196,8 @@ export interface DownloadSuccessEvent extends DownloadEvent<DownloadTask> {
 export interface DownloadFailedData {
   id: number;
   error: string;
+  errorCode?: "dependency_missing" | "download_failed";
+  dependency?: string;
 }
 
 export interface DownloadFailedEvent extends DownloadEvent<DownloadFailedData> {

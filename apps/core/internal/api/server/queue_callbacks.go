@@ -79,7 +79,7 @@ func (s *Server) setupQueueCallbacks() {
 			}
 		}
 
-		s.hub.Broadcast("download-failed", map[string]interface{}{"id": id, "error": err.Error()})
+		s.hub.Broadcast("download-failed", taskFailurePayload(id, err))
 	})
 
 	s.queue.OnMessage(func(m core.MessageEvent) {

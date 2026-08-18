@@ -139,6 +139,8 @@ export interface TaskEventPayload {
 export interface TaskFailedEventPayload {
   id: string;
   error: string;
+  errorCode?: "dependency_missing" | "download_failed";
+  dependency?: string;
 }
 
 // #region Database-Persisted Types
