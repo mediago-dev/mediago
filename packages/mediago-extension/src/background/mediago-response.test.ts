@@ -95,4 +95,101 @@ describe("validateDownloadImportResponse", () => {
       validateDownloadImportResponse({ success: true, data: [row] }, 1),
     ).toThrow(/id/i);
   });
+
+  test("snapshots the own data property exactly once", () => {
+    let reads = 0;
+    const oneRow = [{ id: 31 }];
+    const twoRows = [{ id: 31 }, { id: 32 }];
+    const response = {
+      success: true,
+      get data() {
+        reads += 1;
+        return reads < 3 ? oneRow : twoRows;
+      },
+    };
+
+    expect(validateDownloadImportResponse(response, 1)).toEqual([31]);
+    expect(reads).toBe(1);
+  });
+
+  test("snapshots the own success property exactly once", () => {
+    let reads = 0;
+    const response = {
+      get success() {
+        reads += 1;
+        return reads === 1;
+      },
+      data: [{ id: 36 }],
+    };
+
+    expect(validateDownloadImportResponse(response, 1)).toEqual([36]);
+    expect(reads).toBe(1);
+  });
+
+  test("snapshots each own id exactly once", () => {
+    let reads = 0;
+    const row = {
+      get id(): number | string {
+        reads += 1;
+        return reads === 1 ? 41 : "41";
+      },
+    };
+
+    expect(
+      validateDownloadImportResponse({ success: true, data: [row] }, 1),
+    ).toEqual([41]);
+    expect(reads).toBe(1);
+  });
+
+  test("rejects sparse arrays instead of accepting missing rows", () => {
+    const data: unknown[] = [];
+    data.length = 2;
+    expect(() =>
+      validateDownloadImportResponse({ success: true, data }, 2),
+    ).toThrow(/item/i);
+  });
+
+  test("rejects array rows inherited through a custom prototype", () => {
+    const data: unknown[] = [];
+    data.length = 1;
+    const prototype = Object.create(Array.prototype) as Record<number, unknown>;
+    prototype[0] = { id: 51 };
+    Object.setPrototypeOf(data, prototype);
+
+    expect(() =>
+      validateDownloadImportResponse({ success: true, data }, 1),
+    ).toThrow(/item/i);
+  });
+
+  test.each(["success", "data", "id"])(
+    "turns a throwing %s getter into a stable non-secret validation error",
+    (property) => {
+      const secret = `secret-from-${property}-getter`;
+      const throwingGetter = {
+        get() {
+          throw new Error(secret);
+        },
+        enumerable: true,
+      };
+      const row = { id: 1 };
+      const response: Record<string, unknown> = {
+        success: true,
+        data: [row],
+      };
+      if (property === "id") {
+        Object.defineProperty(row, property, throwingGetter);
+      } else {
+        Object.defineProperty(response, property, throwingGetter);
+      }
+
+      let message = "";
+      try {
+        validateDownloadImportResponse(response, 1);
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toMatch(/invalid/i);
+      expect(message).not.toContain(secret);
+    },
+  );
 });

@@ -2,12 +2,33 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
 }
 
-function owns(record: Record<string, unknown>, property: string): boolean {
-  return Object.prototype.hasOwnProperty.call(record, property);
+function owns(record: object, property: PropertyKey): boolean {
+  try {
+    return Object.prototype.hasOwnProperty.call(record, property);
+  } catch {
+    return false;
+  }
+}
+
+function readOwn(
+  record: Record<string, unknown>,
+  property: string,
+  invalidMessage: string,
+): unknown {
+  if (!owns(record, property)) throw new Error(invalidMessage);
+  try {
+    return record[property];
+  } catch {
+    throw new Error(invalidMessage);
+  }
 }
 
 /**
@@ -24,35 +45,54 @@ export function validateDownloadImportResponse(
   if (!Number.isSafeInteger(requestedCount) || requestedCount < 0) {
     throw new Error("Requested count must be a non-negative safe integer");
   }
-  if (
-    !isPlainObject(response) ||
-    !owns(response, "success") ||
-    response.success !== true ||
-    !owns(response, "data") ||
-    !Array.isArray(response.data)
-  ) {
+  if (!isPlainObject(response)) {
     throw new Error("Invalid download import response envelope");
   }
-  if (response.data.length !== requestedCount) {
+  const invalidEnvelope = "Invalid download import response envelope";
+  const success = readOwn(response, "success", invalidEnvelope);
+  const data = readOwn(response, "data", invalidEnvelope);
+  if (success !== true || !Array.isArray(data)) {
+    throw new Error(invalidEnvelope);
+  }
+
+  let dataLength: number;
+  try {
+    dataLength = data.length;
+  } catch {
+    throw new Error(invalidEnvelope);
+  }
+  if (dataLength !== requestedCount) {
     throw new Error(
-      `Invalid download import response count: expected ${requestedCount}, received ${response.data.length}`,
+      `Invalid download import response count: expected ${requestedCount}, received ${dataLength}`,
     );
   }
 
-  return response.data.map((item, index) => {
+  const downloadIds: number[] = [];
+  for (let index = 0; index < dataLength; index += 1) {
+    if (!owns(data, index)) {
+      throw new Error(
+        `Invalid download import response item at index ${index}`,
+      );
+    }
+    let item: unknown;
+    try {
+      item = data[index];
+    } catch {
+      throw new Error(
+        `Invalid download import response item at index ${index}`,
+      );
+    }
     if (!isPlainObject(item)) {
       throw new Error(
         `Invalid download import response item at index ${index}`,
       );
     }
-    if (
-      !owns(item, "id") ||
-      typeof item.id !== "number" ||
-      !Number.isSafeInteger(item.id) ||
-      item.id <= 0
-    ) {
-      throw new Error(`Invalid Download ID at index ${index}`);
+    const invalidID = `Invalid Download ID at index ${index}`;
+    const id = readOwn(item, "id", invalidID);
+    if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+      throw new Error(invalidID);
     }
-    return item.id;
-  });
+    downloadIds.push(id);
+  }
+  return downloadIds;
 }
