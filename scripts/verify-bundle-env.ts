@@ -16,6 +16,26 @@ const bundleDirectories = [
   "apps/ui/build",
 ].map((directory) => path.join(projectRoot, directory));
 
+export function buildVerificationEnvironment(
+  input: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {
+    ...input,
+    MEDIAGO_PROFILE: "production",
+  };
+  delete environment[SENTINEL_ENV_KEY];
+  delete environment.NODE_OPTIONS;
+  return environment;
+}
+
+export function definesSentinelEnvironmentKey(
+  contents: Buffer | string,
+): boolean {
+  return /^\s*(?:export\s+)?MEDIAGO_TEST_SENTINEL_SECRET\s*(?:=|:)/m.test(
+    contents.toString(),
+  );
+}
+
 async function readOptionalFile(
   filename: string,
 ): Promise<{ bytes: Buffer; exists: boolean }> {
@@ -80,11 +100,7 @@ async function filesContainingSentinel(directory: string): Promise<string[]> {
 
 async function main(): Promise<void> {
   const original = await readOptionalFile(productionLocalEnvPath);
-  if (
-    new RegExp(`^(?:export\\s+)?${SENTINEL_ENV_KEY}\\s*=`, "m").test(
-      original.bytes.toString("utf8"),
-    )
-  ) {
+  if (definesSentinelEnvironmentKey(original.bytes)) {
     throw new Error(
       `${productionLocalEnvPath} already defines ${SENTINEL_ENV_KEY}; refusing to overwrite it`,
     );
@@ -102,11 +118,7 @@ async function main(): Promise<void> {
       Buffer.concat([original.bytes, sentinelLine]),
     );
 
-    const environment: NodeJS.ProcessEnv = {
-      ...process.env,
-      MEDIAGO_PROFILE: "production",
-    };
-    delete environment[SENTINEL_ENV_KEY];
+    const environment = buildVerificationEnvironment(process.env);
 
     await runPnpm(["--filter", "@mediago/server", "run", "build"], environment);
     await runPnpm(["run", "build:electron", "--force"], environment);
@@ -134,5 +146,11 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
-process.stdout.write("Bundle environment sentinel verification passed.\n");
+const entryPath = process.argv[1];
+if (
+  entryPath !== undefined &&
+  fileURLToPath(import.meta.url) === path.resolve(entryPath)
+) {
+  await main();
+  process.stdout.write("Bundle environment sentinel verification passed.\n");
+}

@@ -3,6 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createScanner, SyntaxKind } from "typescript/unstable/ast";
 import { describe, expect, it } from "vitest";
+import {
+  buildVerificationEnvironment,
+  definesSentinelEnvironmentKey,
+} from "./verify-bundle-env.ts";
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -276,5 +280,41 @@ describe("build environment contract", () => {
       expect(source).toContain("loadProfileEnv(projectRoot)");
       expect(source).not.toContain("dotenvFlow.config");
     }
+  });
+});
+
+describe("bundle environment verifier", () => {
+  it("removes inherited runtime hooks and the sentinel from a cloned environment", () => {
+    const input: NodeJS.ProcessEnv = {
+      KEEP_ME: "preserved",
+      MEDIAGO_PROFILE: "test",
+      MEDIAGO_TEST_SENTINEL_SECRET: "caller-value",
+      NODE_OPTIONS: "--import=tsx",
+    };
+
+    const environment = buildVerificationEnvironment(input);
+
+    expect(environment).toEqual({
+      KEEP_ME: "preserved",
+      MEDIAGO_PROFILE: "production",
+    });
+    expect(input).toEqual({
+      KEEP_ME: "preserved",
+      MEDIAGO_PROFILE: "test",
+      MEDIAGO_TEST_SENTINEL_SECRET: "caller-value",
+      NODE_OPTIONS: "--import=tsx",
+    });
+  });
+
+  it.each([
+    ["plain assignment", "MEDIAGO_TEST_SENTINEL_SECRET=value", true],
+    ["leading whitespace", " \tMEDIAGO_TEST_SENTINEL_SECRET = value", true],
+    ["export assignment", "export MEDIAGO_TEST_SENTINEL_SECRET=value", true],
+    ["dotenv colon syntax", "MEDIAGO_TEST_SENTINEL_SECRET: value", true],
+    ["comment", "  # MEDIAGO_TEST_SENTINEL_SECRET=value", false],
+    ["prefixed key", "OTHER_MEDIAGO_TEST_SENTINEL_SECRET=value", false],
+    ["value reference", "OTHER=MEDIAGO_TEST_SENTINEL_SECRET=value", false],
+  ] as const)("classifies a %s", (_name, contents, expected) => {
+    expect(definesSentinelEnvironmentKey(contents)).toBe(expected);
   });
 });
