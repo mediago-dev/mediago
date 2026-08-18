@@ -22,6 +22,26 @@ const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+type VitePressGlobal = typeof globalThis & { VITEPRESS_CONFIG?: unknown };
+const vitePressGlobal = globalThis as VitePressGlobal;
+
+async function withRestoredVitePressConfig<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const hadOwnConfig = Object.hasOwn(vitePressGlobal, "VITEPRESS_CONFIG");
+  const existingConfig = vitePressGlobal.VITEPRESS_CONFIG;
+  try {
+    return await operation();
+  } finally {
+    if (hadOwnConfig) vitePressGlobal.VITEPRESS_CONFIG = existingConfig;
+    else delete vitePressGlobal.VITEPRESS_CONFIG;
+  }
+}
+
+function expectInternalDocsExcluded(patterns: string[] | undefined): void {
+  expect(patterns).toContain("superpowers/**");
+}
+
 const taskfileSource = fs.readFileSync(
   path.join(repositoryRoot, "Taskfile.yml"),
   "utf8",
@@ -1217,17 +1237,35 @@ RUN cd /src && \\
 
 describe("normative documentation Task contract", () => {
   it("excludes internal implementation plans from the public docs source", async () => {
-    const docsConfig = await resolveConfig(
-      path.join(repositoryRoot, "docs"),
-      "build",
-      "production",
-    );
-    expect(docsConfig.userConfig.srcExclude).toEqual(["superpowers/**"]);
-    expect(
-      docsConfig.pages.filter((page) => page.startsWith("superpowers/")),
-    ).toEqual([]);
-    expect(docsConfig.pages).toContain("index.md");
-    expect(docsConfig.pages).toContain("en/index.md");
+    const hadOwnConfig = Object.hasOwn(vitePressGlobal, "VITEPRESS_CONFIG");
+    const existingConfig = vitePressGlobal.VITEPRESS_CONFIG;
+    const sentinel = Symbol("preexisting VitePress config");
+    vitePressGlobal.VITEPRESS_CONFIG = sentinel;
+    try {
+      const docsConfig = await withRestoredVitePressConfig(async () => {
+        const config = await resolveConfig(
+          path.join(repositoryRoot, "docs"),
+          "build",
+          "production",
+        );
+        expect(vitePressGlobal.VITEPRESS_CONFIG).not.toBe(sentinel);
+        return config;
+      });
+      expect(vitePressGlobal.VITEPRESS_CONFIG).toBe(sentinel);
+      expectInternalDocsExcluded(docsConfig.userConfig.srcExclude);
+      expect(
+        docsConfig.pages.filter((page) => page.startsWith("superpowers/")),
+      ).toEqual([]);
+      expect(docsConfig.pages).toContain("index.md");
+      expect(docsConfig.pages).toContain("en/index.md");
+    } finally {
+      if (hadOwnConfig) vitePressGlobal.VITEPRESS_CONFIG = existingConfig;
+      else delete vitePressGlobal.VITEPRESS_CONFIG;
+    }
+  });
+
+  it("allows additional public docs source exclusions", () => {
+    expectInternalDocsExcluded(["superpowers/**", "**/*.draft.md"]);
   });
 
   it.each(Object.entries(normativeDocumentation))(
