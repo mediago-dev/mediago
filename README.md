@@ -134,6 +134,41 @@ Browsing older releases? See the [GitHub Releases page](https://github.com/caoru
 - **🐳 Simpler Docker deployment** — mount a single folder, multi-arch images on GHCR
 - **⚡ Faster startup** — backend rewrite, lower memory footprint, built-in video player
 
+## 🧑‍💻 Development from source
+
+Repository workflows use [Task](https://taskfile.dev/) v3.51.1. Install the
+fixed version on macOS, Linux, or Windows (PowerShell) with a Go toolchain,
+make sure the Go binary directory is on `PATH`, and verify it before running
+repository commands:
+
+```shell
+go install github.com/go-task/task/v3/cmd/task@v3.51.1
+task --version
+```
+
+From the repository root, the primary clone-and-start flow is:
+
+```shell
+git clone https://github.com/caorushizi/mediago.git
+cd mediago
+task setup
+task dev:all
+```
+
+`task setup` installs the Node workspace and the runtime tools needed by the
+application. Their only version source is `scripts/deps-versions.json`; Task
+does not automatically upgrade them. Running `pnpm install` alone installs
+only Node workspace packages, not runtime binaries such as BBDown.
+
+Use `task dev:web` for the web surface (`dev:server` is an alias for
+`dev:web`) or `task dev:electron` for desktop-only development. Before
+submitting changes, run:
+
+```shell
+task check
+task test
+```
+
 ## 🛠️ Built with
 
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)

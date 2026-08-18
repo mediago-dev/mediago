@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   asRecord,
   createTaskFixture,
+  dockerRepositoryCommands,
+  migratedPnpmCommandsInFences,
   runTaskFixture as runFixtureTask,
   stringArray,
   taskCommands as parseTaskCommands,
@@ -31,6 +33,46 @@ const packageJson = JSON.parse(
   devDependencies: Record<string, string>;
   scripts: Record<string, string>;
 };
+
+const normativeDocumentation = {
+  "README.md": {
+    tasks: ["setup", "dev:all", "dev:web", "dev:electron", "check", "test"],
+    installsTask: true,
+    dependencyPolicy: /does not (?:automatically )?(?:upgrade|update)/i,
+  },
+  "README.zh.md": {
+    tasks: ["setup", "dev:all", "dev:web", "dev:electron", "check", "test"],
+    installsTask: true,
+    dependencyPolicy: /不会自动升级/,
+  },
+  "README.jp.md": {
+    tasks: ["setup", "dev:all", "dev:web", "dev:electron", "check", "test"],
+    installsTask: true,
+    dependencyPolicy: /自動(?:更新|アップグレード)されません/,
+  },
+  "README.it.md": {
+    tasks: ["setup", "dev:all", "dev:web", "dev:electron", "check", "test"],
+    installsTask: true,
+    dependencyPolicy: /non (?:si )?aggiorn\w* automaticamente/i,
+  },
+  "CONTRIBUTING.md": {
+    tasks: ["setup", "dev:all", "dev:web", "dev:electron", "check", "test"],
+    installsTask: true,
+    dependencyPolicy: /does not (?:automatically )?(?:upgrade|update)/i,
+  },
+  "apps/core/README.md": {
+    tasks: ["setup", "dev:web", "check", "test"],
+    installsTask: false,
+  },
+  "apps/electron/README.md": {
+    tasks: ["setup", "dev:all", "dev:electron", "check", "test"],
+    installsTask: false,
+  },
+  "apps/ui/README.md": {
+    tasks: ["setup", "dev:all", "dev:web", "dev:electron", "check", "test"],
+    installsTask: false,
+  },
+} as const;
 
 const publicTasks = [
   "doctor",
@@ -1126,6 +1168,120 @@ describe("production variable requirements", () => {
     );
     expect(source).toContain("loadProfileEnv(process.cwd());");
     expect(source).not.toMatch(/DOTENV_FILES|readFileSync|new RegExp/);
+  });
+});
+
+describe("Docker repository command contract", () => {
+  const dockerfileSource = fs.readFileSync(
+    path.join(repositoryRoot, "Dockerfile"),
+    "utf8",
+  );
+
+  it("keeps Task out of the image and uses only exact repository leaves", () => {
+    expect(dockerRepositoryCommands(dockerfileSource)).toEqual([
+      "pnpm install --frozen-lockfile",
+      "pnpm --filter @mediago/player-ui run build",
+      "pnpm build:web:raw",
+      'pnpm deps:download:raw --platform "$(cat /tmp/deps-platform)"',
+    ]);
+    expect(dockerfileSource).not.toMatch(
+      /(?:COPY\s+Taskfile\.yml|go-task|RUN\s+task(?:\.exe)?\s)/i,
+    );
+  });
+
+  it("preserves the build-platform dependency mapping", () => {
+    expect(
+      dockerfileSource.match(/FROM --platform=\$BUILDPLATFORM/g),
+    ).toHaveLength(2);
+    expect(dockerfileSource).toContain('if [ "$TARGETARCH" = "amd64" ]');
+    expect(dockerfileSource).toContain('echo "linux-x64" > /tmp/deps-platform');
+    expect(dockerfileSource).toContain(
+      'echo "linux-${TARGETARCH}" > /tmp/deps-platform',
+    );
+  });
+
+  it("exposes wrapped Docker invocations instead of treating them as approved leaves", () => {
+    expect(
+      dockerRepositoryCommands(`
+RUN env APP_TARGET=server pnpm build:web:raw
+RUN cd /src && \\
+    pnpm deps:download:raw --platform linux-x64
+`),
+    ).toEqual([
+      "env APP_TARGET=server pnpm build:web:raw",
+      "cd /src && pnpm deps:download:raw --platform linux-x64",
+    ]);
+  });
+});
+
+describe("normative documentation Task contract", () => {
+  it.each(Object.entries(normativeDocumentation))(
+    "%s recommends only canonical repository orchestration",
+    (filename, requirements) => {
+      const source = fs.readFileSync(
+        path.join(repositoryRoot, filename),
+        "utf8",
+      );
+
+      expect(source).toContain("3.51.1");
+      expect(source).toContain("task --version");
+      for (const taskName of requirements.tasks) {
+        expect(source, `${filename} task ${taskName}`).toContain(
+          `task ${taskName}`,
+        );
+      }
+      expect(migratedPnpmCommandsInFences(source), filename).toEqual([]);
+
+      if (requirements.installsTask) {
+        expect(source).toContain("macOS");
+        expect(source).toContain("Linux");
+        expect(source).toContain("Windows");
+        expect(source).toContain(
+          "go install github.com/go-task/task/v3/cmd/task@v3.51.1",
+        );
+        expect(
+          source.indexOf("task setup"),
+          `${filename} setup order`,
+        ).toBeLessThan(source.indexOf("task dev:all"));
+        expect(source).toContain("scripts/deps-versions.json");
+        expect(source).toContain("pnpm install");
+        expect(source).toContain("BBDown");
+        expect(source).toContain("dev:server");
+        expect(source).toMatch(requirements.dependencyPolicy);
+      }
+    },
+  );
+
+  it("rejects migrated pnpm startup/build commands without matching substrings broadly", () => {
+    expect(
+      migratedPnpmCommandsInFences(`
+\`\`\`shell
+pnpm dev:web
+pnpm build:web --mode production
+env NODE_ENV=test pnpm run dev:electron
+cd mediago && pnpm build:web:raw
+\`\`\`
+`),
+    ).toEqual([
+      "pnpm dev:web",
+      "pnpm build:web --mode production",
+      "env NODE_ENV=test pnpm run dev:electron",
+      "cd mediago && pnpm build:web:raw",
+    ]);
+
+    expect(
+      migratedPnpmCommandsInFences(`
+\`pnpm dev:web\` is historical prose, not a recommendation block.
+
+\`\`\`shell
+pnpm install --frozen-lockfile
+pnpm --filter @mediago/player-ui run build
+pnpm add @mediago/core
+pnpm run npm:build
+docker run --name mediago example/mediago
+\`\`\`
+`),
+    ).toEqual([]);
   });
 });
 

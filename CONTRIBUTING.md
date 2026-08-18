@@ -6,18 +6,34 @@ main [README](./README.md).
 
 ## Prerequisites
 
-- **Node.js** ≥ 20 — install from [nodejs.org](https://nodejs.org/)
+- **Node.js** ≥ 24.14 — install from [nodejs.org](https://nodejs.org/)
 - **pnpm** ≥ 10 — `npm i -g pnpm`
-- **Go** ≥ 1.22 — only needed if you're working on the Go Core backend
-  (`apps/core/`). Install from [go.dev](https://go.dev/dl/).
+- **Go** ≥ 1.25 — install from [go.dev](https://go.dev/dl/)
+- **Task** v3.51.1 — the fixed repository task runner
+
+Install the exact Task version on macOS, Linux, or Windows (PowerShell) with
+the Go toolchain. Make sure the Go binary directory is on `PATH`, then verify
+the installed version:
+
+```shell
+go install github.com/go-task/task/v3/cmd/task@v3.51.1
+task --version
+```
 
 ## Clone & install
 
 ```shell
 git clone https://github.com/caorushizi/mediago.git
 cd mediago
-pnpm install
+task setup
+task dev:all
 ```
+
+`task setup` installs both the Node workspace and the runtime tools required
+by the application. Runtime versions come only from
+`scripts/deps-versions.json`; Task does not automatically upgrade them.
+Running `pnpm install` alone installs Node packages, but not BBDown or the
+other runtime binaries.
 
 ## Repository layout
 
@@ -45,24 +61,29 @@ Deeper architecture notes live in [`CLAUDE.md`](./CLAUDE.md).
 ## Everyday commands
 
 ```shell
-# Download third-party binaries (ffmpeg, yt-dlp, N_m3u8DL-RE, BBDown,
-# aria2-next, mediago-core) for the current platform — run once per clone
-pnpm deps:download
+# Prepare the Node workspace and all pinned runtime tools
+task setup
+
+# Run the unified desktop + web development experience
+task dev:all
 
 # Run the Electron desktop app in dev mode (HMR)
-pnpm dev:electron
+task dev:electron
 
-# Run the self-hosted web server in dev mode
-pnpm dev:server
+# Run the self-hosted web server in dev mode; dev:server aliases dev:web
+task dev:web
 
 # Build an unpacked Electron directory (fast, for smoke-testing layout)
-pnpm pack:electron
+task pack:electron
 
 # Build full Electron installers for distribution (.exe / .dmg / .deb)
-pnpm release:electron
+task release:electron
 
 # Lint + format + type-check (what CI runs)
-pnpm check
+task check
+
+# Run the TypeScript and Go test suites
+task test
 ```
 
 The self-hosted web server doesn't have a dedicated packaging script — it

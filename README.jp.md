@@ -114,6 +114,39 @@ docker run -d --name mediago -p 8899:8899 -v /path/to/mediago:/app/mediago caoru
 - **🐳 Docker デプロイの簡素化** — 単一ディレクトリをマウント、GHCR のマルチアーキテクチャイメージ
 - **⚡ 起動の高速化** — バックエンド書き換え、メモリ使用量の削減、内蔵動画プレーヤー
 
+## 🧑‍💻 ソースからの開発
+
+リポジトリのタスク実行には固定版の [Task](https://taskfile.dev/) v3.51.1 を使用します。
+macOS、Linux、Windows（PowerShell）では Go ツールチェーンで固定版をインストールできます。
+Go のバイナリディレクトリを `PATH` に追加してから、バージョンを確認してください：
+
+```shell
+go install github.com/go-task/task/v3/cmd/task@v3.51.1
+task --version
+```
+
+クローン後は、リポジトリのルートで次の標準フローを実行します：
+
+```shell
+git clone https://github.com/caorushizi/mediago.git
+cd mediago
+task setup
+task dev:all
+```
+
+`task setup` は Node ワークスペース依存関係とアプリに必要なランタイムツールを
+まとめてインストールします。ランタイム依存関係のバージョンは
+`scripts/deps-versions.json` だけを参照し、自動更新されません。`pnpm install` だけでは
+Node ワークスペース依存関係しか入らず、BBDown などのランタイムバイナリは入りません。
+
+Web のみを開発する場合は `task dev:web`（`dev:server` は `dev:web` のエイリアス）、
+デスクトップのみの場合は `task dev:electron` を使います。変更を送信する前に以下を実行します：
+
+```shell
+task check
+task test
+```
+
 ## 🛠️ 技術スタック
 
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)

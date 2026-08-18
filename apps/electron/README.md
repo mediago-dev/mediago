@@ -30,18 +30,30 @@ This package contains the Electron main process code that:
 
 ## Development
 
+Run repository workflows from the repository root with the fixed Task v3.51.1.
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) for installation and confirm it
+with `task --version` before starting.
+
 ```bash
-# Start development mode
-pnpm dev
+# Install the Node workspace and pinned runtime tools
+task setup
+
+# Start the unified desktop + web development experience
+task dev:all
+
+# Start only the Electron development surface
+task dev:electron
 
 # Build electron app
-pnpm build:electron
+task build:electron
 
 # Package for release
-pnpm release
+task pack:electron
+task release:electron
 
-# Create beta build
-pnpm beta
+# Validate changes
+task check
+task test
 ```
 
 ## Architecture

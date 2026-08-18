@@ -35,19 +35,29 @@ This package contains the React frontend that:
 
 ## Development
 
+Run repository workflows from the repository root with the fixed Task v3.51.1.
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) for installation and confirm it
+with `task --version` before starting.
+
 ```bash
-# Start development mode (with Electron)
-pnpm dev
+# Install the Node workspace and pinned runtime tools
+task setup
+
+# Start the combined Electron + web development experience
+task dev:all
 
 # Start web-only development
-pnpm dev:web
+task dev:web
 
-# Build frontend
-pnpm build:web
-pnpm build:renderer
+# Start Electron-only development
+task dev:electron
 
-# Type checking
-pnpm types:renderer
+# Build the web frontend
+task build:web
+
+# Validate changes
+task check
+task test
 ```
 
 ## Architecture

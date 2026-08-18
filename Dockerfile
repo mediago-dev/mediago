@@ -40,10 +40,10 @@ RUN pnpm --filter @mediago/player-ui run build
 # Build web UI for server mode
 ENV APP_TARGET=server
 ENV NODE_ENV=production
-RUN pnpm build:web
+RUN pnpm build:web:raw
 
 # Download third-party tools for TARGET platform
-RUN pnpm deps:download --platform $(cat /tmp/deps-platform)
+RUN pnpm deps:download:raw --platform "$(cat /tmp/deps-platform)"
 
 # ===== Stage 2: Go Builder =====
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS go-builder

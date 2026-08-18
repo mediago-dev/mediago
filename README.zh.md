@@ -114,6 +114,38 @@ docker run -d --name mediago -p 8899:8899 -v /path/to/mediago:/app/mediago caoru
 - **🐳 Docker 部署简化**：挂载一个目录即可，多架构镜像已迁至 GHCR
 - **⚡ 启动更快**：后端重写，资源占用更低，内置视频播放器
 
+## 🧑‍💻 从源码开发
+
+仓库统一使用固定版本的 [Task](https://taskfile.dev/) v3.51.1 编排任务。在
+macOS、Linux 或 Windows（PowerShell）中，可以通过 Go 工具链安装该固定版本；
+请确保 Go 的二进制目录已经加入 `PATH`，然后验证版本：
+
+```shell
+go install github.com/go-task/task/v3/cmd/task@v3.51.1
+task --version
+```
+
+克隆后请在仓库根目录执行以下标准启动流程：
+
+```shell
+git clone https://github.com/caorushizi/mediago.git
+cd mediago
+task setup
+task dev:all
+```
+
+`task setup` 会同时安装 Node 工作区依赖和应用所需的运行时工具。运行时依赖的
+版本只来自 `scripts/deps-versions.json`，不会自动升级；单独运行 `pnpm install`
+只会安装 Node 工作区依赖，不会安装 BBDown 等运行时二进制文件。
+
+只开发 Web 端时使用 `task dev:web`（`dev:server` 是 `dev:web` 的别名），只开发
+桌面端时使用 `task dev:electron`。提交改动前请运行：
+
+```shell
+task check
+task test
+```
+
 ## 🛠️ 技术栈
 
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)

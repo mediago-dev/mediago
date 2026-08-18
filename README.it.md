@@ -141,6 +141,41 @@ Per le versioni precedenti, consulta la [pagina GitHub Releases](https://github.
 - **🐳 Deploy Docker più semplice** — monta una sola cartella, immagini multi-arch su GHCR
 - **⚡ Avvio più rapido** — backend riscritto, minore consumo di memoria, player video integrato
 
+## 🧑‍💻 Sviluppo dal sorgente
+
+I workflow del repository usano la versione fissa v3.51.1 di
+[Task](https://taskfile.dev/). Su macOS, Linux o Windows (PowerShell),
+installala con la toolchain Go, assicurati che la directory dei binari Go sia
+nel `PATH` e verifica la versione prima di eseguire i comandi del repository:
+
+```shell
+go install github.com/go-task/task/v3/cmd/task@v3.51.1
+task --version
+```
+
+Dopo il clone, esegui il flusso principale dalla radice del repository:
+
+```shell
+git clone https://github.com/caorushizi/mediago.git
+cd mediago
+task setup
+task dev:all
+```
+
+`task setup` installa sia il workspace Node sia gli strumenti runtime richiesti
+dall'app. L'unica fonte delle loro versioni è `scripts/deps-versions.json` e
+non si aggiornano automaticamente. Eseguire solo `pnpm install` installa i
+pacchetti del workspace Node, ma non i binari runtime come BBDown.
+
+Usa `task dev:web` per la superficie web (`dev:server` è un alias di
+`dev:web`) oppure `task dev:electron` per lo sviluppo desktop. Prima di
+inviare modifiche, esegui:
+
+```shell
+task check
+task test
+```
+
 ## 🛠️ Tecnologie
 
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)

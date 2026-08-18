@@ -20,20 +20,21 @@
 
 ## ⚡ 快速开始
 
-### 使用 NPM Scripts（推荐）
+### 使用仓库 Task（推荐）
+
+请从仓库根目录执行以下命令。仓库要求固定版本 Task v3.51.1；安装方法见
+[CONTRIBUTING.md](../../CONTRIBUTING.md)，开始前请先运行 `task --version` 验证版本。
 
 ```bash
-# 安装依赖
-pnpm install
+# 安装 Node 与运行时依赖
+task setup
 
-# 查看所有可用命令
-pnpm run help
+# 启动包含 Core 的 Web 开发环境
+task dev:web
 
-# 运行开发服务器
-pnpm dev
-
-# 编译当前平台的开发版本
-pnpm run build
+# 提交前检查与测试
+task check
+task test
 ```
 
 ### 传统方式
@@ -117,8 +118,8 @@ swag init -g cmd/server/main.go -o docs --parseDependency --parseInternal
 ### 开发任务
 
 ```bash
-pnpm dev                    # 启动开发服务器
-pnpm run build              # 编译当前平台的开发版本
+task dev:web                # 从仓库根目录启动 Web/Core 开发环境
+task build:server           # 构建 Core 与自托管 Web 服务
 ```
 
 ### NPM 包构建
@@ -156,10 +157,10 @@ pnpm run tasks              # 显示 Gulp 任务树（技术视图）
 
 ```bash
 # 启动开发服务器
-pnpm dev
+task dev:web
 
 # 快速编译当前平台
-pnpm run build
+task build:server
 ```
 
 ### 2. 构建 NPM 包

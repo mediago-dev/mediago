@@ -82,6 +82,63 @@ export function stringArray(value: unknown, context: string): string[] {
   return value as string[];
 }
 
+export function dockerRepositoryCommands(source: string): string[] {
+  const instructions: string[] = [];
+  let instruction = "";
+  for (const line of source.split(/\r?\n/)) {
+    instruction += `${instruction.length === 0 ? "" : " "}${line.trim()}`;
+    if (instruction.endsWith("\\")) {
+      instruction = instruction.slice(0, -1).trimEnd();
+      continue;
+    }
+    instructions.push(instruction);
+    instruction = "";
+  }
+  if (instruction.length > 0) instructions.push(instruction);
+
+  return instructions
+    .filter(
+      (candidate) =>
+        candidate.startsWith("RUN ") && /\bpnpm(?:\s|$)/.test(candidate),
+    )
+    .map((candidate) => candidate.slice("RUN ".length));
+}
+
+const migratedRootPnpmScripts = new Set([
+  "dev",
+  "dev:all",
+  "dev:web",
+  "dev:server",
+  "dev:electron",
+  "check",
+  "test",
+  "build",
+  "build:web",
+  "build:server",
+  "build:electron",
+  "build:docker",
+  "pack:electron",
+  "release",
+  "release:electron",
+  "deps:download",
+]);
+
+export function migratedPnpmCommandsInFences(source: string): string[] {
+  const commands: string[] = [];
+  for (const match of source.matchAll(/```[^\r\n]*\r?\n([\s\S]*?)```/g)) {
+    const body = match[1] ?? "";
+    for (const line of body.split(/\r?\n/)) {
+      const command = line.trim().replace(/\s+#.*$/, "");
+      const pnpmInvocation = command.match(/\bpnpm\s+(?:run\s+)?([^\s#]+)/);
+      const scriptName = pnpmInvocation?.[1]?.replace(/:raw$/, "");
+      if (scriptName !== undefined && migratedRootPnpmScripts.has(scriptName)) {
+        commands.push(command);
+      }
+    }
+  }
+  return commands;
+}
+
 export function createTaskFixture(contents: unknown): TaskFixture {
   const directory = fs.mkdtempSync(path.join(tmpdir(), "mediago-task-graph-"));
   onTestFinished(() => fs.rmSync(directory, { recursive: true, force: true }));
