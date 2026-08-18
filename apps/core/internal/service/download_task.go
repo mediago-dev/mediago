@@ -230,24 +230,7 @@ func (s *DownloadTaskService) StartDownload(taskID int64, localPath string, dele
 		return err
 	}
 
-	folder := ""
-	if video.Folder != nil {
-		folder = *video.Folder
-	}
-
-	var headers []string
-	if video.Headers != nil && *video.Headers != "" {
-		headers = parseStoredHeaders(*video.Headers)
-	}
-
-	params := core.DownloadParams{
-		ID:      core.TaskID(strconv.FormatInt(taskID, 10)),
-		Type:    core.DownloadType(video.Type),
-		URL:     video.URL,
-		Name:    video.Name,
-		Folder:  folder,
-		Headers: headers,
-	}
+	params := downloadParamsForVideo(video, taskID)
 
 	status := s.queue.Enqueue(params)
 
@@ -264,12 +247,12 @@ func (s *DownloadTaskService) StartDownload(taskID int64, localPath string, dele
 
 // StopDownload stops a download task.
 func (s *DownloadTaskService) StopDownload(id int64) error {
-	return s.queue.Stop(core.TaskID(strconv.FormatInt(id, 10)))
+	return s.queue.Stop(queueTaskIDForDownload(id))
 }
 
 // DeleteDownloadTask removes a download task.
 func (s *DownloadTaskService) DeleteDownloadTask(id int64) error {
-	s.queue.Remove(core.TaskID(strconv.FormatInt(id, 10)))
+	s.queue.Remove(queueTaskIDForDownload(id))
 	return s.repo.Delete(id)
 }
 
@@ -278,7 +261,7 @@ func (s *DownloadTaskService) GetDownloadLog(id int64) (string, error) {
 	if s.logs == nil {
 		return "", nil
 	}
-	content, err := s.logs.Read(strconv.FormatInt(id, 10))
+	content, err := s.logs.Read(string(queueTaskIDForDownload(id)))
 	if err != nil {
 		return "", err
 	}
@@ -353,6 +336,31 @@ func parseStoredHeaders(raw string) []string {
 		}
 	}
 	return headers
+}
+
+func downloadParamsForVideo(video *db.Video, downloadID int64) core.DownloadParams {
+	folder := ""
+	if video.Folder != nil {
+		folder = *video.Folder
+	}
+
+	var headers []string
+	if video.Headers != nil && *video.Headers != "" {
+		headers = parseStoredHeaders(*video.Headers)
+	}
+
+	return core.DownloadParams{
+		ID:      queueTaskIDForDownload(downloadID),
+		Type:    core.DownloadType(video.Type),
+		URL:     video.URL,
+		Name:    video.Name,
+		Folder:  folder,
+		Headers: headers,
+	}
+}
+
+func queueTaskIDForDownload(downloadID int64) core.TaskID {
+	return core.TaskID(strconv.FormatInt(downloadID, 10))
 }
 
 func joinLines(lines []string) string {

@@ -3,10 +3,10 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"caorushizi.cn/mediago/internal/api/dto"
 	"caorushizi.cn/mediago/internal/api/sse"
+	"caorushizi.cn/mediago/internal/db/repo"
 	"caorushizi.cn/mediago/internal/i18n"
 	"caorushizi.cn/mediago/internal/logger"
 	"caorushizi.cn/mediago/internal/service"
@@ -105,16 +105,20 @@ func (h *DownloadHandler) List(c *gin.Context) {
 
 // Get retrieves a single download task.
 func (h *DownloadHandler) Get(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Success: false, Code: http.StatusBadRequest, Message: i18n.T(c, i18n.MsgInvalidID)})
+	id, ok := parseDownloadID(c)
+	if !ok {
 		return
 	}
 
 	localPath, _ := h.conf.Get("local").(string)
 	video, err := h.svc.GetDownloadTask(id, localPath)
 	if err != nil {
-		c.JSON(http.StatusNotFound, dto.ErrorResponse{Success: false, Code: http.StatusNotFound, Message: err.Error()})
+		if errors.Is(err, repo.ErrVideoNotFound) {
+			writeDownloadNotFound(c, id)
+			return
+		}
+		logger.Error("Failed to get download task", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Success: false, Code: http.StatusInternalServerError, Message: err.Error()})
 		return
 	}
 
@@ -123,9 +127,8 @@ func (h *DownloadHandler) Get(c *gin.Context) {
 
 // Edit edits a download task.
 func (h *DownloadHandler) Edit(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Success: false, Code: http.StatusBadRequest, Message: i18n.T(c, i18n.MsgInvalidID)})
+	id, ok := parseDownloadID(c)
+	if !ok {
 		return
 	}
 
@@ -151,6 +154,10 @@ func (h *DownloadHandler) Edit(c *gin.Context) {
 
 	video, err := h.svc.EditDownloadTask(id, data)
 	if err != nil {
+		if errors.Is(err, repo.ErrVideoNotFound) {
+			writeDownloadNotFound(c, id)
+			return
+		}
 		if errors.Is(err, service.ErrDownloadURLAlreadyExists) {
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Success: false, Code: http.StatusConflict, Message: i18n.T(c, i18n.MsgURLAlreadyExists)})
 			return
@@ -165,9 +172,8 @@ func (h *DownloadHandler) Edit(c *gin.Context) {
 
 // Delete removes a download task.
 func (h *DownloadHandler) Delete(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Success: false, Code: http.StatusBadRequest, Message: i18n.T(c, i18n.MsgInvalidID)})
+	id, ok := parseDownloadID(c)
+	if !ok {
 		return
 	}
 
@@ -182,9 +188,8 @@ func (h *DownloadHandler) Delete(c *gin.Context) {
 
 // Start begins downloading a task.
 func (h *DownloadHandler) Start(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Success: false, Code: http.StatusBadRequest, Message: i18n.T(c, i18n.MsgInvalidID)})
+	id, ok := parseDownloadID(c)
+	if !ok {
 		return
 	}
 
@@ -202,6 +207,10 @@ func (h *DownloadHandler) Start(c *gin.Context) {
 	}
 
 	if err := h.svc.StartDownload(id, req.LocalPath, req.DeleteSegments); err != nil {
+		if errors.Is(err, repo.ErrVideoNotFound) {
+			writeDownloadNotFound(c, id)
+			return
+		}
 		logger.Error("Failed to start download", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Success: false, Code: http.StatusInternalServerError, Message: err.Error()})
 		return
@@ -212,9 +221,8 @@ func (h *DownloadHandler) Start(c *gin.Context) {
 
 // Stop stops a download.
 func (h *DownloadHandler) Stop(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Success: false, Code: http.StatusBadRequest, Message: i18n.T(c, i18n.MsgInvalidID)})
+	id, ok := parseDownloadID(c)
+	if !ok {
 		return
 	}
 
@@ -229,9 +237,8 @@ func (h *DownloadHandler) Stop(c *gin.Context) {
 
 // Logs retrieves the download log.
 func (h *DownloadHandler) Logs(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Success: false, Code: http.StatusBadRequest, Message: i18n.T(c, i18n.MsgInvalidID)})
+	id, ok := parseDownloadID(c)
+	if !ok {
 		return
 	}
 
@@ -290,9 +297,8 @@ func (h *DownloadHandler) UpdateStatus(c *gin.Context) {
 
 // UpdateIsLive updates the live-stream flag.
 func (h *DownloadHandler) UpdateIsLive(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Success: false, Code: http.StatusBadRequest, Message: i18n.T(c, i18n.MsgInvalidID)})
+	id, ok := parseDownloadID(c)
+	if !ok {
 		return
 	}
 
@@ -304,6 +310,10 @@ func (h *DownloadHandler) UpdateIsLive(c *gin.Context) {
 
 	video, err := h.svc.SetIsLive(id, req.IsLive)
 	if err != nil {
+		if errors.Is(err, repo.ErrVideoNotFound) {
+			writeDownloadNotFound(c, id)
+			return
+		}
 		logger.Error("Failed to update isLive", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Success: false, Code: http.StatusInternalServerError, Message: err.Error()})
 		return

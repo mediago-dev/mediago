@@ -3,9 +3,11 @@ package service
 import (
 	"errors"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
+	"caorushizi.cn/mediago/internal/core"
 	"caorushizi.cn/mediago/internal/db"
 	"caorushizi.cn/mediago/internal/db/repo"
 )
@@ -157,6 +159,34 @@ func TestParseStoredHeadersJSON(t *testing.T) {
 func TestParseStoredHeadersEmpty(t *testing.T) {
 	if got := parseStoredHeaders("\r\n \n"); len(got) != 0 {
 		t.Fatalf("parseStoredHeaders() = %v, want empty", got)
+	}
+}
+
+func TestDownloadParamsForVideoPreservesBilibiliFields(t *testing.T) {
+	folder := "哔哩哔哩"
+	headers := "Cookie:SESSDATA=test-cookie\r\nReferer:https://www.bilibili.com/video/BV1xx411c7mD"
+	video := &db.Video{
+		Name:    "测试视频",
+		Type:    "bilibili",
+		URL:     "https://www.bilibili.com/video/BV1xx411c7mD",
+		Folder:  &folder,
+		Headers: &headers,
+	}
+
+	got := downloadParamsForVideo(video, int64(42))
+	want := core.DownloadParams{
+		ID:     core.TaskID("42"),
+		Type:   core.TypeBilibili,
+		URL:    video.URL,
+		Name:   video.Name,
+		Folder: folder,
+		Headers: []string{
+			"Cookie:SESSDATA=test-cookie",
+			"Referer:https://www.bilibili.com/video/BV1xx411c7mD",
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("downloadParamsForVideo() = %#v, want %#v", got, want)
 	}
 }
 

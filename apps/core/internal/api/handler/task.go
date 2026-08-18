@@ -93,7 +93,7 @@ func (h *TaskHandler) Get(c *gin.Context) {
 		logger.Warn("Task not found",
 			zap.String("id", id),
 			zap.String("clientIP", c.ClientIP()))
-		c.JSON(http.StatusNotFound, dto.ErrorResponse{Success: false, Code: http.StatusNotFound, Message: i18n.T(c, i18n.MsgTaskNotFound)})
+		writeTaskNotFound(c)
 		return
 	}
 
@@ -157,7 +157,11 @@ func (h *TaskHandler) Stop(c *gin.Context) {
 		logger.Warn("Failed to stop task",
 			zap.String("id", id),
 			zap.Error(err))
-		c.JSON(http.StatusNotFound, dto.ErrorResponse{Success: false, Code: http.StatusNotFound, Message: err.Error()})
+		if errors.Is(err, core.ErrTaskNotFound) {
+			writeTaskNotFound(c)
+			return
+		}
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Success: false, Code: http.StatusInternalServerError, Message: err.Error()})
 		return
 	}
 
