@@ -40,6 +40,12 @@ const productionEntries = [
     task: "release:electron",
   },
 ] as const;
+const blankMetadataSources = [
+  "empty process environment",
+  "whitespace-only process environment",
+  "empty profile dotenv",
+  "higher-priority empty profile dotenv",
+] as const;
 
 test.each(["development", "test", "production"])(
   "native Task profile validation accepts %s",
@@ -160,6 +166,137 @@ test.each(
   },
 );
 
+test.each(
+  productionEntries.flatMap(({ leaf, required, task }) =>
+    required.flatMap((missing) =>
+      blankMetadataSources.map((source) => ({
+        leaf,
+        missing,
+        required,
+        source,
+        task,
+      })),
+    ),
+  ),
+)(
+  "$task treats $source $missing as missing before runtime and implementation leaves",
+  ({ leaf, missing, required, source, task }) => {
+    const configured = Object.fromEntries(
+      required.map((name, index) => [
+        name,
+        `TASK_BLANK_METADATA_SECRET_${index}_SENTINEL`,
+      ]),
+    );
+    const overrides: NodeJS.ProcessEnv = {};
+    let fixture: ReturnType<typeof createFixture>;
+
+    if (source === "empty process environment") {
+      overrides[missing] = "";
+      fixture = createRepositoryTaskfileFixture(configured);
+    } else if (source === "whitespace-only process environment") {
+      overrides[missing] = "  \t ";
+      fixture = createRepositoryTaskfileFixture(configured);
+    } else if (source === "empty profile dotenv") {
+      configured[missing] = "";
+      fixture = createRepositoryTaskfileFixture(configured);
+    } else {
+      fixture = createRepositoryTaskfileFixture(configured, {
+        ".env.production.local": { [missing]: "" },
+      });
+    }
+
+    const result = runTask(fixture.taskfilePath, task, overrides, [
+      "--force",
+      "--dry",
+    ]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain(missing);
+    for (const presentName of required) {
+      if (presentName !== missing) {
+        expect(result.output).not.toContain(presentName);
+      }
+    }
+    expect(result.output).not.toContain("TASK_BLANK_METADATA_SECRET_");
+    expect(result.output).toContain("pnpm install --frozen-lockfile");
+    for (const sideEffect of [
+      "pnpm core:build",
+      "pnpm deps:download:raw",
+      "pnpm build:electron:raw",
+      leaf,
+    ]) {
+      expect(result.output).not.toContain(sideEffect);
+    }
+  },
+);
+
+test.each(productionEntries)(
+  "$task bootstraps node dependencies before validating production metadata in a clean clone",
+  ({ leaf, required, task }) => {
+    const missing = required[0];
+    const configured = Object.fromEntries(
+      required
+        .filter((name) => name !== missing)
+        .map((name, index) => [
+          name,
+          `TASK_CLEAN_CLONE_SECRET_${index}_SENTINEL`,
+        ]),
+    );
+    const fixture = createCleanCloneProductionFixture(configured);
+
+    expect(existsSync(path.join(fixture.directory, "node_modules"))).toBe(
+      false,
+    );
+
+    const result = runTask(
+      fixture.taskfilePath,
+      task,
+      {
+        PATH: `${fixture.binDirectory}${path.delimiter}${process.env.PATH ?? ""}`,
+      },
+      ["--force"],
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(fixture.pnpmLog, "utf8").trim()).toBe(
+      "install --frozen-lockfile",
+    );
+    expect(result.output).toContain(missing);
+    expect(result.output).not.toContain("ERR_MODULE_NOT_FOUND");
+    expect(result.output).not.toContain("TASK_CLEAN_CLONE_SECRET_");
+    for (const forbiddenLeaf of [
+      "pnpm core:build",
+      "pnpm deps:download:raw",
+      "pnpm build:electron:raw",
+      leaf,
+    ]) {
+      expect(result.output).not.toContain(forbiddenLeaf);
+    }
+  },
+);
+
+test.each(productionEntries)(
+  "$task accepts nonblank production metadata with surrounding whitespace without logging it",
+  ({ leaf, required, task }) => {
+    const environment = Object.fromEntries(
+      required.map((name, index) => [
+        name,
+        `  TASK_NONBLANK_METADATA_SECRET_${index}_SENTINEL  `,
+      ]),
+    );
+    const fixture = createRepositoryTaskfileFixture({});
+
+    const result = runTask(fixture.taskfilePath, task, environment, [
+      "--force",
+      "--dry",
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.output).toContain(leaf);
+    expect(result.output).not.toContain("TASK_NONBLANK_METADATA_SECRET_");
+  },
+);
+
 test.each(productionEntries)(
   "$task version mismatch stops before production metadata and implementation leaves",
   ({ leaf, task }) => {
@@ -176,6 +313,7 @@ test.each(productionEntries)(
 
     expect(result.status).not.toBe(0);
     expect(result.output).toMatch(/version gate is misconfigured/i);
+    expect(result.output).not.toContain("pnpm install --frozen-lockfile");
     expect(result.output).not.toContain(leaf);
     expect(result.output).not.toContain("TASK_VERSION_SECRET_");
   },
@@ -361,6 +499,7 @@ function createProfileFixture(): ReturnType<typeof createFixture> {
 
 function createRepositoryTaskfileFixture(
   environment: Record<string, string>,
+  additionalDotenvFiles: Record<string, Record<string, string>> = {},
 ): ReturnType<typeof createFixture> {
   const directory = createTemporaryDirectory();
   const taskfilePath = path.join(directory, "Taskfile.yml");
@@ -369,13 +508,92 @@ function createRepositoryTaskfileFixture(
     path.join(repositoryRoot, "scripts"),
     path.join(directory, "scripts"),
   );
+  for (const [filename, values] of Object.entries({
+    ".env": environment,
+    ...additionalDotenvFiles,
+  })) {
+    writeFileSync(
+      path.join(directory, filename),
+      `${Object.entries(values)
+        .map(([name, value]) => `${name}=${value}`)
+        .join("\n")}\n`,
+    );
+  }
+  return { directory, taskfilePath };
+}
+
+function createCleanCloneProductionFixture(
+  environment: Record<string, string>,
+): ReturnType<typeof createFixture> & {
+  binDirectory: string;
+  pnpmLog: string;
+} {
+  const directory = createTemporaryDirectory();
+  const taskfilePath = path.join(directory, "Taskfile.yml");
+  copyFileSync(rootTaskfilePath, taskfilePath);
+  for (const filename of [
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+  ]) {
+    copyFileSync(
+      path.join(repositoryRoot, filename),
+      path.join(directory, filename),
+    );
+  }
+
+  const scriptsDirectory = path.join(directory, "scripts");
+  mkdirSync(scriptsDirectory);
+  for (const filename of [
+    "load-profile-env.ts",
+    "task-production-metadata.ts",
+    "task-version-gate.ts",
+  ]) {
+    copyFileSync(
+      path.join(repositoryRoot, "scripts", filename),
+      path.join(scriptsDirectory, filename),
+    );
+  }
   writeFileSync(
     path.join(directory, ".env"),
     `${Object.entries(environment)
       .map(([name, value]) => `${name}=${value}`)
       .join("\n")}\n`,
   );
-  return { directory, taskfilePath };
+
+  const binDirectory = path.join(directory, "bin");
+  const pnpmLog = path.join(directory, "pnpm-invocations.log");
+  const fakePnpmScript = path.join(binDirectory, "fake-pnpm.cjs");
+  mkdirSync(binDirectory);
+  writeFileSync(
+    fakePnpmScript,
+    [
+      `#!${process.execPath}`,
+      'const fs = require("node:fs");',
+      'const path = require("node:path");',
+      `const invocationLog = ${JSON.stringify(pnpmLog)};`,
+      `const installedModules = ${JSON.stringify(path.join(repositoryRoot, "node_modules"))};`,
+      `const fixtureRoot = ${JSON.stringify(directory)};`,
+      'fs.appendFileSync(invocationLog, `${process.argv.slice(2).join(" ")}\\n`);',
+      'if (process.argv.slice(2).join(" ") !== "install --frozen-lockfile") process.exit(91);',
+      'fs.symlinkSync(installedModules, path.join(fixtureRoot, "node_modules"), "dir");',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  chmodSync(fakePnpmScript, 0o755);
+
+  if (process.platform === "win32") {
+    writeFileSync(
+      path.join(binDirectory, "pnpm.cmd"),
+      `@echo off\r\n"${process.execPath}" "${fakePnpmScript}" %*\r\n`,
+      "utf8",
+    );
+  } else {
+    symlinkSync(fakePnpmScript, path.join(binDirectory, "pnpm"), "file");
+  }
+
+  return { binDirectory, directory, pnpmLog, taskfilePath };
 }
 
 function createNodePrerequisiteFixture(target: "doctor" | "version gate"): {

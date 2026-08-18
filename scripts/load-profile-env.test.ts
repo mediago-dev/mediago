@@ -82,6 +82,47 @@ describe("loadProfileEnv", () => {
     });
   });
 
+  it("preserves an empty process value over a nonempty profile value", async () => {
+    await writeEnvFile(".env.production", {
+      APP_NAME: "profile-name",
+    });
+    process.env.MEDIAGO_PROFILE = "production";
+    process.env.APP_NAME = "";
+
+    loadProfileEnv(projectRoot);
+
+    expect(process.env.APP_NAME).toBe("");
+  });
+
+  it("lets a higher-priority empty value shadow a lower-priority nonempty value", async () => {
+    await writeEnvFile(".env", { APP_NAME: "base-name" });
+    await writeEnvFile(".env.production.local", { APP_NAME: "" });
+    process.env.MEDIAGO_PROFILE = "production";
+
+    loadProfileEnv(projectRoot);
+
+    expect(process.env.APP_NAME).toBe("");
+  });
+
+  it("uses canonical dotenv whitespace parsing without changing quoted whitespace", async () => {
+    await fs.writeFile(
+      path.join(projectRoot, ".env.production"),
+      [
+        "EMPTY_WITH_SPACES=   ",
+        'QUOTED_WHITESPACE="  \t "',
+        "TRIMMED_VALUE=   configured value   ",
+        "",
+      ].join("\n"),
+    );
+    process.env.MEDIAGO_PROFILE = "production";
+
+    loadProfileEnv(projectRoot);
+
+    expect(process.env.EMPTY_WITH_SPACES).toBe("");
+    expect(process.env.QUOTED_WHITESPACE).toBe("  \t ");
+    expect(process.env.TRIMMED_VALUE).toBe("configured value");
+  });
+
   it("defaults to the development profile", async () => {
     await writeEnvFile(".env.development", { DEFAULT_PROFILE: "development" });
 

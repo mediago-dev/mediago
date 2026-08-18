@@ -86,15 +86,15 @@ const profileImplementations = {
   "internal:build:web": "production",
   "internal:build:server": "production",
   "internal:build:electron": "production",
-  "internal:production:build:electron": "production",
+  "internal:production:build:electron:validated": "production",
   "internal:build:extension": "production",
   "internal:build:docs": "production",
   "internal:build:docker": "production",
   "internal:pack:extension": "production",
   "internal:pack:electron": "production",
-  "internal:production:pack:electron": "production",
+  "internal:production:pack:electron:validated": "production",
   "internal:release:electron": "production",
-  "internal:production:release:electron": "production",
+  "internal:production:release:electron:validated": "production",
 } as const;
 
 const implementationGraph = {
@@ -270,9 +270,18 @@ const prerequisiteGraph = {
 } as const;
 
 const productionEntryGraph = {
-  "internal:production:build:electron": "internal:build:electron",
-  "internal:production:pack:electron": "internal:pack:electron",
-  "internal:production:release:electron": "internal:release:electron",
+  "internal:production:build:electron": {
+    implementation: "internal:build:electron",
+    validated: "internal:production:build:electron:validated",
+  },
+  "internal:production:pack:electron": {
+    implementation: "internal:pack:electron",
+    validated: "internal:production:pack:electron:validated",
+  },
+  "internal:production:release:electron": {
+    implementation: "internal:release:electron",
+    validated: "internal:production:release:electron:validated",
+  },
 } as const;
 
 const runtimeConsumers = [
@@ -641,6 +650,9 @@ describe("Task command leaves", () => {
         ...Object.keys(implementationGraph),
         ...Object.keys(prerequisiteGraph),
         ...Object.keys(productionEntryGraph),
+        ...Object.values(productionEntryGraph).map(
+          ({ validated }) => validated,
+        ),
       ].toSorted(),
     );
 
@@ -656,11 +668,22 @@ describe("Task command leaves", () => {
       );
       expect(terminalLeaves(name), `${name} leaves`).toEqual(expected.leaves);
     }
-    for (const [name, implementation] of Object.entries(productionEntryGraph)) {
-      expect(taskDependencies(name), `${name} prerequisites`).toEqual([]);
-      expect(taskCommands(name), `${name} implementation sequence`).toEqual([
-        { kind: "task", task: implementation },
+    for (const [name, { implementation, validated }] of Object.entries(
+      productionEntryGraph,
+    )) {
+      expect(taskDependencies(name), `${name} prerequisites`).toEqual([
+        "internal:deps:node",
       ]);
+      expect(taskCommands(name), `${name} implementation sequence`).toEqual([
+        { kind: "task", task: validated },
+      ]);
+      expect(taskDependencies(validated), `${validated} prerequisites`).toEqual(
+        [],
+      );
+      expect(
+        taskCommands(validated),
+        `${validated} implementation sequence`,
+      ).toEqual([{ kind: "task", task: implementation }]);
     }
     expect(task("internal:test:go").dir).toBe("apps/core");
 
@@ -857,7 +880,10 @@ describe("production variable requirements", () => {
   it.each(Object.entries(expectedPackagingRequirements))(
     "%s validates exactly %s in its production profile entry",
     (name, expected) => {
-      const entryName = `internal:production:${name}`;
+      const bootstrapName = `internal:production:${name}`;
+      const entryName = `${bootstrapName}:validated`;
+      expect(task(bootstrapName)).not.toHaveProperty("requires");
+      expect(task(bootstrapName)).not.toHaveProperty("dotenv");
       const variables = asRecord(task(entryName).vars, `${entryName} vars`);
       expect(packagingRequirements(entryName)).toEqual(expected);
       for (const variableName of expected) {
@@ -873,10 +899,16 @@ describe("production variable requirements", () => {
     },
   );
 
-  it("keeps the production metadata probe dependency-free", () => {
-    expect(bareBootstrapImports("scripts/task-production-metadata.ts")).toEqual(
-      [],
+  it("loads the final production metadata value through the canonical profile loader", () => {
+    const source = fs.readFileSync(
+      path.join(repositoryRoot, "scripts/task-production-metadata.ts"),
+      "utf8",
     );
+    expect(source).toContain(
+      'import { loadProfileEnv } from "./load-profile-env.ts";',
+    );
+    expect(source).toContain("loadProfileEnv(process.cwd());");
+    expect(source).not.toMatch(/DOTENV_FILES|readFileSync|new RegExp/);
   });
 });
 

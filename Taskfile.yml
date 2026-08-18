@@ -522,6 +522,13 @@ tasks:
 
   internal:production:build:electron:
     internal: true
+    deps: &production-metadata-bootstrap-deps
+      - task: internal:deps:node
+    cmds:
+      - task: internal:production:build:electron:validated
+
+  internal:production:build:electron:validated:
+    internal: true
     vars:
       MEDIAGO_PROFILE: '{{default "production" .MEDIAGO_PROFILE}}'
       APP_NAME:
@@ -608,6 +615,12 @@ tasks:
 
   internal:production:pack:electron:
     internal: true
+    deps: *production-metadata-bootstrap-deps
+    cmds:
+      - task: internal:production:pack:electron:validated
+
+  internal:production:pack:electron:validated:
+    internal: true
     vars: &production-package-metadata-vars
       MEDIAGO_PROFILE: '{{default "production" .MEDIAGO_PROFILE}}'
       APP_NAME:
@@ -642,6 +655,12 @@ tasks:
       - pnpm -F @mediago/electron run release
 
   internal:production:release:electron:
+    internal: true
+    deps: *production-metadata-bootstrap-deps
+    cmds:
+      - task: internal:production:release:electron:validated
+
+  internal:production:release:electron:validated:
     internal: true
     vars: *production-package-metadata-vars
     env: *profile-env
