@@ -121,6 +121,7 @@ export default defineConfig({
   description: "简单易用，快速下载",
   lastUpdated: true,
   head,
+  srcExclude: ["superpowers/**"],
   sitemap: {
     hostname: siteUrl,
   },

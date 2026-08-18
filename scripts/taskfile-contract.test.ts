@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { resolveConfig } from "../docs/node_modules/vitepress/dist/node/index.js";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import {
@@ -1215,6 +1216,20 @@ RUN cd /src && \\
 });
 
 describe("normative documentation Task contract", () => {
+  it("excludes internal implementation plans from the public docs source", async () => {
+    const docsConfig = await resolveConfig(
+      path.join(repositoryRoot, "docs"),
+      "build",
+      "production",
+    );
+    expect(docsConfig.userConfig.srcExclude).toEqual(["superpowers/**"]);
+    expect(
+      docsConfig.pages.filter((page) => page.startsWith("superpowers/")),
+    ).toEqual([]);
+    expect(docsConfig.pages).toContain("index.md");
+    expect(docsConfig.pages).toContain("en/index.md");
+  });
+
   it.each(Object.entries(normativeDocumentation))(
     "%s recommends only canonical repository orchestration",
     (filename, requirements) => {
