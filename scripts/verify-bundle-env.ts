@@ -87,7 +87,14 @@ async function main(): Promise<void> {
   });
   let activeChild: ChildProcess | undefined;
   let activeCleanup: EnvironmentTransaction["cleanup"] | undefined;
+  let treeStopPromise: Promise<void> | undefined;
   let terminating = false;
+  const stopActiveTree = (): Promise<void> => {
+    treeStopPromise ??= terminateProcessTree(activeChild, {
+      environment: process.env,
+    });
+    return treeStopPromise;
+  };
   const terminate = createTerminationCoordinator({
     exit: (code) => process.exit(code),
     getCleanup: () => activeCleanup,
@@ -96,8 +103,7 @@ async function main(): Promise<void> {
         `Bundle verification cleanup failed: ${String(error)}\n`,
       );
     },
-    terminateActiveChild: () =>
-      terminateProcessTree(activeChild, { environment: process.env }),
+    terminateActiveChild: stopActiveTree,
   });
   const runTermination = (signal: "SIGINT" | "SIGTERM"): void => {
     if (terminating) return;
@@ -110,6 +116,9 @@ async function main(): Promise<void> {
   process.on("SIGTERM", onSigterm);
   try {
     await verifyBundleEnvironment({
+      beforeCleanup: async () => {
+        await treeStopPromise;
+      },
       environment: process.env,
       onCleanupReady: (cleanup) => {
         activeCleanup = cleanup;

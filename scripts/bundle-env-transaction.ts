@@ -33,6 +33,7 @@ export type EnvironmentTransaction = {
 };
 
 export type BundleVerificationOptions = {
+  beforeCleanup?: () => Promise<void>;
   environment?: NodeJS.ProcessEnv;
   isProcessAlive?: (pid: number) => boolean;
   onCleanupReady?: (
@@ -45,6 +46,7 @@ export type BundleVerificationOptions = {
 };
 
 export async function injectBundleVerificationEnvironment(options: {
+  beforeCleanup?: () => Promise<void>;
   faultAfterPhase?: TransactionPhase;
   isProcessAlive?: (pid: number) => boolean;
   targetPath: string;
@@ -85,6 +87,10 @@ export async function injectBundleVerificationEnvironment(options: {
     original,
     targetPath: options.targetPath,
     faultAfterPhase: options.faultAfterPhase,
+  };
+  const cleanup = async (): Promise<void> => {
+    await options.beforeCleanup?.();
+    await cleanupTransaction(state);
   };
 
   await writeExclusiveFile(artifacts.lockPath, serializeJournal(journal));
@@ -155,7 +161,7 @@ export async function injectBundleVerificationEnvironment(options: {
   } catch (error) {
     if (error instanceof InjectedTransactionCrash) throw error;
     try {
-      await cleanupTransaction(state);
+      await cleanup();
     } catch (cleanupError) {
       // oxlint-disable-next-line preserve-caught-error -- AggregateError preserves both the injection and cleanup failures explicitly.
       throw new AggregateError(
@@ -170,7 +176,7 @@ export async function injectBundleVerificationEnvironment(options: {
   let cleanupPromise: Promise<void> | undefined;
   return {
     cleanup: () => {
-      cleanupPromise ??= cleanupTransaction(state);
+      cleanupPromise ??= cleanup();
       return cleanupPromise;
     },
   };
@@ -180,6 +186,7 @@ export async function verifyBundleEnvironment(
   options: BundleVerificationOptions,
 ): Promise<void> {
   const transaction = await injectBundleVerificationEnvironment({
+    beforeCleanup: options.beforeCleanup,
     isProcessAlive: options.isProcessAlive,
     targetPath: options.targetPath,
     transactionId: options.transactionId,
