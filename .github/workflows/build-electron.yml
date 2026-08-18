@@ -62,6 +62,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
@@ -73,7 +77,7 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.version }}
           REQUESTED_CHANNEL: ${{ inputs.release_channel }}
           REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
-        run: node scripts/ci/desktop-workflow.ts validate-request
+        run: task ci:desktop:validate-request
 
       - name: Verify source and committed release version
         id: verify
@@ -83,7 +87,7 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.version }}
           REQUESTED_CHANNEL: ${{ inputs.release_channel }}
           REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
-        run: node scripts/ci/desktop-workflow.ts verify-source
+        run: task ci:desktop:verify-source
 
       - name: Resolve artifact prefix
         id: metadata
@@ -91,7 +95,7 @@ jobs:
           REQUESTED_RUN_MODE: ${{ inputs.run_mode }}
           REQUESTED_VERSION: ${{ inputs.version }}
           VERIFIED_SOURCE_SHA: ${{ steps.verify.outputs.source_sha }}
-        run: node scripts/ci/desktop-workflow.ts artifact-prefix
+        run: task ci:desktop:artifact-prefix
 
   build:
     name: Build desktop (${{ matrix.runner }})
@@ -116,6 +120,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
+
       - uses: pnpm/action-setup@v6
         with:
           version: "10.15.0"
@@ -131,7 +139,7 @@ jobs:
         env:
           BUILD_VERSION: ${{ inputs.version }}
           RUN_MODE: ${{ inputs.run_mode }}
-        run: node scripts/ci/desktop-workflow.ts apply-version
+        run: task ci:desktop:apply-version
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -144,17 +152,14 @@ jobs:
           go-version: "1.25.0"
           cache-dependency-path: apps/core/go.sum
 
-      - name: Install swag
-        run: go install github.com/swaggo/swag/cmd/swag@latest
-
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: task deps:node
 
       - name: Download third-party dependencies
-        run: pnpm deps:download
+        run: task deps:runtime
 
       - name: Build desktop artifacts
-        run: pnpm release:electron
+        run: task ci:desktop:release
         env:
           APP_TD_APPID: ${{ inputs.run_mode == 'release' && secrets.APP_TD_APPID || '' }}
 

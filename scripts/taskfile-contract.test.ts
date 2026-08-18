@@ -69,6 +69,27 @@ const publicTasks = [
   "ci:test:media",
   "ci:test:e2e",
   "ci:docs:build",
+  "ci:desktop:validate-request",
+  "ci:desktop:verify-source",
+  "ci:desktop:artifact-prefix",
+  "ci:desktop:apply-version",
+  "ci:desktop:release",
+  "ci:docker:validate-inputs",
+  "ci:docker:resolve-parameters",
+  "ci:docker:verify-preview-private",
+  "ci:docker:detect-dockerhub",
+  "ci:docker:resolve-targets",
+  "ci:docker:write-summary",
+  "ci:release:validate-request",
+  "ci:release:detect-release-state",
+  "ci:release:calculate-version",
+  "ci:release:commit-version",
+  "ci:release:resolve-source",
+  "ci:release:write-prepare-summary",
+  "ci:release:collect-electron-artifacts",
+  "ci:release:publish-desktop",
+  "ci:release:write-desktop-summary",
+  "ci:release:tag-docker-release",
 ] as const;
 
 const profileImplementations = {
@@ -103,6 +124,7 @@ const profileImplementations = {
   "internal:release:electron": "production",
   "internal:production:release:electron:validated": "production",
   "internal:ci:test:e2e": "test",
+  "internal:ci:desktop:release": "production",
 } as const;
 
 const implementationGraph = {
@@ -292,6 +314,96 @@ const implementationGraph = {
     deps: ["internal:build:docs"],
     leaves: [],
   },
+  "internal:ci:desktop:validate-request": {
+    deps: [],
+    leaves: ["node scripts/ci/desktop-workflow.ts validate-request"],
+  },
+  "internal:ci:desktop:verify-source": {
+    deps: [],
+    leaves: ["node scripts/ci/desktop-workflow.ts verify-source"],
+  },
+  "internal:ci:desktop:artifact-prefix": {
+    deps: [],
+    leaves: ["node scripts/ci/desktop-workflow.ts artifact-prefix"],
+  },
+  "internal:ci:desktop:apply-version": {
+    deps: [],
+    leaves: ["node scripts/ci/desktop-workflow.ts apply-version"],
+  },
+  "internal:ci:desktop:release": {
+    deps: [
+      "internal:deps:node",
+      "internal:deps:runtime",
+      "internal:release:electron",
+    ],
+    leaves: [],
+  },
+  "internal:ci:docker:validate-inputs": {
+    deps: [],
+    leaves: ["node scripts/ci/docker-workflow.ts validate-inputs"],
+  },
+  "internal:ci:docker:resolve-parameters": {
+    deps: [],
+    leaves: ["node scripts/ci/docker-workflow.ts resolve-parameters"],
+  },
+  "internal:ci:docker:verify-preview-private": {
+    deps: [],
+    leaves: ["node scripts/ci/docker-workflow.ts verify-preview-private"],
+  },
+  "internal:ci:docker:detect-dockerhub": {
+    deps: [],
+    leaves: ["node scripts/ci/docker-workflow.ts detect-dockerhub"],
+  },
+  "internal:ci:docker:resolve-targets": {
+    deps: [],
+    leaves: ["node scripts/ci/docker-workflow.ts resolve-targets"],
+  },
+  "internal:ci:docker:write-summary": {
+    deps: [],
+    leaves: ["node scripts/ci/docker-workflow.ts write-summary"],
+  },
+  "internal:ci:release:validate-request": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts validate-request"],
+  },
+  "internal:ci:release:detect-release-state": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts detect-release-state"],
+  },
+  "internal:ci:release:calculate-version": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts calculate-version"],
+  },
+  "internal:ci:release:commit-version": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts commit-version"],
+  },
+  "internal:ci:release:resolve-source": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts resolve-source"],
+  },
+  "internal:ci:release:write-prepare-summary": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts write-prepare-summary"],
+  },
+  "internal:ci:release:collect-electron-artifacts": {
+    deps: [],
+    leaves: [
+      'node scripts/collect-electron-artifacts.ts electron-artifacts release-files "$VERSION" "$UPDATER_CHANNEL"',
+    ],
+  },
+  "internal:ci:release:publish-desktop": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts publish-desktop"],
+  },
+  "internal:ci:release:write-desktop-summary": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts write-desktop-summary"],
+  },
+  "internal:ci:release:tag-docker-release": {
+    deps: [],
+    leaves: ["node scripts/ci/release-workflow.ts tag-docker-release"],
+  },
 } as const;
 
 const prerequisiteGraph = {
@@ -339,6 +451,30 @@ const runtimeConsumers = [
   "internal:test:e2e:extension",
   "internal:pack:electron",
   "internal:release:electron",
+  "internal:ci:desktop:release",
+] as const;
+
+const metadataWorkflowTasks = [
+  "internal:ci:desktop:validate-request",
+  "internal:ci:desktop:verify-source",
+  "internal:ci:desktop:artifact-prefix",
+  "internal:ci:desktop:apply-version",
+  "internal:ci:docker:validate-inputs",
+  "internal:ci:docker:resolve-parameters",
+  "internal:ci:docker:verify-preview-private",
+  "internal:ci:docker:detect-dockerhub",
+  "internal:ci:docker:resolve-targets",
+  "internal:ci:docker:write-summary",
+  "internal:ci:release:validate-request",
+  "internal:ci:release:detect-release-state",
+  "internal:ci:release:calculate-version",
+  "internal:ci:release:commit-version",
+  "internal:ci:release:resolve-source",
+  "internal:ci:release:write-prepare-summary",
+  "internal:ci:release:collect-electron-artifacts",
+  "internal:ci:release:publish-desktop",
+  "internal:ci:release:write-desktop-summary",
+  "internal:ci:release:tag-docker-release",
 ] as const;
 
 const wrapperScripts = {
@@ -776,6 +912,7 @@ describe("Task command leaves", () => {
 
   it("runs shared mutating prerequisites only once per invocation graph", () => {
     expect(task("internal:deps:node").run).toBe("once");
+    expect(task("internal:deps:runtime").run).toBe("once");
     expect(task("internal:core:build").run).toBe("once");
   });
 
@@ -871,9 +1008,22 @@ describe("Task command leaves", () => {
           `${name} must not compose leaf commands`,
         ).not.toMatch(/(?:&&|\|\||[|]|\n)/);
         expect(command.text, `${name} has an unsafe leaf command`).toMatch(
-          /^(?:node\s+scripts\/task-(?:version-gate|doctor)\.ts|node -e "console\.log\('MEDIAGO_(?:RUNTIME_READY', process\.env\.MEDIAGO_DEPS_DIR|DEV_PROCESSES_STARTING')\)"|pnpm\s+[\w:-]+(?::raw)?(?:\s+[^;&|\n]+)?|pnpm\s+(?:-F|--filter)\s+\S+\s+run\s+\S+|pnpm\s+install(?:\s+[^;&|\n]+)?|pnpm\s+exec(?:\s+[^;&|\n]+)?|xvfb-run -a pnpm test:e2e:raw|go\s+[^;&|\n]+|docker\s+[^;&|\n]+)$/,
+          /^(?:node\s+scripts\/task-(?:version-gate|doctor)\.ts|node scripts\/ci\/(?:desktop|docker|release)-workflow\.ts [\w-]+|node scripts\/collect-electron-artifacts\.ts electron-artifacts release-files "\$VERSION" "\$UPDATER_CHANNEL"|node -e "console\.log\('MEDIAGO_(?:RUNTIME_READY', process\.env\.MEDIAGO_DEPS_DIR|DEV_PROCESSES_STARTING')\)"|pnpm\s+[\w:-]+(?::raw)?(?:\s+[^;&|\n]+)?|pnpm\s+(?:-F|--filter)\s+\S+\s+run\s+\S+|pnpm\s+install(?:\s+[^;&|\n]+)?|pnpm\s+exec(?:\s+[^;&|\n]+)?|xvfb-run -a pnpm test:e2e:raw|go\s+[^;&|\n]+|docker\s+[^;&|\n]+)$/,
         );
       }
+    }
+  });
+
+  it("keeps workflow metadata and publication leaves environment-transparent", () => {
+    for (const name of metadataWorkflowTasks) {
+      const definition = task(name);
+      expect(definition.internal).toBe(true);
+      expect(definition).not.toHaveProperty("vars");
+      expect(definition).not.toHaveProperty("env");
+      expect(definition).not.toHaveProperty("dotenv");
+      expect(definition).not.toHaveProperty("requires");
+      expect(taskDependencies(name)).toEqual([]);
+      expect(taskCommands(name)).toHaveLength(1);
     }
   });
 

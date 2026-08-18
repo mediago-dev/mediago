@@ -228,6 +228,132 @@ tasks:
       - task: internal:require-task-version
       - task: internal:ci:docs:build
 
+  ci:desktop:validate-request:
+    desc: Validate the desktop workflow request
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:desktop:validate-request
+
+  ci:desktop:verify-source:
+    desc: Verify the desktop workflow source and version
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:desktop:verify-source
+
+  ci:desktop:artifact-prefix:
+    desc: Resolve the desktop workflow artifact prefix
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:desktop:artifact-prefix
+
+  ci:desktop:apply-version:
+    desc: Apply the desktop workflow build version
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:desktop:apply-version
+
+  ci:desktop:release:
+    desc: Build desktop workflow release artifacts
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:desktop:release
+
+  ci:docker:validate-inputs:
+    desc: Validate the Docker workflow inputs
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:docker:validate-inputs
+
+  ci:docker:resolve-parameters:
+    desc: Resolve the Docker workflow build parameters
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:docker:resolve-parameters
+
+  ci:docker:verify-preview-private:
+    desc: Verify that the Docker preview package is private
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:docker:verify-preview-private
+
+  ci:docker:detect-dockerhub:
+    desc: Detect Docker Hub credentials for the Docker workflow
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:docker:detect-dockerhub
+
+  ci:docker:resolve-targets:
+    desc: Resolve the Docker workflow image targets
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:docker:resolve-targets
+
+  ci:docker:write-summary:
+    desc: Write the Docker workflow summary
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:docker:write-summary
+
+  ci:release:validate-request:
+    desc: Validate the release workflow request
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:validate-request
+
+  ci:release:detect-release-state:
+    desc: Detect the current GitHub Release state
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:detect-release-state
+
+  ci:release:calculate-version:
+    desc: Calculate the release workflow version
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:calculate-version
+
+  ci:release:commit-version:
+    desc: Commit the official release version
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:commit-version
+
+  ci:release:resolve-source:
+    desc: Resolve the release workflow build source
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:resolve-source
+
+  ci:release:write-prepare-summary:
+    desc: Write the release preparation summary
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:write-prepare-summary
+
+  ci:release:collect-electron-artifacts:
+    desc: Collect and validate Electron release artifacts
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:collect-electron-artifacts
+
+  ci:release:publish-desktop:
+    desc: Publish the desktop GitHub Release
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:publish-desktop
+
+  ci:release:write-desktop-summary:
+    desc: Write the desktop release summary
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:write-desktop-summary
+
+  ci:release:tag-docker-release:
+    desc: Tag a Docker-only release
+    cmds:
+      - task: internal:require-task-version
+      - task: internal:ci:release:tag-docker-release
+
   internal:require-task-version:
     internal: true
     preconditions:
@@ -283,6 +409,7 @@ tasks:
 
   internal:deps:runtime:
     internal: true
+    run: once
     vars: &runtime-vars
       MEDIAGO_PLATFORM_KEY:
         sh: node scripts/print-platform-key.ts
@@ -756,3 +883,114 @@ tasks:
     internal: true
     deps:
       - task: internal:build:docs
+
+  internal:ci:desktop:validate-request:
+    internal: true
+    cmds:
+      - node scripts/ci/desktop-workflow.ts validate-request
+
+  internal:ci:desktop:verify-source:
+    internal: true
+    cmds:
+      - node scripts/ci/desktop-workflow.ts verify-source
+
+  internal:ci:desktop:artifact-prefix:
+    internal: true
+    cmds:
+      - node scripts/ci/desktop-workflow.ts artifact-prefix
+
+  internal:ci:desktop:apply-version:
+    internal: true
+    cmds:
+      - node scripts/ci/desktop-workflow.ts apply-version
+
+  internal:ci:desktop:release:
+    internal: true
+    vars: *production-runtime-vars
+    env: *production-runtime-env
+    dotenv: *profile-dotenv
+    requires: *profile-requires
+    deps:
+      - task: internal:deps:node
+      - task: internal:deps:runtime
+      - task: internal:release:electron
+
+  internal:ci:docker:validate-inputs:
+    internal: true
+    cmds:
+      - node scripts/ci/docker-workflow.ts validate-inputs
+
+  internal:ci:docker:resolve-parameters:
+    internal: true
+    cmds:
+      - node scripts/ci/docker-workflow.ts resolve-parameters
+
+  internal:ci:docker:verify-preview-private:
+    internal: true
+    cmds:
+      - node scripts/ci/docker-workflow.ts verify-preview-private
+
+  internal:ci:docker:detect-dockerhub:
+    internal: true
+    cmds:
+      - node scripts/ci/docker-workflow.ts detect-dockerhub
+
+  internal:ci:docker:resolve-targets:
+    internal: true
+    cmds:
+      - node scripts/ci/docker-workflow.ts resolve-targets
+
+  internal:ci:docker:write-summary:
+    internal: true
+    cmds:
+      - node scripts/ci/docker-workflow.ts write-summary
+
+  internal:ci:release:validate-request:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts validate-request
+
+  internal:ci:release:detect-release-state:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts detect-release-state
+
+  internal:ci:release:calculate-version:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts calculate-version
+
+  internal:ci:release:commit-version:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts commit-version
+
+  internal:ci:release:resolve-source:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts resolve-source
+
+  internal:ci:release:write-prepare-summary:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts write-prepare-summary
+
+  internal:ci:release:collect-electron-artifacts:
+    internal: true
+    cmds:
+      - 'node scripts/collect-electron-artifacts.ts electron-artifacts release-files "$VERSION" "$UPDATER_CHANNEL"'
+
+  internal:ci:release:publish-desktop:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts publish-desktop
+
+  internal:ci:release:write-desktop-summary:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts write-desktop-summary
+
+  internal:ci:release:tag-docker-release:
+    internal: true
+    cmds:
+      - node scripts/ci/release-workflow.ts tag-docker-release

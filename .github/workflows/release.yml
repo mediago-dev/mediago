@@ -70,6 +70,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
@@ -85,7 +89,7 @@ jobs:
           SELECTED_REF: ${{ github.ref }}
           SELECTED_SHA: ${{ github.sha }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: node scripts/ci/release-workflow.ts validate-request
+        run: task ci:release:validate-request
 
       - name: Detect unfinished GitHub Release
         id: release_state
@@ -96,7 +100,7 @@ jobs:
           BUILD_TARGET: ${{ inputs.build_target }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           REPOSITORY: ${{ github.repository }}
-        run: node scripts/ci/release-workflow.ts detect-release-state
+        run: task ci:release:detect-release-state
 
       - name: Calculate version
         id: version
@@ -106,7 +110,7 @@ jobs:
           RELEASE_CHANNEL: ${{ inputs.release_channel }}
           VERSION_INCREMENT: ${{ inputs.version_increment }}
           RESUME_CURRENT: ${{ steps.release_state.outputs.resume || 'false' }}
-        run: node scripts/ci/release-workflow.ts calculate-version
+        run: task ci:release:calculate-version
 
       - name: Commit official version
         if: inputs.run_mode == 'release' && steps.version.outputs.written == 'true'
@@ -116,7 +120,7 @@ jobs:
           BUILD_TARGET: ${{ inputs.build_target }}
           VERSION: ${{ steps.version.outputs.version }}
           VERSION_FILE: ${{ steps.version.outputs.version_file }}
-        run: node scripts/ci/release-workflow.ts commit-version
+        run: task ci:release:commit-version
 
       - name: Resolve build commit
         id: source
@@ -130,7 +134,7 @@ jobs:
           RESUME_DRAFT: ${{ steps.release_state.outputs.resume }}
           DRAFT_TARGET: ${{ steps.release_state.outputs.target_commitish }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: node scripts/ci/release-workflow.ts resolve-source
+        run: task ci:release:resolve-source
 
       - name: Version summary
         shell: bash
@@ -141,7 +145,7 @@ jobs:
           RELEASE_CHANNEL: ${{ inputs.release_channel }}
           SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
           PENDING: ${{ steps.version.outputs.pending }}
-        run: node scripts/ci/release-workflow.ts write-prepare-summary
+        run: task ci:release:write-prepare-summary
 
   desktop:
     name: Desktop builds
@@ -199,6 +203,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
@@ -214,7 +222,7 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           UPDATER_CHANNEL: ${{ inputs.run_mode == 'test' && 'test' || inputs.release_channel }}
-        run: node scripts/collect-electron-artifacts.ts electron-artifacts release-files "$VERSION" "$UPDATER_CHANNEL"
+        run: task ci:release:collect-electron-artifacts
 
       - name: Create or update GitHub Release
         id: release
@@ -228,7 +236,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           SERVER_URL: ${{ github.server_url }}
-        run: node scripts/ci/release-workflow.ts publish-desktop
+        run: task ci:release:publish-desktop
 
       - name: Release summary
         shell: bash
@@ -237,7 +245,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
           TAG: ${{ steps.release.outputs.tag }}
           URL: ${{ steps.release.outputs.url }}
-        run: node scripts/ci/release-workflow.ts write-desktop-summary
+        run: task ci:release:write-desktop-summary
 
   tag_docker_release:
     name: Tag Docker-only release
@@ -261,6 +269,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - uses: go-task/setup-task@v1
+        with:
+          version: "3.51.1"
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
@@ -273,4 +285,4 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
-        run: node scripts/ci/release-workflow.ts tag-docker-release
+        run: task ci:release:tag-docker-release

@@ -68,6 +68,270 @@ const docsRunAllowlist = {
     },
   ],
 } as const;
+const desktopRunAllowlist = {
+  prepare: [
+    {
+      name: "Validate inputs",
+      env: {
+        REQUESTED_RUN_MODE: "${{ inputs.run_mode }}",
+        REQUESTED_VERSION: "${{ inputs.version }}",
+        REQUESTED_CHANNEL: "${{ inputs.release_channel }}",
+        REQUESTED_SOURCE_SHA: "${{ inputs.source_sha }}",
+      },
+      run: "task ci:desktop:validate-request",
+    },
+    {
+      name: "Verify source and committed release version",
+      id: "verify",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        REQUESTED_RUN_MODE: "${{ inputs.run_mode }}",
+        REQUESTED_VERSION: "${{ inputs.version }}",
+        REQUESTED_CHANNEL: "${{ inputs.release_channel }}",
+        REQUESTED_SOURCE_SHA: "${{ inputs.source_sha }}",
+      },
+      run: "task ci:desktop:verify-source",
+    },
+    {
+      name: "Resolve artifact prefix",
+      id: "metadata",
+      env: {
+        REQUESTED_RUN_MODE: "${{ inputs.run_mode }}",
+        REQUESTED_VERSION: "${{ inputs.version }}",
+        VERIFIED_SOURCE_SHA: "${{ steps.verify.outputs.source_sha }}",
+      },
+      run: "task ci:desktop:artifact-prefix",
+    },
+  ],
+  build: [
+    {
+      name: "Apply build version",
+      env: {
+        BUILD_VERSION: "${{ inputs.version }}",
+        RUN_MODE: "${{ inputs.run_mode }}",
+      },
+      run: "task ci:desktop:apply-version",
+    },
+    { name: "Install dependencies", run: "task deps:node" },
+    {
+      name: "Download third-party dependencies",
+      run: "task deps:runtime",
+    },
+    {
+      name: "Build desktop artifacts",
+      run: "task ci:desktop:release",
+      env: {
+        APP_TD_APPID:
+          "${{ inputs.run_mode == 'release' && secrets.APP_TD_APPID || '' }}",
+      },
+    },
+  ],
+} as const;
+const dockerRunAllowlist = {
+  docker: [
+    {
+      name: "Validate inputs",
+      env: {
+        RUN_MODE: "${{ inputs.run_mode }}",
+        VERSION: "${{ inputs.version }}",
+        RELEASE_CHANNEL: "${{ inputs.release_channel }}",
+        SOURCE_SHA: "${{ inputs.source_sha }}",
+      },
+      run: "task ci:docker:validate-inputs",
+    },
+    {
+      name: "Resolve source, version, image, and tag",
+      id: "parameters",
+      env: {
+        RUN_MODE: "${{ inputs.run_mode }}",
+        VERSION: "${{ inputs.version }}",
+        RELEASE_CHANNEL: "${{ inputs.release_channel }}",
+        SOURCE_SHA: "${{ inputs.source_sha }}",
+        REPOSITORY_OWNER: "${{ github.repository_owner }}",
+      },
+      run: "task ci:docker:resolve-parameters",
+    },
+    {
+      name: "Verify preview package is private",
+      if: "inputs.run_mode == 'test'",
+      env: {
+        GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+        OWNER: "${{ github.repository_owner }}",
+        GITHUB_API_URL: "${{ github.api_url }}",
+      },
+      run: "task ci:docker:verify-preview-private",
+    },
+    {
+      name: "Detect Docker Hub credentials for release",
+      id: "dockerhub",
+      if: "inputs.run_mode == 'release'",
+      env: {
+        DOCKERHUB_USERNAME: "${{ secrets.DOCKERHUB_USERNAME }}",
+        DOCKERHUB_TOKEN: "${{ secrets.DOCKERHUB_TOKEN }}",
+      },
+      run: "task ci:docker:detect-dockerhub",
+    },
+    {
+      name: "Resolve image targets",
+      id: "targets",
+      env: {
+        PRIMARY_IMAGE: "${{ steps.parameters.outputs.image }}",
+        DOCKERHUB_ENABLED: "${{ steps.dockerhub.outputs.enabled || 'false' }}",
+        DOCKERHUB_IMAGE: "${{ steps.parameters.outputs.dockerhub_image }}",
+      },
+      run: "task ci:docker:resolve-targets",
+    },
+    {
+      name: "Build summary",
+      env: {
+        RUN_MODE: "${{ inputs.run_mode }}",
+        VERSION: "${{ inputs.version }}",
+        RELEASE_CHANNEL: "${{ inputs.release_channel }}",
+        SOURCE_SHA: "${{ inputs.source_sha }}",
+        RESOLVED_SOURCE_SHA: "${{ steps.parameters.outputs.source_sha }}",
+        DIGEST: "${{ steps.build.outputs.digest }}",
+        PUBLISHED_TAGS: "${{ steps.metadata.outputs.tags }}",
+        IMAGE_REF: "${{ steps.parameters.outputs.image_ref }}",
+      },
+      run: "task ci:docker:write-summary",
+    },
+  ],
+} as const;
+const releaseRunAllowlist = {
+  prepare: [
+    {
+      name: "Validate source and targets",
+      id: "targets",
+      shell: "bash",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        RUN_MODE: "${{ inputs.run_mode }}",
+        BUILD_TARGET: "${{ inputs.build_target }}",
+        SELECTED_REF: "${{ github.ref }}",
+        SELECTED_SHA: "${{ github.sha }}",
+        RUN_ATTEMPT: "${{ github.run_attempt }}",
+      },
+      run: "task ci:release:validate-request",
+    },
+    {
+      name: "Detect unfinished GitHub Release",
+      id: "release_state",
+      if: "inputs.run_mode == 'release'",
+      shell: "bash",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        BUILD_TARGET: "${{ inputs.build_target }}",
+        RUN_ATTEMPT: "${{ github.run_attempt }}",
+        REPOSITORY: "${{ github.repository }}",
+      },
+      run: "task ci:release:detect-release-state",
+    },
+    {
+      name: "Calculate version",
+      id: "version",
+      shell: "bash",
+      env: {
+        RUN_MODE: "${{ inputs.run_mode }}",
+        RELEASE_CHANNEL: "${{ inputs.release_channel }}",
+        VERSION_INCREMENT: "${{ inputs.version_increment }}",
+        RESUME_CURRENT: "${{ steps.release_state.outputs.resume || 'false' }}",
+      },
+      run: "task ci:release:calculate-version",
+    },
+    {
+      name: "Commit official version",
+      if: "inputs.run_mode == 'release' && steps.version.outputs.written == 'true'",
+      shell: "bash",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        BUILD_TARGET: "${{ inputs.build_target }}",
+        VERSION: "${{ steps.version.outputs.version }}",
+        VERSION_FILE: "${{ steps.version.outputs.version_file }}",
+      },
+      run: "task ci:release:commit-version",
+    },
+    {
+      name: "Resolve build commit",
+      id: "source",
+      shell: "bash",
+      env: {
+        RUN_MODE: "${{ inputs.run_mode }}",
+        BUILD_TARGET: "${{ inputs.build_target }}",
+        VERSION: "${{ steps.version.outputs.version }}",
+        VERSION_FILE: "${{ steps.version.outputs.version_file }}",
+        PENDING: "${{ steps.version.outputs.pending }}",
+        RESUME_DRAFT: "${{ steps.release_state.outputs.resume }}",
+        DRAFT_TARGET: "${{ steps.release_state.outputs.target_commitish }}",
+        RUN_ATTEMPT: "${{ github.run_attempt }}",
+      },
+      run: "task ci:release:resolve-source",
+    },
+    {
+      name: "Version summary",
+      shell: "bash",
+      env: {
+        RUN_MODE: "${{ inputs.run_mode }}",
+        BUILD_TARGET: "${{ inputs.build_target }}",
+        VERSION: "${{ steps.version.outputs.version }}",
+        RELEASE_CHANNEL: "${{ inputs.release_channel }}",
+        SOURCE_SHA: "${{ steps.source.outputs.source_sha }}",
+        PENDING: "${{ steps.version.outputs.pending }}",
+      },
+      run: "task ci:release:write-prepare-summary",
+    },
+  ],
+  publish_desktop: [
+    {
+      name: "Collect and validate release files",
+      env: {
+        VERSION: "${{ needs.prepare.outputs.version }}",
+        UPDATER_CHANNEL:
+          "${{ inputs.run_mode == 'test' && 'test' || inputs.release_channel }}",
+      },
+      run: "task ci:release:collect-electron-artifacts",
+    },
+    {
+      name: "Create or update GitHub Release",
+      id: "release",
+      shell: "bash",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        RUN_MODE: "${{ inputs.run_mode }}",
+        RELEASE_CHANNEL: "${{ inputs.release_channel }}",
+        VERSION: "${{ needs.prepare.outputs.version }}",
+        OFFICIAL_TAG: "${{ needs.prepare.outputs.tag }}",
+        REPOSITORY: "${{ github.repository }}",
+        SOURCE_SHA: "${{ needs.prepare.outputs.source_sha }}",
+        SERVER_URL: "${{ github.server_url }}",
+      },
+      run: "task ci:release:publish-desktop",
+    },
+    {
+      name: "Release summary",
+      shell: "bash",
+      env: {
+        RUN_MODE: "${{ inputs.run_mode }}",
+        VERSION: "${{ needs.prepare.outputs.version }}",
+        TAG: "${{ steps.release.outputs.tag }}",
+        URL: "${{ steps.release.outputs.url }}",
+      },
+      run: "task ci:release:write-desktop-summary",
+    },
+  ],
+  tag_docker_release: [
+    {
+      name: "Create version tag",
+      shell: "bash",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        TAG: "${{ needs.prepare.outputs.tag }}",
+        VERSION: "${{ needs.prepare.outputs.version }}",
+        SOURCE_SHA: "${{ needs.prepare.outputs.source_sha }}",
+      },
+      run: "task ci:release:tag-docker-release",
+    },
+  ],
+} as const;
 
 describe("ci.yml Task workflow contract", () => {
   const workflow = loadWorkflow("ci.yml");
@@ -156,6 +420,105 @@ describe("build-docs.yml Task workflow contract", () => {
   });
 });
 
+describe("build-electron.yml Task workflow contract", () => {
+  const workflow = loadWorkflow("build-electron.yml");
+
+  it("routes desktop metadata and the install/download/release sequence through exact public Tasks", () => {
+    expectTaskEntries(workflow, {
+      prepare: [
+        "task ci:desktop:validate-request",
+        "task ci:desktop:verify-source",
+        "task ci:desktop:artifact-prefix",
+      ],
+      build: [
+        "task ci:desktop:apply-version",
+        "task deps:node",
+        "task deps:runtime",
+        "task ci:desktop:release",
+      ],
+    });
+  });
+
+  it("allows only the exact desktop Task run steps", () => {
+    expectRunStepAllowlist(workflow, desktopRunAllowlist);
+  });
+
+  it("rejects wrapped or additional desktop orchestration", () => {
+    expectRejectedRunMutations(
+      workflow,
+      desktopRunAllowlist,
+      "build",
+      "task ci:desktop:release",
+    );
+  });
+});
+
+describe("build-server.yml Task workflow contract", () => {
+  const workflow = loadWorkflow("build-server.yml");
+
+  it("routes all Docker metadata through exact public Tasks", () => {
+    expectTaskEntries(workflow, {
+      docker: [
+        "task ci:docker:validate-inputs",
+        "task ci:docker:resolve-parameters",
+        "task ci:docker:verify-preview-private",
+        "task ci:docker:detect-dockerhub",
+        "task ci:docker:resolve-targets",
+        "task ci:docker:write-summary",
+      ],
+    });
+  });
+
+  it("allows only the exact Docker Task run steps", () => {
+    expectRunStepAllowlist(workflow, dockerRunAllowlist);
+  });
+
+  it("rejects wrapped or additional Docker orchestration", () => {
+    expectRejectedRunMutations(
+      workflow,
+      dockerRunAllowlist,
+      "docker",
+      "task ci:docker:validate-inputs",
+    );
+  });
+});
+
+describe("release.yml Task workflow contract", () => {
+  const workflow = loadWorkflow("release.yml");
+
+  it("routes all release and artifact commands through exact public Tasks", () => {
+    expectTaskEntries(workflow, {
+      prepare: [
+        "task ci:release:validate-request",
+        "task ci:release:detect-release-state",
+        "task ci:release:calculate-version",
+        "task ci:release:commit-version",
+        "task ci:release:resolve-source",
+        "task ci:release:write-prepare-summary",
+      ],
+      publish_desktop: [
+        "task ci:release:collect-electron-artifacts",
+        "task ci:release:publish-desktop",
+        "task ci:release:write-desktop-summary",
+      ],
+      tag_docker_release: ["task ci:release:tag-docker-release"],
+    });
+  });
+
+  it("allows only the exact release Task run steps", () => {
+    expectRunStepAllowlist(workflow, releaseRunAllowlist);
+  });
+
+  it("rejects wrapped or additional release orchestration", () => {
+    expectRejectedRunMutations(
+      workflow,
+      releaseRunAllowlist,
+      "prepare",
+      "task ci:release:validate-request",
+    );
+  });
+});
+
 interface LoadedWorkflow {
   jobs: Record<string, unknown>;
 }
@@ -173,9 +536,11 @@ function loadWorkflow(basename: string): LoadedWorkflow {
 
 function expectTaskEntries(
   workflow: LoadedWorkflow,
-  entries: Record<string, string>,
+  entries: Record<string, string | readonly string[]>,
 ) {
-  for (const [jobName, expectedCommand] of Object.entries(entries)) {
+  for (const [jobName, expectedEntry] of Object.entries(entries)) {
+    const expectedCommands =
+      typeof expectedEntry === "string" ? [expectedEntry] : expectedEntry;
     const job = asRecord(workflow.jobs[jobName], `job ${jobName}`);
     if (!Array.isArray(job.steps)) {
       throw new Error(`job ${jobName} steps must be an array`);
@@ -191,10 +556,6 @@ function expectTaskEntries(
         step.uses === "actions/checkout@v7" ||
         step.uses === "actions/checkout@v6",
     );
-    const taskCommandIndexes = steps.flatMap((step, index) =>
-      step.run === expectedCommand ? [index] : [],
-    );
-
     expect(taskSetupIndexes, `${jobName} pinned Task setup`).toHaveLength(1);
     const taskSetupIndex = taskSetupIndexes[0];
     expect(taskSetupIndex).toBeDefined();
@@ -208,11 +569,19 @@ function expectTaskEntries(
         .version,
     ).toBe("3.51.1");
 
-    expect(taskCommandIndexes, `${jobName} public Task entry`).toHaveLength(1);
-    const taskCommandIndex = taskCommandIndexes[0];
-    expect(taskCommandIndex).toBeDefined();
-    if (taskCommandIndex === undefined) continue;
-    expect(taskSetupIndex).toBeLessThan(taskCommandIndex);
+    for (const expectedCommand of expectedCommands) {
+      const taskCommandIndexes = steps.flatMap((step, index) =>
+        step.run === expectedCommand ? [index] : [],
+      );
+      expect(
+        taskCommandIndexes,
+        `${jobName} public Task entry ${expectedCommand}`,
+      ).toHaveLength(1);
+      const taskCommandIndex = taskCommandIndexes[0];
+      expect(taskCommandIndex).toBeDefined();
+      if (taskCommandIndex === undefined) continue;
+      expect(taskSetupIndex).toBeLessThan(taskCommandIndex);
+    }
 
     const allTaskCommands = steps
       .map((step) => step.run)
@@ -220,10 +589,41 @@ function expectTaskEntries(
         (command): command is string =>
           typeof command === "string" && /^task\s/.test(command),
       );
-    expect(allTaskCommands, `${jobName} exact Task command`).toEqual([
-      expectedCommand,
-    ]);
+    expect(allTaskCommands, `${jobName} exact Task commands`).toEqual(
+      expectedCommands,
+    );
   }
+}
+
+function expectRejectedRunMutations(
+  workflow: LoadedWorkflow,
+  allowlist: Readonly<Record<string, readonly Record<string, unknown>[]>>,
+  jobName: string,
+  expectedCommand: string,
+) {
+  for (const replacement of [
+    `${expectedCommand}\nenv pnpm lint`,
+    `env ${expectedCommand}`,
+    `cd apps/core && ${expectedCommand}`,
+  ]) {
+    expect(() =>
+      expectRunStepAllowlist(
+        workflowWithReplacedRun(
+          workflow,
+          jobName,
+          expectedCommand,
+          replacement,
+        ),
+        allowlist,
+      ),
+    ).toThrow();
+  }
+  expect(() =>
+    expectRunStepAllowlist(
+      workflowWithAdditionalRun(workflow, jobName, "env pnpm lint"),
+      allowlist,
+    ),
+  ).toThrow();
 }
 
 function expectRunStepAllowlist(
