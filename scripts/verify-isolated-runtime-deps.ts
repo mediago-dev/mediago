@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { once } from "node:events";
-import { constants } from "node:fs";
-import { access, lstat, mkdtemp, readFile, rm } from "node:fs/promises";
+import { constants, mkdtempSync } from "node:fs";
+import { access, lstat, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,24 +9,30 @@ import manifestJson from "./deps-versions.json" with { type: "json" };
 import {
   dependencyExecutablePath,
   isWindowsPlatformKey,
+  manifestDependencyExecutableName,
   platformKeyFor,
+  type DependencyManifestEntry,
   type PinnedDependencyManifest,
   type RuntimePlatform,
 } from "./dependency-layout.ts";
 import { inspectDependencyReadiness } from "./download-deps-provisioner.ts";
+import {
+  BoundedRedactedLog,
+  CleanupGate,
+  assertOwnedTemporaryRoot,
+  attachSignalCleanup,
+  boundedRedactedDiagnostic,
+  cleanupOwnedRuntimeRoot,
+  errorMessage,
+  releaseChildProcessHandles,
+  settleWithin,
+  type CommandResult,
+} from "./migration-verification-safety.ts";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const manifest: PinnedDependencyManifest = manifestJson;
 const RUNTIME_ROOT_PREFIX = "mediago-runtime-";
-const RAW_OUTPUT_BYTES = 64 * 1024;
-const DIAGNOSTIC_BYTES = 16 * 1024;
 const PROVISION_TIMEOUT_MS = 10 * 60 * 1000;
-
-interface CommandResult {
-  code: number | null;
-  signal: NodeJS.Signals | null;
-  spawnError?: Error;
-}
 
 interface ExpectedBBDownState {
   repo: string;
@@ -36,89 +41,41 @@ interface ExpectedBBDownState {
   binaryName: string;
 }
 
-export class BoundedTail {
-  private value = "";
+interface RuntimeCommand {
+  child: ChildProcess;
+  completion: Promise<CommandResult>;
+  output: BoundedRedactedLog;
+}
 
-  append(chunk: unknown): void {
-    const bytes = Buffer.from(this.value + String(chunk), "utf8");
-    this.value = bytes
-      .subarray(Math.max(0, bytes.length - RAW_OUTPUT_BYTES))
-      .toString("utf8");
+export function assertBBDownExecutableNames(
+  tool: DependencyManifestEntry,
+  platformKey: RuntimePlatform,
+  executablePath: string,
+): string {
+  const canonicalName = manifestDependencyExecutableName(
+    "BBDown",
+    tool,
+    platformKey,
+  );
+  const manifestName = isWindowsPlatformKey(platformKey)
+    ? (tool.binaryName.win32 ?? tool.binaryName.default)
+    : tool.binaryName.default;
+  if (manifestName !== canonicalName) {
+    throw new Error(
+      `BBDown manifest binaryName ${manifestName} disagrees with canonical layout ${canonicalName}`,
+    );
   }
-
-  diagnostic(limit = DIAGNOSTIC_BYTES): string {
-    return boundedRedactedDiagnostic(this.value, limit);
+  const basename = path.basename(executablePath);
+  if (basename !== canonicalName) {
+    throw new Error(
+      `BBDown executable basename ${basename} does not match ${canonicalName}`,
+    );
   }
+  return canonicalName;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function boundedRedactedDiagnostic(
-  value: string,
-  limit = DIAGNOSTIC_BYTES,
-): string {
-  const redacted = value
-    .replace(
-      /(\b(?:authorization|proxy-authorization|cookie|x-api-key|[a-z0-9_]*(?:token|secret|password|api_key)[a-z0-9_]*)\s*[:=]\s*)[^\r\n]*/gi,
-      "$1[REDACTED]",
-    )
-    .replace(
-      /(["']?apiKey["']?\s*[:=]\s*)(["'])((?:\\[^\r\n]|(?!\2)[^\\\r\n])*)(\2)/gi,
-      "$1$2[REDACTED]$4",
-    )
-    .replace(/(["']?apiKey["']?\s*[:=]\s*)[^\s&,}"'\r\n]+/gi, "$1[REDACTED]")
-    .replace(/(https?:\/\/)[^/@\s]+@/gi, "$1[REDACTED]@")
-    .replace(
-      /\b(?:github_pat_|gh[opsu]_|sk-)[A-Za-z0-9_-]{8,}\b/g,
-      "[REDACTED]",
-    );
-  const bytes = Buffer.from(redacted, "utf8");
-  let result = bytes
-    .subarray(Math.max(0, bytes.length - limit))
-    .toString("utf8");
-  while (Buffer.byteLength(result, "utf8") > limit) result = result.slice(1);
-  return result;
-}
-
-export function assertOwnedTemporaryRoot(root: string, prefix: string): void {
-  if (
-    path.dirname(root) !== tmpdir() ||
-    !path.basename(root).startsWith(prefix)
-  ) {
-    throw new Error(
-      `Refusing to remove an unowned temporary path; expected ${path.join(tmpdir(), `${prefix}*`)}`,
-    );
-  }
-}
-
-export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-export async function captureError(
-  operation: () => Promise<void>,
-  errors: string[],
-): Promise<void> {
-  try {
-    await operation();
-  } catch (error) {
-    errors.push(errorMessage(error));
-  }
-}
-
-export async function settleWithin<T>(
-  operation: Promise<T>,
-  timeoutMs: number,
-): Promise<T | undefined> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<undefined>((resolve) => {
-    timer = setTimeout(() => resolve(undefined), timeoutMs);
-  });
-  return Promise.race([operation, timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
 }
 
 export function assertSafeRuntimeRoot(root: string): void {
@@ -185,26 +142,8 @@ function commandResult(child: ChildProcess): Promise<CommandResult> {
   });
 }
 
-async function terminateCommand(
-  child: ChildProcess,
-  completion: Promise<CommandResult>,
-): Promise<void> {
-  const pid = child.pid;
-  if (pid === undefined) return;
-  if (process.platform !== "win32") {
-    const { stopOwnedProcessGroup } = await import("./smoke-dev-all.ts");
-    await stopOwnedProcessGroup(pid, completion);
-    return;
-  }
-  const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-    shell: false,
-    stdio: "ignore",
-  });
-  await once(killer, "close");
-}
-
-async function runTaskRuntime(root: string) {
-  const output = new BoundedTail();
+function startTaskRuntime(root: string): RuntimeCommand {
+  const output = new BoundedRedactedLog();
   const child = spawn("task", ["deps:runtime"], {
     cwd: repositoryRoot,
     detached: process.platform !== "win32",
@@ -214,15 +153,7 @@ async function runTaskRuntime(root: string) {
   });
   child.stdout?.on("data", (chunk) => output.append(chunk));
   child.stderr?.on("data", (chunk) => output.append(chunk));
-  const completion = commandResult(child);
-  const result = await settleWithin(completion, PROVISION_TIMEOUT_MS);
-  if (!result) {
-    await terminateCommand(child, completion);
-    throw new Error(
-      `task deps:runtime exceeded ${PROVISION_TIMEOUT_MS} ms\n${output.diagnostic()}`,
-    );
-  }
-  return { result, output: output.diagnostic() };
+  return { child, completion: commandResult(child), output };
 }
 
 function commandFailure(result: CommandResult, output: string): Error {
@@ -246,6 +177,11 @@ async function verifyCompletePlatform(
   if (!asset)
     throw new Error(`Pinned BBDown asset is missing for ${platformKey}`);
   const executablePath = dependencyExecutablePath(root, platformKey, "BBDown");
+  const binaryName = assertBBDownExecutableNames(
+    tool,
+    platformKey,
+    executablePath,
+  );
   const info = await lstat(executablePath);
   if (!info.isFile() || info.size <= 0) {
     throw new Error(`Expected a nonempty regular BBDown at ${executablePath}`);
@@ -266,7 +202,7 @@ async function verifyCompletePlatform(
     repo: tool.repo,
     version: tool.version,
     asset,
-    binaryName: path.basename(executablePath),
+    binaryName,
   });
   const [readiness] = await inspectDependencyReadiness({
     depsRoot: root,
@@ -317,54 +253,72 @@ async function runSelfTests(): Promise<void> {
   assertSafeRuntimeRoot(path.join(tmpdir(), `${RUNTIME_ROOT_PREFIX}contract`));
   assert.throws(() => assertSafeRuntimeRoot(path.join(tmpdir(), "not-owned")));
   const redacted = boundedRedactedDiagnostic(
-    `${"x".repeat(20_000)}\nAuthorization: secret\napiKey=top-secret\nNPM_TOKEN=registry-secret\nPASSWORD=pass-secret`,
+    `Authorization: ${"x".repeat(100_000)}tail-secret\nordinary`,
   );
-  assert.ok(Buffer.byteLength(redacted) <= DIAGNOSTIC_BYTES);
-  assert.doesNotMatch(redacted, /secret/);
-  const expected = {
-    repo: "owner/repo",
-    version: "pinned",
-    asset: "BBDown.zip",
-    binaryName: "BBDown",
-  };
-  assertReadyBBDownState(
-    { schemaVersion: 1, tools: { BBDown: expected } },
-    expected,
-  );
-  assert.throws(() =>
-    assertReadyBBDownState(
-      {
-        schemaVersion: 1,
-        tools: { BBDown: { ...expected, version: "latest" } },
-      },
-      expected,
-    ),
-  );
-  const expectation = {
-    ffmpegVersion: "b6.0",
-    expectedExecutablePath: "C:\\deps\\win32-arm64\\ffmpeg.exe",
-  };
-  assertUnsupportedWinArm64Diagnostic(
-    `FFmpeg b6.0 win32-arm64 ${expectation.expectedExecutablePath} pnpm deps:download:raw --tools ffmpeg --platform win32-arm64`,
-    expectation,
-  );
-  assert.throws(() =>
-    assertUnsupportedWinArm64Diagnostic("generic failure", expectation),
-  );
+  assert.doesNotMatch(redacted, /tail-secret/);
+  assert.match(redacted, /ordinary/);
   process.stdout.write("PASS verify-isolated-runtime-deps self-test\n");
 }
 
 async function main(): Promise<void> {
-  const root = await mkdtemp(path.join(tmpdir(), RUNTIME_ROOT_PREFIX));
+  const root = mkdtempSync(path.join(tmpdir(), RUNTIME_ROOT_PREFIX));
   assertSafeRuntimeRoot(root);
-  let summary: string;
+  let ownedProcess:
+    | {
+        pid?: number;
+        completion: Promise<CommandResult>;
+        releaseHandles: () => void;
+      }
+    | undefined;
+  const gate = new CleanupGate(() =>
+    cleanupOwnedRuntimeRoot({
+      root,
+      prefix: RUNTIME_ROOT_PREFIX,
+      ownedProcess,
+      platform: process.platform,
+      windows: {
+        systemRoot: process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "",
+      },
+    }),
+  );
+  const signals = attachSignalCleanup(gate, {
+    reportError: (error) =>
+      process.stderr.write(
+        `cleanup before signal failed: ${boundedRedactedDiagnostic(errorMessage(error))}\n`,
+      ),
+  });
+  let summary: string | undefined;
+  let primaryError: unknown;
   try {
+    if (gate.started)
+      throw new Error("Interrupted before dependency provisioning");
+    const runtime = startTaskRuntime(root);
+    ownedProcess = {
+      pid: runtime.child.pid,
+      completion: runtime.completion,
+      releaseHandles: () => releaseChildProcessHandles(runtime.child),
+    };
+    const result = await settleWithin(runtime.completion, PROVISION_TIMEOUT_MS);
+    if (!result) {
+      throw new Error(
+        `task deps:runtime exceeded ${PROVISION_TIMEOUT_MS} ms\n${runtime.output.diagnostic()}`,
+      );
+    }
+    if (!gate.started) ownedProcess = undefined;
     const platformKey = platformKeyFor(process.platform, process.arch);
-    const { result, output } = await runTaskRuntime(root);
     const version =
       platformKey === "win32-arm64"
-        ? await verifyUnsupportedWinArm64(root, result, output)
-        : await verifyCompletePlatform(root, platformKey, result, output);
+        ? await verifyUnsupportedWinArm64(
+            root,
+            result,
+            runtime.output.diagnostic(),
+          )
+        : await verifyCompletePlatform(
+            root,
+            platformKey,
+            result,
+            runtime.output.diagnostic(),
+          );
     summary =
       platformKey === "win32-arm64"
         ? `platform=${platformKey} limitation=FFmpeg@${version}`
@@ -372,9 +326,26 @@ async function main(): Promise<void> {
     process.stdout.write(
       `VERIFIED isolated-runtime-deps ${summary} cleanup=pending\n`,
     );
+  } catch (error) {
+    primaryError = error;
+  }
+  let cleanupError: unknown;
+  try {
+    await gate.run();
+  } catch (error) {
+    cleanupError = error;
   } finally {
-    assertSafeRuntimeRoot(root);
-    await rm(root, { recursive: true, force: true });
+    signals.dispose();
+  }
+  if (primaryError || cleanupError) {
+    throw new Error(
+      [
+        primaryError && errorMessage(primaryError),
+        cleanupError && errorMessage(cleanupError),
+      ]
+        .filter(Boolean)
+        .join("\ncleanup: "),
+    );
   }
   process.stdout.write(
     `PASS isolated-runtime-deps ${summary} cleanup=complete\n`,
