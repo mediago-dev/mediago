@@ -13,6 +13,8 @@ export const zh = {
   fileNotExist: "文件不存在",
   downloadSuccess: "成功",
   downloadFailed: "失败",
+  dependencyMissing:
+    "缺少 {{dependency}} 依赖。请运行 `task setup`，并使用 `task doctor` 检查环境。",
   downloadPause: "暂停",
   downloading: "下载中",
   liveResource: "直播资源",

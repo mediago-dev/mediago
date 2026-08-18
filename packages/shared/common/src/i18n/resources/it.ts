@@ -13,6 +13,8 @@ export const it = {
   fileNotExist: "File non trovato",
   downloadSuccess: "Download completato",
   downloadFailed: "Download non riuscito",
+  dependencyMissing:
+    "Manca {{dependency}}. Esegui `task setup` e verifica con `task doctor`.",
   downloadPause: "Download in pausa",
   downloading: "Download",
   liveResource: "Stream live",

@@ -3,6 +3,10 @@ import type { DownloadEvent } from "@mediago/shared-common";
 import { http, isWeb } from "@/utils";
 import { useDownloadStore } from "@/store/download";
 import { useAppStore } from "@/store/app";
+import {
+  parseDownloadEventPayload,
+  type PersistedDownloadEventType,
+} from "./download-event-payload";
 
 type Callback = (...args: unknown[]) => void;
 type DownloadEventCallback = (_event: null, data: DownloadEvent) => void;
@@ -14,6 +18,13 @@ let stopWatchingApiKey: (() => void) | null = null;
 
 const downloadListeners = new Set<DownloadEventCallback>();
 const configListeners = new Set<Callback>();
+const INVALID_DOWNLOAD_EVENT_WARNING = "Ignored invalid download event";
+
+function logDownloadProtocolWarning(message: string) {
+  // The UI has no logger facade; keep this warning fixed and payload-free.
+  // eslint-disable-next-line no-console
+  console.warn(message);
+}
 
 let pollingTimer: ReturnType<typeof setTimeout> | null = null;
 let pollingGeneration = 0;
@@ -38,6 +49,59 @@ function watchApiKey() {
     if (!currentCoreUrl || state.apiKey === connectedApiKey) return;
     initGoEvents(currentCoreUrl);
   });
+}
+
+export interface DownloadSseEventSource {
+  addEventListener(
+    name: string,
+    listener: (event: MessageEvent<string>) => void,
+  ): void;
+}
+
+export interface DownloadSseCollaborators {
+  dispatchDownload: (event: DownloadEvent) => void;
+  startProgressPolling: () => void;
+  stopProgressPollingIfIdle: () => unknown;
+  protocolWarning: (message: string) => void;
+}
+
+const DOWNLOAD_SSE_EVENTS = [
+  ["download-start", "start", "start"],
+  ["download-success", "success", "stop-if-idle"],
+  ["download-failed", "failed", "stop-if-idle"],
+  ["download-stop", "stopped", "stop-if-idle"],
+] as const satisfies ReadonlyArray<
+  readonly [string, PersistedDownloadEventType, "start" | "stop-if-idle"]
+>;
+
+export function registerDownloadSseListeners(
+  eventSource: DownloadSseEventSource,
+  collaborators: DownloadSseCollaborators,
+) {
+  for (const [eventName, eventType, pollingTransition] of DOWNLOAD_SSE_EVENTS) {
+    eventSource.addEventListener(eventName, (event) => {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        collaborators.protocolWarning(INVALID_DOWNLOAD_EVENT_WARNING);
+        return;
+      }
+
+      const parsedEvent = parseDownloadEventPayload(eventType, payload);
+      if (!parsedEvent) {
+        collaborators.protocolWarning(INVALID_DOWNLOAD_EVENT_WARNING);
+        return;
+      }
+
+      collaborators.dispatchDownload(parsedEvent);
+      if (pollingTransition === "start") {
+        collaborators.startProgressPolling();
+      } else {
+        void collaborators.stopProgressPollingIfIdle();
+      }
+    });
+  }
 }
 
 /**
@@ -94,31 +158,11 @@ export function initGoEvents(coreUrl: string) {
     }
   });
 
-  es.addEventListener("download-start", (e) => {
-    const payload = JSON.parse(e.data);
-    dispatchDownload({ type: "start", data: { id: Number(payload.id) } });
-    startProgressPolling();
-  });
-
-  es.addEventListener("download-success", (e) => {
-    const payload = JSON.parse(e.data);
-    dispatchDownload({ type: "success", data: { id: Number(payload.id) } });
-    stopProgressPollingIfIdle();
-  });
-
-  es.addEventListener("download-failed", (e) => {
-    const payload = JSON.parse(e.data);
-    dispatchDownload({
-      type: "failed",
-      data: { id: Number(payload.id), error: payload.error },
-    });
-    stopProgressPollingIfIdle();
-  });
-
-  es.addEventListener("download-stop", (e) => {
-    const payload = JSON.parse(e.data);
-    dispatchDownload({ type: "stopped", data: { id: Number(payload.id) } });
-    stopProgressPollingIfIdle();
+  registerDownloadSseListeners(es, {
+    dispatchDownload,
+    startProgressPolling,
+    stopProgressPollingIfIdle,
+    protocolWarning: logDownloadProtocolWarning,
   });
 
   es.addEventListener("config-changed", (e) => {

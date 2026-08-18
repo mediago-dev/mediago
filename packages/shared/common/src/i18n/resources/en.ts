@@ -13,6 +13,8 @@ export const en = {
   fileNotExist: "File not found",
   downloadSuccess: "Download complete",
   downloadFailed: "Download failed",
+  dependencyMissing:
+    "{{dependency}} is missing. Run `task setup` and check with `task doctor`.",
   downloadPause: "Download paused",
   downloading: "Downloading",
   liveResource: "Live stream",

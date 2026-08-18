@@ -10,12 +10,15 @@ import {
   type DownloadTask,
 } from "@mediago/shared-common";
 import { useCallback, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import useSWR from "swr";
 import { useShallow } from "zustand/react/shallow";
 import { downloadStoreSelector, useDownloadStore } from "@/store/download";
 import { getDownloadTasks as fetchDownloadTasks } from "@/api/download-task";
 import { onDownloadEvent } from "@/api/events";
 import { useHomeStore } from "@/store/home";
+import { handleDownloadFailure } from "./download-failure-handler";
 
 /**
  * Extended Download Task with real-time details
@@ -40,6 +43,7 @@ const isProgressEvent = (
 ): obj is DownloadEvent<DownloadProgress[]> => obj.type === "progress";
 
 export function useTasks(filter: DownloadFilter = DownloadFilter.list) {
+  const { t } = useTranslation();
   const { setEvents, eventsMap } = useDownloadStore(
     useShallow(downloadStoreSelector),
   );
@@ -95,7 +99,11 @@ export function useTasks(filter: DownloadFilter = DownloadFilter.list) {
       }
 
       if (isFailedEvent(eventData)) {
-        mutate();
+        void handleDownloadFailure(eventData, {
+          translate: (key, options) => t(key, options),
+          notify: toast.error,
+          revalidate: mutate,
+        });
         return;
       }
 
@@ -157,7 +165,7 @@ export function useTasks(filter: DownloadFilter = DownloadFilter.list) {
         );
       }
     },
-    [mutate, setEvents],
+    [mutate, setEvents, t],
   );
 
   // Subscribe to Go SSE download events
