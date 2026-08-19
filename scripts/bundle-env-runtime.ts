@@ -105,20 +105,31 @@ function isPnpmSelfUpdateEntrypoint(
       ? segments.map((segment) => segment.toLowerCase())
       : segments;
   const version = segments[2];
-  if (
-    names[0] !== ".tools" ||
-    names[1] !== "pnpm" ||
-    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
-      version ?? "",
-    )
-  ) {
-    return false;
-  }
-
   const suffix = names.slice(3).join("/");
-  return (
-    suffix === "node_modules/pnpm/bin/pnpm.cjs" || suffix === "bin/pnpm.cjs"
-  );
+  const toolsEntrypoint =
+    names[0] === ".tools" &&
+    names[1] === "pnpm" &&
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+      version ?? "",
+    ) &&
+    ["node_modules/pnpm/bin/pnpm.cjs", "bin/pnpm.cjs"].includes(suffix);
+  const isolatedGlobalEntrypoint =
+    names[0] === "global" &&
+    names[1] === "v11" &&
+    /^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$/.test(segments[2] ?? "") &&
+    suffix === "node_modules/pnpm/bin/pnpm.cjs";
+  const isolatedStoreEntrypoint =
+    names[0] === "store" &&
+    names[1] === "v11" &&
+    names[2] === "links" &&
+    names[3] === "@" &&
+    names[4] === "pnpm" &&
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+      segments[5] ?? "",
+    ) &&
+    /^[0-9a-f]{64}$/i.test(segments[6] ?? "") &&
+    names.slice(7).join("/") === "node_modules/pnpm/bin/pnpm.cjs";
+  return toolsEntrypoint || isolatedGlobalEntrypoint || isolatedStoreEntrypoint;
 }
 
 export async function resolvePnpmEntrypoint(options: {

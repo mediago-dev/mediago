@@ -150,6 +150,121 @@ describe("bundle environment pnpm runtime", () => {
     },
   );
 
+  it("resolves the pnpm/action-setup v6 isolated global shim target", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "mediago-action-setup-global-pnpm-"),
+    );
+    const pnpmHome = path.join(root, "node_modules", ".bin");
+    const shimDirectory = path.join(pnpmHome, "bin");
+    const entrypoint = path.join(
+      pnpmHome,
+      "global",
+      "v11",
+      "2bf86f-1a0185ad03b-3b4011fc01e6c43b",
+      "node_modules",
+      "pnpm",
+      "bin",
+      "pnpm.cjs",
+    );
+    const storeEntrypoint = path.join(
+      pnpmHome,
+      "store",
+      "v11",
+      "links",
+      "@",
+      "pnpm",
+      "10.15.0",
+      "359dc289e609e4780d0691c6504a31a5071af210f72dae21e58856578c7ee4bf",
+      "node_modules",
+      "pnpm",
+      "bin",
+      "pnpm.cjs",
+    );
+    const shim = path.join(shimDirectory, "pnpm");
+    try {
+      await Promise.all([
+        fs.mkdir(path.dirname(storeEntrypoint), { recursive: true }),
+        fs.mkdir(path.dirname(path.dirname(path.dirname(entrypoint))), {
+          recursive: true,
+        }),
+        fs.mkdir(shimDirectory, { recursive: true }),
+      ]);
+      await fs.symlink(
+        path.dirname(path.dirname(storeEntrypoint)),
+        path.dirname(path.dirname(entrypoint)),
+      );
+      await Promise.all([
+        fs.writeFile(storeEntrypoint, "module.exports = {};\n"),
+        fs.writeFile(
+          shim,
+          [
+            "#!/bin/sh",
+            `exec node "${entrypoint}" "$@"`,
+            `# cmd-shim-target=${entrypoint}`,
+            "",
+          ].join("\n"),
+        ),
+      ]);
+
+      await expect(
+        resolvePnpmEntrypoint({
+          environment: { PATH: shimDirectory, PNPM_HOME: pnpmHome },
+          platform: "linux",
+          probe: probePnpmPath,
+        }),
+      ).resolves.toBe(storeEntrypoint);
+    } finally {
+      await fs.rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects an isolated global pnpm shim whose entrypoint escapes through a symlink", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "mediago-untrusted-global-pnpm-shim-"),
+    );
+    const pnpmHome = path.join(root, "pnpm-home");
+    const shimDirectory = path.join(pnpmHome, "bin");
+    const declaredEntrypoint = path.join(
+      pnpmHome,
+      "global",
+      "v11",
+      "2bf86f-1a0185ad03b-3b4011fc01e6c43b",
+      "node_modules",
+      "pnpm",
+      "bin",
+      "pnpm.cjs",
+    );
+    const outsideEntrypoint = path.join(root, "payload.cjs");
+    const shim = path.join(shimDirectory, "pnpm");
+    try {
+      await Promise.all([
+        fs.mkdir(path.dirname(declaredEntrypoint), { recursive: true }),
+        fs.mkdir(shimDirectory, { recursive: true }),
+      ]);
+      await fs.writeFile(outsideEntrypoint, "module.exports = {};\n");
+      await fs.symlink(outsideEntrypoint, declaredEntrypoint);
+      await fs.writeFile(
+        shim,
+        [
+          "#!/bin/sh",
+          `# cmd-shim-target=${declaredEntrypoint}`,
+          "exit 0",
+          "",
+        ].join("\n"),
+      );
+
+      await expect(
+        resolvePnpmEntrypoint({
+          environment: { PATH: shimDirectory, PNPM_HOME: pnpmHome },
+          platform: "linux",
+          probe: probePnpmPath,
+        }),
+      ).rejects.toThrow(/Unable to resolve.*pnpm/i);
+    } finally {
+      await fs.rm(root, { force: true, recursive: true });
+    }
+  });
+
   it.each(["absolute", "relative"] as const)(
     "rejects a pnpm shim with an %s target outside its installation tree",
     async (targetKind) => {
