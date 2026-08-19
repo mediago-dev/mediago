@@ -519,10 +519,19 @@ doctorInjectionTest(
 );
 
 test("doctor continues every diagnostic when pnpm is unavailable", () => {
-  const result = runTask(rootTaskfilePath, "doctor", {
-    MEDIAGO_DEPS_ROOT: createTemporaryDirectory(),
-    PATH: createNodeOnlyPath(),
-  });
+  const inheritedPnpmHome = process.env.PNPM_HOME;
+  process.env.PNPM_HOME = path.dirname(resolveExecutable("pnpm"));
+  let result: ReturnType<typeof runTask>;
+  try {
+    result = runTask(rootTaskfilePath, "doctor", {
+      MEDIAGO_DEPS_ROOT: createTemporaryDirectory(),
+      PATH: createNodeOnlyPath(),
+      PNPM_HOME: "",
+    });
+  } finally {
+    if (inheritedPnpmHome === undefined) delete process.env.PNPM_HOME;
+    else process.env.PNPM_HOME = inheritedPnpmHome;
+  }
 
   expect(result.status).not.toBe(0);
   expect(result.output).toContain("Task 3.51.1");
