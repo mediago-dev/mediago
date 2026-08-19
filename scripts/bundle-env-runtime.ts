@@ -10,7 +10,9 @@ export {
   terminateProcessTree,
 } from "./bundle-env-process-tree.ts";
 
-export type PnpmProbeResult = { isFile: boolean; realPath: string } | undefined;
+export type PnpmProbeResult =
+  | { isFile: boolean; realPath: string; shimTarget?: string }
+  | undefined;
 
 type PlatformPath = typeof path.posix;
 
@@ -33,6 +35,26 @@ async function resolveJavaScriptEntrypoint(
   const shim = await probe(candidate);
   if (!shim?.isFile || !pathApi.isAbsolute(shim.realPath)) return undefined;
   if (isJavaScriptEntrypoint(shim.realPath, pathApi)) return shim.realPath;
+
+  if (shim.shimTarget) {
+    const target = pathApi.isAbsolute(shim.shimTarget)
+      ? shim.shimTarget
+      : pathApi.resolve(pathApi.dirname(shim.realPath), shim.shimTarget);
+    if (isPnpmSelfUpdateEntrypoint(shim.realPath, target, pathApi)) {
+      const declaredEntrypoint = await probe(target);
+      if (
+        declaredEntrypoint?.isFile &&
+        isJavaScriptEntrypoint(declaredEntrypoint.realPath, pathApi) &&
+        isPnpmSelfUpdateEntrypoint(
+          shim.realPath,
+          declaredEntrypoint.realPath,
+          pathApi,
+        )
+      ) {
+        return declaredEntrypoint.realPath;
+      }
+    }
+  }
 
   const directories = [
     pathApi.dirname(shim.realPath),
@@ -62,6 +84,41 @@ async function resolveJavaScriptEntrypoint(
     }
   }
   return undefined;
+}
+
+function isPnpmSelfUpdateEntrypoint(
+  shimPath: string,
+  entrypoint: string,
+  pathApi: PlatformPath,
+): boolean {
+  const shimDirectory = pathApi.dirname(shimPath);
+  const pnpmHome =
+    pathApi.basename(shimDirectory).toLowerCase() === "bin"
+      ? pathApi.dirname(shimDirectory)
+      : shimDirectory;
+  const relative = pathApi.relative(pnpmHome, entrypoint);
+  if (!relative || pathApi.isAbsolute(relative)) return false;
+
+  const segments = relative.split(pathApi.sep);
+  const names =
+    pathApi === path.win32
+      ? segments.map((segment) => segment.toLowerCase())
+      : segments;
+  const version = segments[2];
+  if (
+    names[0] !== ".tools" ||
+    names[1] !== "pnpm" ||
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+      version ?? "",
+    )
+  ) {
+    return false;
+  }
+
+  const suffix = names.slice(3).join("/");
+  return (
+    suffix === "node_modules/pnpm/bin/pnpm.cjs" || suffix === "bin/pnpm.cjs"
+  );
 }
 
 export async function resolvePnpmEntrypoint(options: {
@@ -143,10 +200,35 @@ export async function probePnpmPath(
   try {
     const realPath = await fs.realpath(candidate);
     const stat = await fs.lstat(realPath);
-    return { isFile: stat.isFile(), realPath };
+    const isFile = stat.isFile();
+    return {
+      isFile,
+      realPath,
+      ...(isFile && !/\.(?:c)?js$/i.test(realPath)
+        ? { shimTarget: await readPnpmShimTarget(realPath) }
+        : {}),
+    };
   } catch (error) {
     if (isErrno(error, "ENOENT")) return undefined;
     throw error;
+  }
+}
+
+async function readPnpmShimTarget(
+  filename: string,
+): Promise<string | undefined> {
+  const handle = await fs.open(filename, "r");
+  try {
+    const buffer = Buffer.alloc(8 * 1024);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const marker = buffer
+      .subarray(0, bytesRead)
+      .toString("utf8")
+      .match(/^#\s*cmd-shim-target=([^\r\n]+)$/m)?.[1]
+      ?.trim();
+    return marker && !marker.includes("\0") ? marker : undefined;
+  } finally {
+    await handle.close();
   }
 }
 

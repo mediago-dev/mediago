@@ -14,6 +14,10 @@ export interface FakeBilibiliDependencyLeaf {
   bbdownArgumentsPath: string;
 }
 
+export interface FakeBilibiliDependencyOptions {
+  provisionedAria2Path?: string;
+}
+
 /**
  * Create an isolated Core dependency leaf for the extension E2E.
  *
@@ -23,6 +27,7 @@ export interface FakeBilibiliDependencyLeaf {
  */
 export async function createFakeBilibiliDependencyLeaf(
   runtimeRoot: string,
+  options: FakeBilibiliDependencyOptions = {},
 ): Promise<FakeBilibiliDependencyLeaf> {
   if (process.platform !== "linux" || process.arch !== "x64") {
     throw new Error(
@@ -37,10 +42,13 @@ export async function createFakeBilibiliDependencyLeaf(
     "bbdown-argv.jsonl",
   );
   const platformKey = platformKeyFor(process.platform, process.arch);
-  const provisionedAria2 = dependencyExecutablePath(
-    resolveDepsRoot(REPOSITORY_ROOT),
-    platformKey,
-    "aria2",
+  const provisionedAria2 = path.resolve(
+    options.provisionedAria2Path ??
+      dependencyExecutablePath(
+        resolveDepsRoot(REPOSITORY_ROOT),
+        platformKey,
+        "aria2",
+      ),
   );
 
   await mkdir(depsDirectory, { recursive: true });

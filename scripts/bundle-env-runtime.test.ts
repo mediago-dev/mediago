@@ -6,6 +6,7 @@ import {
   createPnpmLauncher,
   createWindowsTreeKillCommand,
   filesContainingSentinel,
+  probePnpmPath,
   resolvePnpmEntrypoint,
 } from "./bundle-env-runtime.ts";
 
@@ -94,6 +95,99 @@ describe("bundle environment pnpm runtime", () => {
     expect(entrypoint).toBe(pathEntrypoint);
     expect(probed).not.toContain(`${staleHome}\\pnpm.cmd`);
   });
+
+  it.each(["relative", "absolute"] as const)(
+    "resolves the pnpm/action-setup v6 %s self-update shim target",
+    async (targetKind) => {
+      const root = await fs.mkdtemp(
+        path.join(os.tmpdir(), "mediago-action-setup-pnpm-"),
+      );
+      const pnpmHome = path.join(root, "node_modules", ".bin");
+      const shimDirectory = path.join(pnpmHome, "bin");
+      const entrypoint = path.join(
+        pnpmHome,
+        ".tools",
+        "pnpm",
+        "10.15.0",
+        "node_modules",
+        "pnpm",
+        "bin",
+        "pnpm.cjs",
+      );
+      const shim = path.join(shimDirectory, "pnpm");
+      const shimTarget =
+        targetKind === "absolute"
+          ? entrypoint
+          : "../.tools/pnpm/10.15.0/node_modules/pnpm/bin/pnpm.cjs";
+      try {
+        await Promise.all([
+          fs.mkdir(path.dirname(entrypoint), { recursive: true }),
+          fs.mkdir(shimDirectory, { recursive: true }),
+        ]);
+        await Promise.all([
+          fs.writeFile(entrypoint, "module.exports = {};\n"),
+          fs.writeFile(
+            shim,
+            [
+              "#!/bin/sh",
+              `# cmd-shim-target=${shimTarget}`,
+              'exec node "$(dirname "$0")/../.tools/pnpm/10.15.0/node_modules/pnpm/bin/pnpm.cjs" "$@"',
+              "",
+            ].join("\n"),
+          ),
+        ]);
+
+        await expect(
+          resolvePnpmEntrypoint({
+            environment: { PATH: shimDirectory, PNPM_HOME: pnpmHome },
+            platform: "linux",
+            probe: probePnpmPath,
+          }),
+        ).resolves.toBe(entrypoint);
+      } finally {
+        await fs.rm(root, { force: true, recursive: true });
+      }
+    },
+  );
+
+  it.each(["absolute", "relative"] as const)(
+    "rejects a pnpm shim with an %s target outside its installation tree",
+    async (targetKind) => {
+      const root = await fs.mkdtemp(
+        path.join(os.tmpdir(), "mediago-untrusted-pnpm-shim-"),
+      );
+      const pnpmHome = path.join(root, "pnpm-home");
+      const shimDirectory = path.join(pnpmHome, "bin");
+      const shim = path.join(shimDirectory, "pnpm");
+      const outsideEntrypoint = path.join(root, "payload.cjs");
+      const shimTarget =
+        targetKind === "absolute"
+          ? outsideEntrypoint
+          : path.relative(shimDirectory, outsideEntrypoint);
+      try {
+        await fs.mkdir(shimDirectory, { recursive: true });
+        await Promise.all([
+          fs.writeFile(outsideEntrypoint, "module.exports = {};\n"),
+          fs.writeFile(
+            shim,
+            ["#!/bin/sh", `# cmd-shim-target=${shimTarget}`, "exit 0", ""].join(
+              "\n",
+            ),
+          ),
+        ]);
+
+        await expect(
+          resolvePnpmEntrypoint({
+            environment: { PATH: shimDirectory, PNPM_HOME: pnpmHome },
+            platform: "linux",
+            probe: probePnpmPath,
+          }),
+        ).rejects.toThrow(/Unable to resolve.*pnpm/i);
+      } finally {
+        await fs.rm(root, { force: true, recursive: true });
+      }
+    },
+  );
 
   it("constructs a Node-only launcher on simulated Windows", () => {
     expect(
