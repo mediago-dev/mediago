@@ -13,7 +13,7 @@ The product behavior is out of scope. This change only makes the automated tests
 
 ### Electron locator
 
-Scope the `New download` lookup to the page's `main` landmark before clicking it. This excludes the responsive control owned by `AppLayout` and selects an actionable control rendered by the current route. Do not add product-only test IDs or change UI markup.
+Scope the `New download` lookup to the page's `main` landmark, then select the first route-owned match before clicking it. The route can render both its header action and its empty-state action, so the post-scope `.first()` is intentional; the scope excludes the responsive control owned by `AppLayout`, which is outside `main` and hidden at the CI viewport. Do not add product-only test IDs or change UI markup.
 
 ### Controlled Bilibili fixture
 
@@ -28,10 +28,17 @@ The quiet page remains local, preserving the existing no-external-network E2E po
 
 ## Testing
 
-Add focused contracts that fail against the current ambiguous locator and badge-only fixture. After the minimal test-only changes:
+Add focused contracts that fail against the current ambiguous locator and badge-only fixture. The contracts must prove that:
+
+- the Electron locator is scoped to `main` before its intentional `.first()` disambiguation;
+- the quiet loopback document contains and emits no media fetch;
+- readiness rejects a tab that has badge `"1"` but only a direct-media source;
+- readiness checks the returned tab ID and requires exactly the controlled Bilibili source.
+
+After the minimal test-only changes:
 
 - run the focused contracts;
-- run the two previously failing Playwright cases with `--repeat-each=10` and one worker;
+- run `downloads a direct MP4 through Electron and shuts down Core` and `rejects a Bilibili import with wrong response count` together with `--repeat-each=10 --workers=1`;
 - run the complete Xvfb-backed E2E entry when its required ports are available;
 - run E2E type checking, formatting, linting, and diff checks.
 
