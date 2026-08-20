@@ -371,7 +371,7 @@ Use `@superpowers:verification-before-completion` before claiming success.
 - Verify: `tests/e2e/support/test-page.ts`
 - Verify: `tests/e2e/extension/capture-and-download.spec.ts`
 
-- [ ] **Step 1: Run focused support tests**
+- [x] **Step 1: Run focused support tests**
 
 ```bash
 pnpm exec vitest run tests/e2e/support/test-page.test.ts
@@ -379,7 +379,7 @@ pnpm exec vitest run tests/e2e/support/test-page.test.ts
 
 Expected: 1 file and 4 tests pass.
 
-- [ ] **Step 2: Run the dedicated E2E type check**
+- [x] **Step 2: Run the dedicated E2E type check**
 
 ```bash
 pnpm type:check:e2e
@@ -387,7 +387,7 @@ pnpm type:check:e2e
 
 Expected: exit 0.
 
-- [ ] **Step 3: Run repository quality checks**
+- [x] **Step 3: Run repository quality checks**
 
 ```bash
 pnpm check
@@ -396,7 +396,7 @@ pnpm check
 Expected: exit 0. Existing lint warnings are acceptable only when the command
 reports zero errors and no warning originates from the changed files.
 
-- [ ] **Step 4: Run the normal full test suite**
+- [x] **Step 4: Run the normal full test suite**
 
 ```bash
 pnpm test
@@ -404,7 +404,7 @@ pnpm test
 
 Expected: all Go and Vitest tests pass, including the new support tests.
 
-- [ ] **Step 5: Run the CI-equivalent three-surface Playwright suite**
+- [x] **Step 5: Run the CI-equivalent three-surface Playwright suite**
 
 ```bash
 task ci:test:e2e
@@ -422,7 +422,7 @@ It retains the Taskfile dependency download, Core build, surface build,
 Chromium install, and test-profile environment. Report this environmental
 substitution explicitly.
 
-- [ ] **Step 6: Audit committed and uncommitted scope from the implementation baseline**
+- [x] **Step 6: Audit committed and uncommitted scope from the implementation baseline**
 
 ```bash
 git diff --check c2ed244f..HEAD
@@ -439,7 +439,7 @@ contains only the neutral route, its four focused tests, and two controlled
 caller substitutions. Only this plan may remain modified by final checkbox
 updates.
 
-- [ ] **Step 7: Commit the completed verification record**
+- [x] **Step 7: Commit the completed verification record**
 
 ```bash
 git add docs/superpowers/plans/2026-08-20-pr-718-bilibili-e2e-race.md
@@ -451,7 +451,7 @@ git commit -m "docs: record Bilibili E2E race verification"
 
 Expected: only the plan is staged and committed.
 
-- [ ] **Step 8: Confirm the final worktree state**
+- [x] **Step 8: Confirm the final worktree state**
 
 ```bash
 git status --short --branch
