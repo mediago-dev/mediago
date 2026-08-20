@@ -127,6 +127,9 @@ export default class ElectronApp {
       const client = this.downloaderServer.getClient();
       const { data: config } = await client.getConfig();
       this.configCache.seed(config as any);
+      if (config.blockAds) {
+        this.webviewService.setBlocking(true);
+      }
       updaterConfig = {
         allowBeta: Boolean(config.allowBeta),
         autoUpgrade: config.autoUpgrade !== false,

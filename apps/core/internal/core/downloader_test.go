@@ -105,6 +105,9 @@ func TestRedactSensitiveArgs(t *testing.T) {
 		"--proxy", "http:////user:malformed-proxy-secret@host",
 		"--add-header", "User-Agent: MediaGo-Visible",
 		"--header=User-Agent: BuiltIn-Visible",
+		"--add-header", "X-API-Key: api-key-visible-value",
+		"--header=X-Auth-Token: auth-token-visible-value",
+		"--add-header", "X-Custom_Header: custom-header-visible-value",
 		"--proxy", "https://proxy.example:8443",
 		"--proxy=https://proxy.example:8443/path@segment?email=user@example.com",
 	}
@@ -119,21 +122,59 @@ func TestRedactSensitiveArgs(t *testing.T) {
 		}
 		return false
 	}
-	countSubstring := func(values []string, substring string) int {
-		count := 0
-		for _, value := range values {
-			if strings.Contains(value, substring) {
-				count++
-			}
-		}
-		return count
-	}
-
 	if containsSubstring(redacted, "secret") {
 		t.Fatal("sensitive argument remained visible")
 	}
-	if got := countSubstring(redacted, "[REDACTED]"); got != 26 {
-		t.Fatal("sensitive arguments were not redacted exactly once")
+	for _, headerValue := range []string{
+		"cookie-header-separate-secret",
+		"cookie-header-equal-secret",
+		"Bearer authorization-header-separate-secret",
+		"Bearer authorization-header-equal-secret",
+		"Basic proxy-authorization-header-separate-secret",
+		"Basic proxy-authorization-header-equal-secret",
+		"built-in-cookie-header-separate-secret",
+		"built-in-cookie-header-equal-secret",
+		"Bearer built-in-authorization-header-separate-secret",
+		"Bearer built-in-authorization-header-equal-secret",
+		"Basic built-in-proxy-authorization-header-separate-secret",
+		"Basic built-in-proxy-authorization-header-equal-secret",
+		"malformed-header-secret",
+		"MediaGo-Visible",
+		"BuiltIn-Visible",
+		"api-key-visible-value",
+		"auth-token-visible-value",
+		"custom-header-visible-value",
+	} {
+		if containsSubstring(redacted, headerValue) {
+			t.Fatalf("header value %q remained visible", headerValue)
+		}
+	}
+	for _, testCase := range []struct {
+		original string
+		redacted string
+	}{
+		{"cOoKiE : cookie-header-separate-secret", "cOoKiE: [REDACTED]"},
+		{"--add-header=Cookie: cookie-header-equal-secret", "--add-header=Cookie: [REDACTED]"},
+		{"aUtHoRiZaTiOn: Bearer authorization-header-separate-secret", "aUtHoRiZaTiOn: [REDACTED]"},
+		{"--add-header=Authorization : Bearer authorization-header-equal-secret", "--add-header=Authorization: [REDACTED]"},
+		{"Proxy-Authorization : Basic proxy-authorization-header-separate-secret", "Proxy-Authorization: [REDACTED]"},
+		{"--add-header=pRoXy-AuThOrIzAtIoN: Basic proxy-authorization-header-equal-secret", "--add-header=pRoXy-AuThOrIzAtIoN: [REDACTED]"},
+		{"cOoKiE : built-in-cookie-header-separate-secret", "cOoKiE: [REDACTED]"},
+		{"--header=Cookie: built-in-cookie-header-equal-secret", "--header=Cookie: [REDACTED]"},
+		{"aUtHoRiZaTiOn: Bearer built-in-authorization-header-separate-secret", "aUtHoRiZaTiOn: [REDACTED]"},
+		{"--header=Authorization : Bearer built-in-authorization-header-equal-secret", "--header=Authorization: [REDACTED]"},
+		{"Proxy-Authorization : Basic built-in-proxy-authorization-header-separate-secret", "Proxy-Authorization: [REDACTED]"},
+		{"--header=pRoXy-AuThOrIzAtIoN: Basic built-in-proxy-authorization-header-equal-secret", "--header=pRoXy-AuThOrIzAtIoN: [REDACTED]"},
+		{"User-Agent: MediaGo-Visible", "User-Agent: [REDACTED]"},
+		{"--header=User-Agent: BuiltIn-Visible", "--header=User-Agent: [REDACTED]"},
+		{"X-API-Key: api-key-visible-value", "X-API-Key: [REDACTED]"},
+		{"--header=X-Auth-Token: auth-token-visible-value", "--header=X-Auth-Token: [REDACTED]"},
+		{"X-Custom_Header: custom-header-visible-value", "X-Custom_Header: [REDACTED]"},
+	} {
+		index := slices.Index(original, testCase.original)
+		if index == -1 || redacted[index] != testCase.redacted {
+			t.Fatalf("validated header name was not retained in %q", testCase.redacted)
+		}
 	}
 	for _, malformedHeader := range []string{
 		"malformed-add-header-secret",
@@ -151,12 +192,6 @@ func TestRedactSensitiveArgs(t *testing.T) {
 	malformedProxyIndex := slices.Index(original, "http:////user:malformed-proxy-secret@host")
 	if malformedProxyIndex == -1 || redacted[malformedProxyIndex] != "[REDACTED]" {
 		t.Fatal("malformed proxy was not fully redacted")
-	}
-	if !slices.Contains(redacted, "User-Agent: MediaGo-Visible") {
-		t.Fatal("ordinary header was unexpectedly redacted")
-	}
-	if !slices.Contains(redacted, "--header=User-Agent: BuiltIn-Visible") {
-		t.Fatal("ordinary built-in header was unexpectedly redacted")
 	}
 	if !slices.Contains(redacted, "https://proxy.example:8443") {
 		t.Fatal("proxy without credentials was unexpectedly redacted")

@@ -31,9 +31,12 @@ test("memoizes one promise and value across concurrent and repeated loads", asyn
   expect(factory).toHaveBeenCalledTimes(1);
 });
 
-test("contains a factory rejection and reports it only once", async () => {
+test("shares a rejected attempt, then retries on the next load", async () => {
   const rejection = new Error("list unavailable");
-  const factory = vi.fn(() => Promise.reject(rejection));
+  const factory = vi
+    .fn<() => Promise<string>>()
+    .mockRejectedValueOnce(rejection)
+    .mockResolvedValueOnce("blocker");
   const onError = vi.fn();
   const loader = new AdBlockerLoader(factory, onError);
 
@@ -42,17 +45,20 @@ test("contains a factory rejection and reports it only once", async () => {
 
   await expect(firstLoad).resolves.toBeUndefined();
   await expect(repeatedLoad).resolves.toBeUndefined();
-  await expect(loader.load()).resolves.toBeUndefined();
-  expect(factory).toHaveBeenCalledTimes(1);
+  await expect(loader.load()).resolves.toBe("blocker");
+  expect(factory).toHaveBeenCalledTimes(2);
   expect(onError).toHaveBeenCalledOnce();
   expect(onError).toHaveBeenCalledWith(rejection);
 });
 
-test("contains a synchronous factory error and memoizes undefined", async () => {
+test("contains a synchronous factory error and allows a retry", async () => {
   const failure = new Error("factory failed synchronously");
-  const factory = vi.fn(() => {
-    throw failure;
-  });
+  const factory = vi
+    .fn<() => Promise<string>>()
+    .mockImplementationOnce(() => {
+      throw failure;
+    })
+    .mockResolvedValueOnce("blocker");
   const onError = vi.fn();
   const loader = new AdBlockerLoader<string>(factory, onError);
   let firstLoad: Promise<string | undefined> | undefined;
@@ -66,14 +72,18 @@ test("contains a synchronous factory error and memoizes undefined", async () => 
   expect(firstLoad).toBe(repeatedLoad);
   await expect(firstLoad).resolves.toBeUndefined();
   await expect(repeatedLoad).resolves.toBeUndefined();
-  expect(factory).toHaveBeenCalledOnce();
+  await expect(loader.load()).resolves.toBe("blocker");
+  expect(factory).toHaveBeenCalledTimes(2);
   expect(onError).toHaveBeenCalledOnce();
   expect(onError).toHaveBeenCalledWith(failure);
 });
 
-test("contains a throwing error reporter and memoizes undefined", async () => {
+test("contains a throwing error reporter and allows a retry", async () => {
   const failure = new Error("list unavailable");
-  const factory = vi.fn(() => Promise.reject(failure));
+  const factory = vi
+    .fn<() => Promise<string>>()
+    .mockRejectedValueOnce(failure)
+    .mockResolvedValueOnce("blocker");
   const onError = vi.fn(() => {
     throw new Error("reporter failed");
   });
@@ -85,7 +95,21 @@ test("contains a throwing error reporter and memoizes undefined", async () => {
   expect(firstLoad).toBe(repeatedLoad);
   await expect(firstLoad).resolves.toBeUndefined();
   await expect(repeatedLoad).resolves.toBeUndefined();
-  expect(factory).toHaveBeenCalledOnce();
+  await expect(loader.load()).resolves.toBe("blocker");
+  expect(factory).toHaveBeenCalledTimes(2);
   expect(onError).toHaveBeenCalledOnce();
   expect(onError).toHaveBeenCalledWith(failure);
+});
+
+test("retries when a factory resolves undefined", async () => {
+  const factory = vi
+    .fn<() => Promise<string | undefined>>()
+    .mockResolvedValueOnce(undefined)
+    .mockResolvedValueOnce("blocker");
+  const loader = new AdBlockerLoader(factory, vi.fn());
+
+  await expect(loader.load()).resolves.toBeUndefined();
+  await expect(loader.load()).resolves.toBe("blocker");
+
+  expect(factory).toHaveBeenCalledTimes(2);
 });

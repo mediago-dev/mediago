@@ -224,12 +224,7 @@ func redactHeader(header string) string {
 		return "[REDACTED]"
 	}
 
-	switch strings.ToLower(name) {
-	case "cookie", "authorization", "proxy-authorization":
-		return name + ": [REDACTED]"
-	default:
-		return header
-	}
+	return name + ": [REDACTED]"
 }
 
 func proxyContainsCredentials(proxy string) bool {

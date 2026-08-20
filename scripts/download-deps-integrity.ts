@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
+import { isDependencyToolName } from "./dependency-layout.ts";
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
-const REQUIRED_SHA256_DEPENDENCIES = new Set(["aria2:linux-x64"]);
 
 export interface DependencyIntegrityOptions {
   requireExecutable?: boolean;
@@ -21,10 +21,7 @@ export function resolveDependencySha256(
   configuredSha256: Readonly<Record<string, string>> | undefined,
 ): string | undefined {
   const expectedSha256 = configuredSha256?.[platformKey];
-  if (
-    expectedSha256 === undefined &&
-    REQUIRED_SHA256_DEPENDENCIES.has(`${toolName}:${platformKey}`)
-  ) {
+  if (expectedSha256 === undefined && isDependencyToolName(toolName)) {
     throw new Error(
       `${toolName} on ${platformKey} requires a pinned SHA-256 checksum`,
     );

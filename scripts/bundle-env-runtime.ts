@@ -40,7 +40,7 @@ async function resolveJavaScriptEntrypoint(
     const target = pathApi.isAbsolute(shim.shimTarget)
       ? shim.shimTarget
       : pathApi.resolve(pathApi.dirname(shim.realPath), shim.shimTarget);
-    if (isPnpmSelfUpdateEntrypoint(shim.realPath, target, pathApi)) {
+    if (isJavaScriptEntrypoint(target, pathApi)) {
       const declaredEntrypoint = await probe(target);
       if (
         declaredEntrypoint?.isFile &&

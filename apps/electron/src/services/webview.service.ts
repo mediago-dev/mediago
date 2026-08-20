@@ -5,6 +5,7 @@ import { provide } from "@inversifyjs/binding-decorators";
 import { DownloadType } from "@mediago/shared-common";
 import { i18n } from "../core/i18n";
 import {
+  app,
   type Event,
   type HandlerDetails,
   session,
@@ -25,19 +26,23 @@ import GoConfigCache from "./go-config-cache";
 import BrowserWindow from "../windows/browser.window";
 import MainWindow from "../windows/main.window";
 import { AdBlockerLoader } from "./ad-blocker-loader";
+import {
+  type AdBlockerCacheValue,
+  createAdBlockerCache,
+  getAdBlockerCachePath,
+} from "./ad-blocker-cache";
 import { SniffingHelper, type SourceParams } from "./sniffing-helper.service";
 import { enableSessionProxy } from "./webview-proxy";
 
 const require = createRequire(import.meta.url);
 
 const preload = require.resolve("@mediago/electron-preload");
-const EASYLIST_URL = "https://easylist.to/easylist/easylist.txt";
-
 @injectable()
 @provide()
 export default class WebviewService {
   private view: WebContentsView | null = null;
   private blocker?: ElectronBlocker;
+  private blockerExpiresAt = Number.POSITIVE_INFINITY;
   private readonly blockerLoader: AdBlockerLoader<ElectronBlocker>;
   private blockingRequested: boolean;
   private blockingSession?: Electron.Session;
@@ -57,8 +62,21 @@ export default class WebviewService {
     private readonly sniffingHelper: SniffingHelper,
   ) {
     this.blockingRequested = Boolean(this.configCache.get("blockAds"));
+    const blockerCache = createAdBlockerCache(
+      getAdBlockerCachePath(app.getPath("userData")),
+      () => this.logger.error("[AdBlocker] list load failed"),
+    );
     this.blockerLoader = new AdBlockerLoader(
-      () => ElectronBlocker.fromLists(fetch, [EASYLIST_URL]),
+      async () => {
+        const result = await blockerCache.load();
+        this.blockerExpiresAt = result.refresh
+          ? Number.POSITIVE_INFINITY
+          : result.expiresAt;
+        if (result.refresh) {
+          this.observeBlockerRefresh(result.refresh);
+        }
+        return result.blocker;
+      },
       () => this.logger.error("[AdBlocker] list load failed"),
     );
 
@@ -230,7 +248,7 @@ export default class WebviewService {
 
     this.blockingRequested = Boolean(this.configCache.get("blockAds"));
     if (this.blockingRequested) {
-      await this.enableBlocking();
+      this.startBlocking();
     }
 
     // 1. Stop current navigation
@@ -302,20 +320,37 @@ export default class WebviewService {
   setBlocking(enableBlocking: boolean): void {
     this.blockingRequested = enableBlocking;
     if (enableBlocking) {
-      void this.enableBlocking();
+      this.startBlocking();
     } else {
       this.disableBlocking();
     }
   }
 
+  private startBlocking(): void {
+    void this.enableBlocking().catch(() => {
+      this.logger.error("[AdBlocker] enable failed");
+    });
+  }
+
   private async enableBlocking(): Promise<void> {
-    this.blocker = await this.blockerLoader.load();
-    if (!this.blocker) {
+    if (Date.now() >= this.blockerExpiresAt) {
+      this.blockerExpiresAt = Number.POSITIVE_INFINITY;
+      this.blockerLoader.invalidate();
+    }
+
+    const blocker = await this.blockerLoader.load();
+    if (!blocker) {
       return;
     }
     if (!this.blockingRequested) return;
 
     const blockingSession = this.session;
+    if (this.blocker && this.blocker !== blocker && this.blockingSession) {
+      this.blocker.disableBlockingInSession(this.blockingSession);
+      this.blockingSession = undefined;
+      this.logger.info(`[AdBlocker] disable`);
+    }
+    this.blocker = blocker;
     if (this.blockingSession === blockingSession) {
       return;
     }
@@ -338,6 +373,30 @@ export default class WebviewService {
     } catch {
       this.logger.error("[AdBlocker] enable failed");
     }
+  }
+
+  private observeBlockerRefresh(
+    refresh: Promise<AdBlockerCacheValue | undefined>,
+  ): void {
+    void refresh
+      .then((result) => {
+        if (!result) {
+          this.blockerExpiresAt = 0;
+          this.blockerLoader.invalidate();
+          return;
+        }
+
+        this.blockerExpiresAt = result.expiresAt;
+        this.blockerLoader.replace(result.blocker);
+        if (this.blockingRequested) {
+          this.startBlocking();
+        }
+      })
+      .catch(() => {
+        this.blockerExpiresAt = 0;
+        this.blockerLoader.invalidate();
+        this.logger.error("[AdBlocker] list load failed");
+      });
   }
 
   private disableBlocking() {

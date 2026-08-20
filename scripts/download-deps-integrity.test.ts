@@ -19,6 +19,10 @@ const downloadCli = readFileSync(
   path.join(repositoryRoot, "scripts/download-deps.ts"),
   "utf8",
 );
+const integritySource = readFileSync(
+  path.join(repositoryRoot, "scripts/download-deps-integrity.ts"),
+  "utf8",
+);
 const depsVersions = JSON.parse(
   readFileSync(path.join(repositoryRoot, "scripts/deps-versions.json"), "utf8"),
 ) as Record<
@@ -33,6 +37,21 @@ const depsVersions = JSON.parse(
 const OFFICIAL_ARIA2_LINUX_X64_SHA256 =
   "b6f2cdadcd34ba16dd7fcb29de4b84c36f893f9b223a9a05157d1892687a45a0";
 const unixTest = process.platform === "win32" ? test.skip : test;
+
+test("pins exactly one lowercase SHA-256 for every release asset", () => {
+  for (const [toolName, tool] of Object.entries(depsVersions)) {
+    const assetKeys = Object.keys(tool.assets ?? {}).toSorted();
+    const checksumKeys = Object.keys(tool.sha256 ?? {}).toSorted();
+
+    expect(checksumKeys, `${toolName} checksum keys`).toEqual(assetKeys);
+    for (const platformKey of assetKeys) {
+      expect(
+        tool.sha256?.[platformKey],
+        `${toolName} ${platformKey} checksum`,
+      ).toMatch(/^[a-f0-9]{64}$/);
+    }
+  }
+});
 
 test("pins the official linux-x64 aria2 binary SHA-256", () => {
   expect(depsVersions.aria2).toMatchObject({
@@ -85,16 +104,31 @@ test("fails closed for downloaded candidate mismatches", async () => {
   ).rejects.toThrow(/downloaded aria2 binary.*SHA-256/i);
 });
 
-test("keeps unconfigured platforms compatible but requires the E2E checksum", async () => {
+test("fails closed without a checksum for every release runtime asset", () => {
+  for (const [toolName, tool] of Object.entries(depsVersions)) {
+    for (const platformKey of Object.keys(tool.assets ?? {})) {
+      expect(
+        () => resolveDependencySha256(toolName, platformKey, undefined),
+        `${toolName} ${platformKey}`,
+      ).toThrow(/SHA-256/i);
+    }
+  }
+});
+
+test("derives required checksum tools from the dependency layout", () => {
+  expect(integritySource).toContain(
+    'import { isDependencyToolName } from "./dependency-layout.ts";',
+  );
+  expect(integritySource).not.toContain("RELEASE_RUNTIME_TOOLS");
+});
+
+test("keeps checksum-optional custom fixtures compatible", async () => {
   const fixture = createFixture("legacy tool");
 
   expect(await dependencyFileMatchesIntegrity(fixture)).toBe(true);
   expect(
-    resolveDependencySha256("ffmpeg", "darwin-arm64", undefined),
+    resolveDependencySha256("fixture-tool", "linux-x64", undefined),
   ).toBeUndefined();
-  expect(() =>
-    resolveDependencySha256("aria2", "linux-x64", undefined),
-  ).toThrow(/aria2.*linux-x64.*SHA-256/i);
 });
 
 unixTest("rejects a non-executable Unix dependency", async () => {

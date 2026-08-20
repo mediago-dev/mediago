@@ -12,20 +12,25 @@ afterEach(async () => {
   );
 });
 
-describe("startCoreProcess dependency leaf", () => {
-  test("reports an explicit missing aria2c before spawning Core", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "mediago-core-deps-test-"));
-    roots.push(root);
-    const depsDirectory = path.join(root, "missing dependencies");
+describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
+  "startCoreProcess dependency leaf",
+  () => {
+    test("reports an explicit missing aria2c before spawning Core", async () => {
+      const root = await mkdtemp(
+        path.join(tmpdir(), "mediago-core-deps-test-"),
+      );
+      roots.push(root);
+      const depsDirectory = path.join(root, "missing dependencies");
 
-    await expect(
-      startCoreProcess({
-        runtimeRoot: root,
-        port: 39_718,
-        depsDirectory,
-      }),
-    ).rejects.toThrow(
-      `E2E aria2c is missing or not executable: ${path.join(depsDirectory, "aria2c")}`,
-    );
-  });
-});
+      await expect(
+        startCoreProcess({
+          runtimeRoot: root,
+          port: 39_718,
+          depsDirectory,
+        }),
+      ).rejects.toThrow(
+        `E2E aria2c is missing or not executable: ${path.join(depsDirectory, "aria2c")}`,
+      );
+    });
+  },
+);

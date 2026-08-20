@@ -24,51 +24,54 @@ afterEach(async () => {
   );
 });
 
-describe("createFakeBilibiliDependencyLeaf", () => {
-  test("creates executable aria2c and deterministic fake BBDown files", async () => {
-    const { provisionedAria2Path, root } = await createIsolatedFixture();
+describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
+  "createFakeBilibiliDependencyLeaf",
+  () => {
+    test("creates executable aria2c and deterministic fake BBDown files", async () => {
+      const { provisionedAria2Path, root } = await createIsolatedFixture();
 
-    const leaf = await createFakeBilibiliDependencyLeaf(root, {
-      provisionedAria2Path,
+      const leaf = await createFakeBilibiliDependencyLeaf(root, {
+        provisionedAria2Path,
+      });
+
+      expect(leaf.depsDirectory).toBe(path.join(path.resolve(root), "deps"));
+      expect(
+        (await stat(path.join(leaf.depsDirectory, "aria2c"))).isFile(),
+      ).toBe(true);
+      expect(await readFile(path.join(leaf.depsDirectory, "aria2c"))).toEqual(
+        await readFile(provisionedAria2Path),
+      );
+      await access(path.join(leaf.depsDirectory, "aria2c"), constants.X_OK);
+      await access(path.join(leaf.depsDirectory, "BBDown"), constants.X_OK);
+      expect(leaf.bbdownArgumentsPath).toBe(
+        path.join(path.resolve(root), "bbdown-argv.jsonl"),
+      );
     });
 
-    expect(leaf.depsDirectory).toBe(path.join(path.resolve(root), "deps"));
-    expect((await stat(path.join(leaf.depsDirectory, "aria2c"))).isFile()).toBe(
-      true,
-    );
-    expect(await readFile(path.join(leaf.depsDirectory, "aria2c"))).toEqual(
-      await readFile(provisionedAria2Path),
-    );
-    await access(path.join(leaf.depsDirectory, "aria2c"), constants.X_OK);
-    await access(path.join(leaf.depsDirectory, "BBDown"), constants.X_OK);
-    expect(leaf.bbdownArgumentsPath).toBe(
-      path.join(path.resolve(root), "bbdown-argv.jsonl"),
-    );
-  });
+    test("records each invocation as JSON without shell interpolation", async () => {
+      const { provisionedAria2Path, root } = await createIsolatedFixture();
+      const leaf = await createFakeBilibiliDependencyLeaf(root, {
+        provisionedAria2Path,
+      });
+      const executable = path.join(leaf.depsDirectory, "BBDown");
+      const first = [
+        "https://www.bilibili.com/video/BV1MediaGoFixture",
+        "--cookie",
+        "SESSDATA=space and 'quotes'; $(ignored)",
+      ];
+      const second = ["--work-dir", path.join(root, "download output")];
 
-  test("records each invocation as JSON without shell interpolation", async () => {
-    const { provisionedAria2Path, root } = await createIsolatedFixture();
-    const leaf = await createFakeBilibiliDependencyLeaf(root, {
-      provisionedAria2Path,
+      await execFileAsync(executable, first);
+      await execFileAsync(executable, second);
+
+      const records = (await readFile(leaf.bbdownArgumentsPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as unknown);
+      expect(records).toEqual([first, second]);
     });
-    const executable = path.join(leaf.depsDirectory, "BBDown");
-    const first = [
-      "https://www.bilibili.com/video/BV1MediaGoFixture",
-      "--cookie",
-      "SESSDATA=space and 'quotes'; $(ignored)",
-    ];
-    const second = ["--work-dir", path.join(root, "download output")];
-
-    await execFileAsync(executable, first);
-    await execFileAsync(executable, second);
-
-    const records = (await readFile(leaf.bbdownArgumentsPath, "utf8"))
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as unknown);
-    expect(records).toEqual([first, second]);
-  });
-});
+  },
+);
 
 async function createIsolatedFixture(): Promise<{
   provisionedAria2Path: string;

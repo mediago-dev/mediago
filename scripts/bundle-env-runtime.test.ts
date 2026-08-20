@@ -136,6 +136,7 @@ describe("bundle environment pnpm runtime", () => {
             ].join("\n"),
           ),
         ]);
+        const expectedEntrypoint = await fs.realpath(entrypoint);
 
         await expect(
           resolvePnpmEntrypoint({
@@ -143,12 +144,44 @@ describe("bundle environment pnpm runtime", () => {
             platform: "linux",
             probe: probePnpmPath,
           }),
-        ).resolves.toBe(entrypoint);
+        ).resolves.toBe(expectedEntrypoint);
       } finally {
         await fs.rm(root, { force: true, recursive: true });
       }
     },
   );
+
+  it("trusts a simulated macOS /var target after probing its /private/var real path", async () => {
+    const aliasHome = "/var/folders/xy/pnpm-home";
+    const canonicalHome = "/private/var/folders/xy/pnpm-home";
+    const aliasShim = `${aliasHome}/bin/pnpm`;
+    const canonicalShim = `${canonicalHome}/bin/pnpm`;
+    const declaredEntrypoint = `${aliasHome}/.tools/pnpm/10.15.0/node_modules/pnpm/bin/pnpm.cjs`;
+    const canonicalEntrypoint = `${canonicalHome}/.tools/pnpm/10.15.0/node_modules/pnpm/bin/pnpm.cjs`;
+    const candidates: string[] = [];
+
+    const entrypoint = await resolvePnpmEntrypoint({
+      environment: { PATH: `${aliasHome}/bin` },
+      platform: "darwin",
+      probe: async (candidate) => {
+        candidates.push(candidate);
+        if (candidate === aliasShim) {
+          return {
+            isFile: true,
+            realPath: canonicalShim,
+            shimTarget: declaredEntrypoint,
+          };
+        }
+        if (candidate === declaredEntrypoint) {
+          return { isFile: true, realPath: canonicalEntrypoint };
+        }
+        return undefined;
+      },
+    });
+
+    expect(entrypoint).toBe(canonicalEntrypoint);
+    expect(candidates).toContain(declaredEntrypoint);
+  });
 
   it("resolves the pnpm/action-setup v6 isolated global shim target", async () => {
     const root = await fs.mkdtemp(
@@ -205,6 +238,7 @@ describe("bundle environment pnpm runtime", () => {
           ].join("\n"),
         ),
       ]);
+      const expectedEntrypoint = await fs.realpath(entrypoint);
 
       await expect(
         resolvePnpmEntrypoint({
@@ -212,7 +246,7 @@ describe("bundle environment pnpm runtime", () => {
           platform: "linux",
           probe: probePnpmPath,
         }),
-      ).resolves.toBe(storeEntrypoint);
+      ).resolves.toBe(expectedEntrypoint);
     } finally {
       await fs.rm(root, { force: true, recursive: true });
     }
