@@ -4,6 +4,7 @@ const ERROR_LIMIT = 512;
 
 export interface StartedTestPage {
   url: string;
+  blankURL: string;
   close(): Promise<void>;
 }
 
@@ -35,12 +36,32 @@ function fixtureHTML(sampleURL: string): string {
 </html>`;
 }
 
+const blankHTML = Buffer.from(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MediaGo E2E Neutral Fixture</title>
+  </head>
+  <body>
+    <main><h1>MediaGo E2E Neutral Fixture</h1></main>
+  </body>
+</html>`);
+
 export async function startTestPage(
   sampleURL: string,
 ): Promise<StartedTestPage> {
-  const html = Buffer.from(fixtureHTML(sampleURL));
+  const mediaHTML = Buffer.from(fixtureHTML(sampleURL));
   const server = createServer((request, response) => {
-    if (request.method !== "GET" || request.url !== "/") {
+    const body =
+      request.method === "GET"
+        ? request.url === "/"
+          ? mediaHTML
+          : request.url === "/blank"
+            ? blankHTML
+            : undefined
+        : undefined;
+    if (!body) {
       response.writeHead(404, {
         "Content-Type": "text/plain; charset=utf-8",
         "Content-Length": "10",
@@ -50,10 +71,10 @@ export async function startTestPage(
     }
     response.writeHead(200, {
       "Content-Type": "text/html; charset=utf-8",
-      "Content-Length": String(html.length),
+      "Content-Length": String(body.length),
       "Cache-Control": "no-store",
     });
-    response.end(html);
+    response.end(body);
   });
   await new Promise<void>((resolve, reject) => {
     const handleError = (error: Error): void => reject(error);
@@ -68,8 +89,10 @@ export async function startTestPage(
     server.close();
     throw new Error("Fixture page did not bind to a loopback TCP port");
   }
+  const baseURL = "http://127.0.0.1:" + address.port;
   return {
-    url: `http://127.0.0.1:${address.port}/`,
+    url: `${baseURL}/`,
+    blankURL: `${baseURL}/blank`,
     close: async () => {
       server.closeAllConnections();
       if (!server.listening) return;
