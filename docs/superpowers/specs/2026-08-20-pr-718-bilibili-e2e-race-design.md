@@ -55,16 +55,22 @@ readiness conditions.
 
 Implementation will follow a red-green TDD cycle:
 
-1. Add a focused test that requests the new neutral route and proves its body
-   neither references the sample media URL nor contains the media-fetch script.
-   This test must fail first because `blankURL` does not yet exist.
-2. Implement the neutral route and make the focused test pass while preserving
-   the existing media page response and `404` behavior.
-3. Switch only the controlled Bilibili callers to `blankURL`.
-4. Repeat the previously failing `missing Download ID` Playwright scenario to
+1. Add `tests/e2e/support/test-page.test.ts`. Each test starts its own server
+   and closes it in `finally`, so a failed assertion cannot leak a listener.
+   The first test requests the proposed `blankURL` and must fail because the
+   property does not yet exist.
+2. Assert that `GET /blank` returns HTML without the sample media URL, a
+   `<script>` element, or the media-fetch code. Preserve the existing contract
+   by also asserting that `GET /` still references the sample URL and exposes
+   `fixtureMediaLoaded`, while an unknown path and a non-GET request still
+   return `404 Not Found`.
+3. Implement the neutral route and make the focused support tests pass.
+4. Switch only the controlled Bilibili callers to `blankURL`.
+5. Repeat the previously failing `missing Download ID` Playwright scenario to
    exercise the former race window.
-5. Run the complete three-surface Playwright suite, repository checks, and the
-   normal unit test suite before completion.
+6. Run `pnpm type:check:e2e` explicitly because `pnpm check` does not include
+   `tsconfig.e2e.json`. Then run the complete three-surface Playwright suite,
+   `pnpm check`, and the normal `pnpm test` suite before completion.
 
 ## Scope
 
