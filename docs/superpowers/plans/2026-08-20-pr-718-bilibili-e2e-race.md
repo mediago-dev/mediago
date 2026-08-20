@@ -267,7 +267,7 @@ by one local commit. Do not push.
 - Modify: `tests/e2e/extension/capture-and-download.spec.ts:852-946`
 - Test: `tests/e2e/extension/capture-and-download.spec.ts:915-967`
 
-- [ ] **Step 1: Confirm the observed end-to-end RED evidence**
+- [x] **Step 1: Confirm the observed end-to-end RED evidence**
 
 Use GitHub Actions run `32358193901`, job `96391861860`, as the existing RED
 checkpoint. It failed the
@@ -276,7 +276,7 @@ trace shows `sample.mp4` still in flight when controlled injection completed.
 This is the regression's already-observed end-to-end RED; do not weaken the
 badge assertion or add sleeps/retries.
 
-- [ ] **Step 2: Switch both controlled call sites to the neutral URL**
+- [x] **Step 2: Switch both controlled call sites to the neutral URL**
 
 In the successful controlled import and the `MALFORMED_BILIBILI_RESPONSES`
 loop, change only:
@@ -295,7 +295,7 @@ Keep the direct MP4 scenario at line 818 on `extensionRuntime.testPage.url`.
 Do not modify `openControlledBilibiliPopup`, source injection, badge assertions,
 or production extension files.
 
-- [ ] **Step 3: Review the exact caller diff**
+- [x] **Step 3: Review the exact caller diff**
 
 Run:
 
@@ -309,7 +309,7 @@ Expected: the file diff contains exactly two `.url` to `.blankURL`
 substitutions. The direct MP4 navigation still uses `.url`, exactly two
 controlled Bilibili option objects use `.blankURL`, and no other hunk changes.
 
-- [ ] **Step 4: Build dependencies and run the complete extension project**
+- [x] **Step 4: Build dependencies and run the complete extension project**
 
 Run the public Task target under Xvfb on headless Linux. This target downloads
 the declared E2E dependency, builds Core and the extension surfaces, installs
@@ -322,7 +322,7 @@ xvfb-run -a task test:e2e:extension
 Expected: all extension Playwright scenarios pass, including the real Bilibili
 import and all malformed-response cases.
 
-- [ ] **Step 5: Run the former failure repeatedly on the prepared build**
+- [x] **Step 5: Run the former failure repeatedly on the prepared build**
 
 The previous step provides every prerequisite, so run the focused scenario ten
 times:
@@ -335,7 +335,7 @@ Expected: 10 passed with no badge-count timeout. Use a short external `TMPDIR`
 if the workstation's `/tmp` quota or Chromium socket length requires it; do not
 change repository code to work around the local environment.
 
-- [ ] **Step 6: Stage and inspect only the controlled caller migration**
+- [x] **Step 6: Stage and inspect only the controlled caller migration**
 
 Inspect the complete unstaged caller diff, then stage only the caller and this
 plan. Inspect the staged names and caller patch before committing:
@@ -353,7 +353,7 @@ git diff --cached -- tests/e2e/extension/capture-and-download.spec.ts
 Expected: the staged name list contains exactly the two named paths and the
 caller patch contains only the two approved substitutions.
 
-- [ ] **Step 7: Commit the controlled caller migration**
+- [x] **Step 7: Commit the controlled caller migration**
 
 ```bash
 git commit -m "test(e2e): isolate controlled Bilibili capture"

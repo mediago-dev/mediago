@@ -861,7 +861,7 @@ test("imports a controlled Bilibili capture with the real Core response and fake
   const { popupPage, sourceRow } = await openControlledBilibiliPopup({
     context: extensionRuntime.context,
     extensionURL: extensionRuntime.extensionURL,
-    localPageURL: extensionRuntime.testPage.url,
+    localPageURL: extensionRuntime.testPage.blankURL,
     trackPage: extensionRuntime.trackPage,
     worker: extensionRuntime.worker,
   });
@@ -932,7 +932,7 @@ for (const malformedResponse of MALFORMED_BILIBILI_RESPONSES) {
     const { popupPage, sourceRow } = await openControlledBilibiliPopup({
       context: extensionRuntime.context,
       extensionURL: extensionRuntime.extensionURL,
-      localPageURL: extensionRuntime.testPage.url,
+      localPageURL: extensionRuntime.testPage.blankURL,
       trackPage: extensionRuntime.trackPage,
       worker: extensionRuntime.worker,
     });
