@@ -6,8 +6,9 @@ The downloader currently logs the complete download URL when a task starts. It
 later builds executable arguments correctly, then creates a redacted copy for
 the debug log. That redactor recognizes cookies, headers, and some proxy
 credentials, but ordinary download URLs and proxy path or query values can
-still reach the log. Signed media URLs and query-based proxy credentials must
-never be exposed by either downloader log entry.
+still reach the log. The M3U8 missing-output error also logs the output
+directory and download name. Signed media URLs, proxy credentials, and other
+command parameter values must never be exposed by downloader-owned log entries.
 
 ## Decision
 
@@ -20,6 +21,9 @@ structured diagnostic fields derived from the typed download inputs instead:
 - `url_origin`: only the parsed URL scheme and host;
 - `header_names`: syntactically valid HTTP header field names;
 - `proxy_configured`: whether a non-empty proxy is enabled.
+
+Remove the output directory and download name from the M3U8 missing-output
+error. Its task ID and descriptive message remain available for diagnosis.
 
 This keeps the information needed to identify the target service and request
 shape while making parameter-value logging default-deny.
@@ -45,8 +49,8 @@ argument slice passed to the downloader process is unchanged.
 
 All sanitizers fail closed. Parse or validation failures produce `[REDACTED]`
 rather than falling back to the original input. No generic command parameter
-value is included in either downloader entry, so future schemas do not become
-logging leaks by default.
+value is included in the affected downloader entries, so future schemas do not
+become logging leaks by default.
 
 ## Testing
 
@@ -68,12 +72,14 @@ The implementation will follow a red-green TDD cycle:
 7. Cover proxy diagnostics when proxy use is disabled, enabled with an empty
    value, and enabled with a non-empty value.
 8. Assert that the runner still receives the original executable arguments.
-9. Run the focused Go package tests, formatting, repository quality checks, and
-   the full test suite before completion.
+9. Exercise the M3U8 missing-output path and assert its captured error entry
+   contains neither the output directory nor the download name.
+10. Run the focused Go package tests, formatting, repository quality checks, and
+    the full test suite before completion.
 
 ## Scope
 
-This follow-up changes only the task-start and command-argument diagnostics in
-`DownloaderSvc.Download` and their Go regression tests. It does not change
-download execution, persistence, proxy behavior, schema construction, or
-unrelated logging.
+This follow-up changes only the task-start, command-argument, and M3U8
+missing-output diagnostics in `DownloaderSvc.Download` and their Go regression
+tests. It does not change download execution, persistence, proxy behavior,
+schema construction, or unrelated logging.
