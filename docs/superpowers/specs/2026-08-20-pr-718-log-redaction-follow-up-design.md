@@ -23,7 +23,10 @@ structured diagnostic fields derived from the typed download inputs instead:
 - `proxy_configured`: whether a non-empty proxy is enabled.
 
 Remove the output directory and download name from the M3U8 missing-output
-error. Its task ID and descriptive message remain available for diagnosis.
+log and returned error. Queue and API task-log consumers propagate
+`err.Error()`, so the returned error must not contain those parameter values
+either. Preserve `ErrM3U8OutputMissing` identity so callers can continue using
+`errors.Is`; its task ID and descriptive message remain available for diagnosis.
 
 This keeps the information needed to identify the target service and request
 shape while making parameter-value logging default-deny.
@@ -73,13 +76,14 @@ The implementation will follow a red-green TDD cycle:
    value, and enabled with a non-empty value.
 8. Assert that the runner still receives the original executable arguments.
 9. Exercise the M3U8 missing-output path and assert its captured error entry
-   contains neither the output directory nor the download name.
+   and returned error text contain neither the output directory nor the
+   download name.
 10. Run the focused Go package tests, formatting, repository quality checks, and
     the full test suite before completion.
 
 ## Scope
 
 This follow-up changes only the task-start, command-argument, and M3U8
-missing-output diagnostics in `DownloaderSvc.Download` and their Go regression
-tests. It does not change download execution, persistence, proxy behavior,
-schema construction, or unrelated logging.
+missing-output diagnostics and returned error in `DownloaderSvc.Download` and
+their Go regression tests. It does not change download execution, persistence,
+proxy behavior, schema construction, or unrelated logging.

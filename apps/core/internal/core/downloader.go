@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"caorushizi.cn/mediago/internal/core/parser"
@@ -176,42 +177,13 @@ func headerValue(headers []string, name string) string {
 	return ""
 }
 
-func redactSensitiveArgs(args []string) []string {
-	redacted := append([]string(nil), args...)
-	for i, arg := range args {
-		switch {
-		case arg == "--cookie" || arg == "-c":
-			if i+1 < len(redacted) {
-				redacted[i+1] = "[REDACTED]"
-			}
-		case strings.HasPrefix(arg, "--cookie="):
-			redacted[i] = "--cookie=[REDACTED]"
-		case arg == "--add-header" || arg == "--header":
-			if i+1 < len(redacted) {
-				redacted[i+1] = redactHeader(args[i+1])
-			}
-		case strings.HasPrefix(arg, "--add-header=") || strings.HasPrefix(arg, "--header="):
-			flag, header, _ := strings.Cut(arg, "=")
-			redacted[i] = flag + "=" + redactHeader(header)
-		case arg == "--proxy" || arg == "--custom-proxy":
-			if i+1 < len(redacted) && proxyContainsCredentials(args[i+1]) {
-				redacted[i+1] = "[REDACTED]"
-			}
-		case strings.HasPrefix(arg, "--proxy=") || strings.HasPrefix(arg, "--custom-proxy="):
-			flag, proxy, _ := strings.Cut(arg, "=")
-			if proxyContainsCredentials(proxy) {
-				redacted[i] = flag + "=[REDACTED]"
-			}
-		}
-	}
-	return redacted
-}
+const redactedLogValue = "[REDACTED]"
 
-func redactHeader(header string) string {
+func headerNameForLog(header string) string {
 	name, _, found := strings.Cut(header, ":")
 	name = strings.TrimSpace(name)
 	if !found || name == "" {
-		return "[REDACTED]"
+		return redactedLogValue
 	}
 	for i := 0; i < len(name); i++ {
 		char := name[i]
@@ -221,21 +193,46 @@ func redactHeader(header string) string {
 			strings.ContainsRune("!#$%&'*+-.^_`|~", rune(char)) {
 			continue
 		}
-		return "[REDACTED]"
+		return redactedLogValue
 	}
 
-	return name + ": [REDACTED]"
+	return name
 }
 
-func proxyContainsCredentials(proxy string) bool {
-	if !strings.Contains(proxy, "://") {
-		proxy = "http://" + proxy
+func headerNamesForLog(headers []string) []string {
+	names := make([]string, 0, len(headers))
+	for _, header := range headers {
+		names = append(names, headerNameForLog(header))
 	}
-	parsed, err := url.Parse(proxy)
+	return names
+}
+
+type downloaderProxyConfig interface {
+	GetUseProxy() bool
+	GetProxy() string
+}
+
+func proxyConfiguredForLog(cfg interface{}) bool {
+	if cfg == nil {
+		return false
+	}
+	value := reflect.ValueOf(cfg)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
+		if value.IsNil() {
+			return false
+		}
+	}
+	proxyCfg, ok := cfg.(downloaderProxyConfig)
+	return ok && proxyCfg.GetUseProxy() && proxyCfg.GetProxy() != ""
+}
+
+func urlOriginForLog(raw string) string {
+	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Opaque != "" {
-		return true
+		return redactedLogValue
 	}
-	return parsed.User != nil
+	return (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host}).String()
 }
 
 func (d *DownloaderSvc) outputDirectory(p DownloadParams) string {
@@ -359,8 +356,7 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 	logger.Info("Starting download task",
 		zap.String("id", string(p.ID)),
 		zap.String("type", string(p.Type)),
-		zap.String("url", p.URL),
-		zap.String("name", p.Name))
+		zap.String("url_origin", urlOriginForLog(p.URL)))
 
 	// get the Schema for the corresponding download type
 	schema, ok := d.schemas.GetByType(string(p.Type))
@@ -426,7 +422,10 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 	args := d.buildArgs(p, schema)
 	logger.Debug("Command arguments built",
 		zap.String("id", string(p.ID)),
-		zap.Strings("args", redactSensitiveArgs(args)))
+		zap.Int("arg_count", len(args)),
+		zap.String("url_origin", urlOriginForLog(p.URL)),
+		zap.Strings("header_names", headerNamesForLog(p.Headers)),
+		zap.Bool("proxy_configured", proxyConfiguredForLog(d.cfg)))
 
 	// initialize parse state
 	st := &parser.ParseState{}
@@ -505,10 +504,8 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 		}
 		if !hasNewOutput(outputBefore, outputAfter) {
 			logger.Error("M3U8 downloader exited without creating a merged media file",
-				zap.String("id", string(p.ID)),
-				zap.String("directory", outputDir),
-				zap.String("name", p.Name))
-			return fmt.Errorf("%w: %s", ErrM3U8OutputMissing, filepath.Join(outputDir, SanitizeFilename(p.Name)))
+				zap.String("id", string(p.ID)))
+			return ErrM3U8OutputMissing
 		}
 	}
 
