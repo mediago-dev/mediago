@@ -55,7 +55,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.14",
+    "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^24.7.2",
     "@types/qs": "^6.14.0",
