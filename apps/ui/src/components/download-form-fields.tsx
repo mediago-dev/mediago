@@ -98,8 +98,6 @@ export function DownloadFormFields({
 
   return (
     <>
-      <input type="hidden" {...form.register("id", { valueAsNumber: true })} />
-
       {!isEdit ? (
         <FormRow htmlFor={`${formId}-single-mode`} label={t("downloadMode")}>
           <Controller

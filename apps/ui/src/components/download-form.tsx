@@ -30,6 +30,7 @@ import { DownloadFormFields } from "./download-form-fields";
 import {
   buildDownloadTasks,
   createDownloadFormValues,
+  resolveEditTaskId,
 } from "./download-form-logic";
 
 export type { DownloadFormItem } from "@/store/download-dialog";
@@ -114,10 +115,11 @@ export default function DownloadForm({
         return;
       }
 
-      if (isEdit && values.id !== undefined) {
-        await editDownloadTask(values.id, tasks[0]);
+      const editId = resolveEditTaskId(values.id);
+      if (isEdit && editId !== undefined) {
+        await editDownloadTask(editId, tasks[0]);
         if (intent === "download-now") {
-          await startDownload(values.id);
+          await startDownload(editId);
         }
       } else {
         await createDownloadTasks(tasks, intent === "download-now");
@@ -157,6 +159,12 @@ export default function DownloadForm({
           className="space-y-4 overflow-y-auto px-6 py-5 sm:px-7"
           onSubmit={(event) => event.preventDefault()}
         >
+          {resolveEditTaskId(initialValues.id) !== undefined ? (
+            <input
+              type="hidden"
+              {...form.register("id", { valueAsNumber: true })}
+            />
+          ) : null}
           <DownloadFormFields
             advancedOpen={advancedOpen}
             form={form}

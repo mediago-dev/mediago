@@ -6,6 +6,7 @@ import {
   createDownloadFormValues,
   DOWNLOAD_URL_RE,
   parseBatchDownloadRows,
+  resolveEditTaskId,
 } from "./download-form-logic";
 
 test("accepts supported download URL schemes", () => {
@@ -89,4 +90,10 @@ test("builds one task from single-download form values", () => {
       folder: "season",
     },
   ]);
+});
+
+test("treats NaN or missing ids as new tasks instead of edit targets", () => {
+  expect(resolveEditTaskId(42)).toBe(42);
+  expect(resolveEditTaskId(Number.NaN)).toBeUndefined();
+  expect(resolveEditTaskId(undefined)).toBeUndefined();
 });

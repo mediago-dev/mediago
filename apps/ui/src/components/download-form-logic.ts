@@ -27,6 +27,14 @@ export function createDownloadFormValues(
   return { ...DEFAULT_DOWNLOAD_FORM_VALUES, ...values };
 }
 
+// The hidden id input registers with `valueAsNumber`, so react-hook-form turns
+// its empty DOM value into NaN. Treat NaN/undefined as "no task id" so the
+// overlay dialog (new task, `isEdit` layout) falls back to task creation
+// instead of PUT /api/downloads/NaN ("invalid id").
+export function resolveEditTaskId(id: number | undefined): number | undefined {
+  return typeof id === "number" && Number.isFinite(id) ? id : undefined;
+}
+
 export function parseBatchDownloadRows(text: string): BatchDownloadRow[] {
   return text
     .split(/\r?\n/)
