@@ -363,8 +363,8 @@ importers:
         specifier: ^0.548.0
         version: 0.548.0(react@19.2.4)
       match-sorter:
-        specifier: ^8.1.0
-        version: 8.2.0
+        specifier: ^8.3.0
+        version: 8.3.0
       nanoid:
         specifier: ^5.1.16
         version: 5.1.16
@@ -5827,8 +5827,8 @@ packages:
   mark.js@8.11.1:
     resolution: {integrity: sha512-1I+1qpDt4idfgLQG+BNWmrqku+7/2bi5nLf4YwF8y8zXvmfiTBY3PV3ZibfrjBueCByROpuBjLLFCajqkgYoLQ==}
 
-  match-sorter@8.2.0:
-    resolution: {integrity: sha512-qRVB7wYMJXizAWR4TKo5UYwgW7oAVzA8V9jve0wGzRvV91ou9dcqL+/2gJtD0PZ/Pm2Fq6cVT4VHXHmDFVMGRA==}
+  match-sorter@8.3.0:
+    resolution: {integrity: sha512-8Py1GbZi5zsclYSFcPAH4H5xfTbeD0bOREA7qP/t8bW4MbOSlPl8sbqHOedEV7O+Bxyvxm6xs/v6BXJGe+JDNA==}
 
   matcher@3.0.0:
     resolution: {integrity: sha512-OkeDaAZ/bQCxeFAozM55PKcKU0yJMPGifLwV4Qgjitu+5MoAfSQN4lsLJeXZ1b8w0x+/Emda6MZgXS1jvsapng==}
@@ -12264,9 +12264,9 @@ snapshots:
 
   mark.js@8.11.1: {}
 
-  match-sorter@8.2.0:
+  match-sorter@8.3.0:
     dependencies:
-      '@babel/runtime': 7.29.2
+      '@babel/runtime': 7.29.7
       remove-accents: 0.5.0
 
   matcher@3.0.0:
@@ -12719,7 +12719,7 @@ snapshots:
 
   pkcs7@1.0.4:
     dependencies:
-      '@babel/runtime': 7.29.2
+      '@babel/runtime': 7.29.7
 
   pkg-types@2.3.0:
     dependencies:
