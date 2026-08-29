@@ -70,16 +70,19 @@ importers:
     dependencies:
       '@ghostery/adblocker-electron':
         specifier: 2.18.2
-        version: 2.18.2(electron@43.2.0(supports-color@10.2.2))
+        version: 2.18.2(electron@44.0.0(supports-color@10.2.2))
       '@ghostery/adblocker-electron-preload':
         specifier: ^2.18.2
-        version: 2.18.2(electron@43.2.0(supports-color@10.2.2))
+        version: 2.18.2(electron@44.0.0(supports-color@10.2.2))
       '@inversifyjs/binding-decorators':
         specifier: ^3.0.0
         version: 3.0.0(inversify@8.2.3(reflect-metadata@0.2.2))(reflect-metadata@0.2.2)
       '@mediago/browser-extension':
         specifier: workspace:*
         version: link:../../packages/browser-extension
+      '@mediago/common':
+        specifier: workspace:*
+        version: link:../../packages/common
       '@mediago/core-sdk':
         specifier: workspace:*
         version: link:../../packages/core-sdk
@@ -89,9 +92,6 @@ importers:
       '@mediago/service-runner':
         specifier: workspace:*
         version: link:../../packages/node-service
-      '@mediago/common':
-        specifier: workspace:*
-        version: link:../../packages/common
       axios:
         specifier: ^1.19.0
         version: 1.19.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
@@ -148,8 +148,8 @@ importers:
         specifier: ^10.1.0
         version: 10.1.0
       electron:
-        specifier: 43.2.0
-        version: 43.2.0(supports-color@10.2.2)
+        specifier: 44.0.0
+        version: 44.0.0(supports-color@10.2.2)
       electron-builder-squirrel-windows:
         specifier: 26.15.3
         version: 26.15.3(dmg-builder@26.15.3)(supports-color@10.2.2)
@@ -256,12 +256,12 @@ importers:
 
   apps/ui:
     dependencies:
-      '@mediago/core-sdk':
-        specifier: workspace:*
-        version: link:../../packages/core-sdk
       '@mediago/common':
         specifier: workspace:*
         version: link:../../packages/common
+      '@mediago/core-sdk':
+        specifier: workspace:*
+        version: link:../../packages/core-sdk
       '@radix-ui/react-avatar':
         specifier: ^1.2.6
         version: 1.2.6(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -476,6 +476,18 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/common:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.3.0
+        version: 26.3.0
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.12)(typescript@7.0.2)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/core-sdk:
     dependencies:
       axios:
@@ -517,8 +529,8 @@ importers:
         specifier: ^26.3.0
         version: 26.3.0
       electron:
-        specifier: 43.2.0
-        version: 43.2.0(supports-color@10.2.2)
+        specifier: 44.0.0
+        version: 44.0.0(supports-color@10.2.2)
       tsdown:
         specifier: ^0.22.14
         version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.12)(typescript@7.0.2)
@@ -641,18 +653,6 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
-
-  packages/common:
-    devDependencies:
-      '@types/node':
-        specifier: ^26.3.0
-        version: 26.3.0
-      tsdown:
-        specifier: ^0.22.14
-        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.12)(typescript@7.0.2)
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
 
   packages/tooling:
     dependencies:
@@ -3799,8 +3799,8 @@ packages:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
     engines: {node: '>=8.0.0'}
 
-  electron@43.2.0:
-    resolution: {integrity: sha512-80zvrgG7ZRXD+tD0IyLvrnN9n+veSxadMRsMaC9wKKP3iUbtC7rGM8+dVuCmOb0Rrwwv8ESW4awnUZh9Hbp1fA==}
+  electron@44.0.0:
+    resolution: {integrity: sha512-FkTqPrFPZYljdPI5b7KORGsJTd6FgUQDefl5MrU3Xz9R87pAj9JLreIjDqcRN8hJIkFHIou0o8kKzvcpT9qiRQ==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -6236,16 +6236,16 @@ snapshots:
     dependencies:
       '@ghostery/adblocker-extended-selectors': 2.18.2
 
-  '@ghostery/adblocker-electron-preload@2.18.2(electron@43.2.0(supports-color@10.2.2))':
+  '@ghostery/adblocker-electron-preload@2.18.2(electron@44.0.0(supports-color@10.2.2))':
     dependencies:
       '@ghostery/adblocker-content': 2.18.2
-      electron: 43.2.0(supports-color@10.2.2)
+      electron: 44.0.0(supports-color@10.2.2)
 
-  '@ghostery/adblocker-electron@2.18.2(electron@43.2.0(supports-color@10.2.2))':
+  '@ghostery/adblocker-electron@2.18.2(electron@44.0.0(supports-color@10.2.2))':
     dependencies:
       '@ghostery/adblocker': 2.18.2
-      '@ghostery/adblocker-electron-preload': 2.18.2(electron@43.2.0(supports-color@10.2.2))
-      electron: 43.2.0(supports-color@10.2.2)
+      '@ghostery/adblocker-electron-preload': 2.18.2(electron@44.0.0(supports-color@10.2.2))
+      electron: 44.0.0(supports-color@10.2.2)
       tldts-experimental: 7.4.11
 
   '@ghostery/adblocker-extended-selectors@2.18.2': {}
@@ -8614,7 +8614,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@43.2.0(supports-color@10.2.2):
+  electron@44.0.0(supports-color@10.2.2):
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0(supports-color@10.2.2)
