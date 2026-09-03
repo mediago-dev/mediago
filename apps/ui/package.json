@@ -39,7 +39,7 @@
     "match-sorter": "^8.3.0",
     "nanoid": "^6.0.1",
     "qrcode.react": "^4.2.0",
-    "qs": "^6.15.3",
+    "qs": "^6.16.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-hook-form": "7.86.0",
