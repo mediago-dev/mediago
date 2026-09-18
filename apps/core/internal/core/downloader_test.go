@@ -19,11 +19,13 @@ import (
 
 type testDownloaderConfig struct {
 	localDir string
+	desktop  bool
 	useProxy bool
 	proxy    string
 }
 
 func (c testDownloaderConfig) GetLocalDir() string   { return c.localDir }
+func (c testDownloaderConfig) IsDesktop() bool       { return c.desktop }
 func (testDownloaderConfig) GetDeleteSegments() bool { return true }
 func (c testDownloaderConfig) GetUseProxy() bool     { return c.useProxy }
 func (c testDownloaderConfig) GetProxy() string      { return c.proxy }

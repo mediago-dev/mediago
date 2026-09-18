@@ -45,8 +45,11 @@ func (s *dbService) resolveFilePath(rec *db.Video) (string, error) {
 	}
 
 	searchDir := s.localPath
+	if rec.DownloadDir != "" {
+		searchDir = rec.DownloadDir
+	}
 	if rec.Folder != nil && *rec.Folder != "" {
-		searchDir = filepath.Join(s.localPath, *rec.Folder)
+		searchDir = filepath.Join(searchDir, *rec.Folder)
 	}
 	if s.logs != nil {
 		if content, readErr := s.logs.Read(strconv.FormatInt(rec.ID, 10)); readErr == nil {

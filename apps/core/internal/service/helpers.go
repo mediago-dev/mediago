@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -45,8 +46,13 @@ func RandomName() string {
 
 // GetPageTitle fetches the page title via an HTTP GET request.
 func GetPageTitle(pageURL string, fallback string) string {
+	return GetPageTitleWithContext(context.Background(), pageURL, fallback)
+}
+
+// GetPageTitleWithContext stops the request when its caller is cancelled.
+func GetPageTitleWithContext(ctx context.Context, pageURL string, fallback string) string {
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", pageURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
 	if err != nil {
 		return fallback
 	}

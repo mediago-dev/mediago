@@ -17,17 +17,20 @@ const (
 // Video maps to the "video" table (legacy naming; actually represents download tasks).
 // Column names must exactly match the table schema created by TypeORM (camelCase).
 type Video struct {
-	ID          int64     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	Name        string    `gorm:"column:name;type:text;not null;uniqueIndex" json:"name"`
-	Type        string    `gorm:"column:type;type:text;not null;default:'m3u8'" json:"type"`
-	URL         string    `gorm:"column:url;type:text;not null" json:"url"`
-	Folder      *string   `gorm:"column:folder;type:text" json:"folder"`
-	Headers     *string   `gorm:"column:headers;type:text" json:"headers"`
-	OutputPath  string    `gorm:"column:outputPath;type:text;not null;default:''" json:"outputPath,omitempty"`
-	IsLive      bool      `gorm:"column:isLive;not null;default:0" json:"isLive"`
-	Status      string    `gorm:"column:status;type:text;not null;default:'ready'" json:"status"`
-	CreatedDate time.Time `gorm:"column:createdDate;autoCreateTime" json:"createdDate"`
-	UpdatedDate time.Time `gorm:"column:updatedDate;autoUpdateTime" json:"updatedDate"`
+	ID                     int64     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	Name                   string    `gorm:"column:name;type:text;not null;uniqueIndex" json:"name"`
+	Type                   string    `gorm:"column:type;type:text;not null;default:'m3u8'" json:"type"`
+	URL                    string    `gorm:"column:url;type:text;not null" json:"url"`
+	Folder                 *string   `gorm:"column:folder;type:text" json:"folder"`
+	DownloadDir            string    `gorm:"column:downloadDir;type:text;not null;default:''" json:"downloadDir,omitempty"`
+	Headers                *string   `gorm:"column:headers;type:text" json:"headers"`
+	RequiresRuntimeHeaders bool      `gorm:"column:requiresRuntimeHeaders;not null;default:0" json:"-"`
+	LastErrorCode          string    `gorm:"column:lastErrorCode;type:text;not null;default:''" json:"-"`
+	OutputPath             string    `gorm:"column:outputPath;type:text;not null;default:''" json:"outputPath,omitempty"`
+	IsLive                 bool      `gorm:"column:isLive;not null;default:0" json:"isLive"`
+	Status                 string    `gorm:"column:status;type:text;not null;default:'ready'" json:"status"`
+	CreatedDate            time.Time `gorm:"column:createdDate;autoCreateTime" json:"createdDate"`
+	UpdatedDate            time.Time `gorm:"column:updatedDate;autoUpdateTime" json:"updatedDate"`
 }
 
 func (Video) TableName() string { return "video" }

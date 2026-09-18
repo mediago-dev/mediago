@@ -67,6 +67,15 @@ func TestStoreEnforcesTransitionsAndSeparatesPrivateHeaders(t *testing.T) {
 	if again[0] != "Cookie: sentinel-cookie" {
 		t.Fatal("PrivateHeaders returned mutable store data")
 	}
+	snapshot, snapshotHeaders, err := store.downloadSnapshot(created.ID)
+	if err != nil || snapshot.ID != created.ID || len(snapshotHeaders["source-1"]) != 2 {
+		t.Fatalf("download snapshot = %+v, %v, %v", snapshot, snapshotHeaders, err)
+	}
+	snapshotHeaders["source-1"][0] = "changed"
+	_, nextHeaders, _ := store.downloadSnapshot(created.ID)
+	if nextHeaders["source-1"][0] != "Cookie: sentinel-cookie" {
+		t.Fatal("download snapshot shared private memory")
+	}
 
 	public, ok := store.Get(created.ID)
 	if !ok || len(public.Sources) != 1 {

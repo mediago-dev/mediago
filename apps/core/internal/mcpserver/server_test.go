@@ -15,10 +15,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-type testDownloadConfig struct{}
+type testDownloadConfig struct {
+	localDir string
+	desktop  bool
+}
 
-func (testDownloadConfig) GetLocalDir() string     { return "" }
+func (c testDownloadConfig) GetLocalDir() string   { return c.localDir }
 func (testDownloadConfig) GetDeleteSegments() bool { return true }
+func (c testDownloadConfig) IsDesktop() bool       { return c.desktop }
 
 func newTestManager(download *service.DownloadTaskService) *Manager {
 	return NewManager(download, testDownloadConfig{}, discovery.NewService(nil, nil, nil), nil)
@@ -194,11 +198,17 @@ func TestMCPDiscoveryToolsAreListedAndReturnRedactedJobs(t *testing.T) {
 			t.Fatalf("missing MCP tool %q", name)
 		}
 	}
-	if annotations := tools["discover_media"].Annotations; annotations == nil || !annotations.ReadOnlyHint || annotations.OpenWorldHint == nil || !*annotations.OpenWorldHint {
+	if annotations := tools["discover_media"].Annotations; annotations == nil || annotations.ReadOnlyHint || annotations.OpenWorldHint == nil || !*annotations.OpenWorldHint {
 		t.Fatalf("unexpected discover_media annotations: %+v", annotations)
 	}
 	if annotations := tools["download_discovered_media"].Annotations; annotations == nil || annotations.ReadOnlyHint {
 		t.Fatalf("unexpected download_discovered_media annotations: %+v", annotations)
+	}
+	for _, name := range []string{"create_download", "download_discovered_media"} {
+		encoded, err := json.Marshal(tools[name].InputSchema)
+		if err != nil || !strings.Contains(string(encoded), `"downloadDir"`) || !strings.Contains(string(encoded), "Docker/server") {
+			t.Fatalf("%s schema does not describe the desktop-only downloadDir: %s (%v)", name, encoded, err)
+		}
 	}
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{

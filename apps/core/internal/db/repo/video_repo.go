@@ -182,8 +182,9 @@ func (r *VideoRepository) PrepareDownload(id int64) error {
 			return err
 		}
 		return tx.Model(&db.Video{}).Where("id = ?", id).Updates(map[string]any{
-			"outputPath": "",
-			"status":     "pending",
+			"outputPath":    "",
+			"status":        "pending",
+			"lastErrorCode": "",
 		}).Error
 	})
 }
@@ -196,8 +197,9 @@ func (r *VideoRepository) CompleteDownload(id int64, primaryPath string, artifac
 			return err
 		}
 		return tx.Model(&db.Video{}).Where("id = ?", id).Updates(map[string]any{
-			"outputPath": primaryPath,
-			"status":     "success",
+			"outputPath":    primaryPath,
+			"status":        "success",
+			"lastErrorCode": "",
 		}).Error
 	})
 }

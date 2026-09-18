@@ -233,6 +233,23 @@ func (s *Store) PrivateHeaders(jobID, sourceID string) ([]string, bool) {
 	return slices.Clone(headers), true
 }
 
+// downloadSnapshot prevents expiry between reading public sources and their
+// private credentials. The snapshot never crosses a public transport boundary.
+func (s *Store) downloadSnapshot(id string) (DiscoveryJob, map[string][]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleanupExpiredLocked()
+	stored, ok := s.jobs[id]
+	if !ok {
+		return DiscoveryJob{}, nil, ErrNotFound
+	}
+	headers := make(map[string][]string, len(s.privateHeaders[id]))
+	for sourceID, values := range s.privateHeaders[id] {
+		headers[sourceID] = slices.Clone(values)
+	}
+	return cloneJob(stored.public), headers, nil
+}
+
 func (s *Store) IsActive(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

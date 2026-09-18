@@ -118,12 +118,7 @@ func (d *DownloaderSvc) buildArgs(p DownloadParams, s schema.Schema) []string {
 			out = append(out, downloadURL)
 
 		case "localDir":
-			// local directory argument: may need to join with subdirectory
-			final := d.cfg.(interface{ GetLocalDir() string }).GetLocalDir()
-			if p.Folder != "" {
-				final = filepath.Join(final, p.Folder)
-			}
-			pushKV(spec.ArgsName, final)
+			pushKV(spec.ArgsName, d.outputDirectory(p))
 
 		case "name":
 			// File-name argument. The task-creation service already
@@ -341,6 +336,9 @@ func urlOriginForLog(raw string) string {
 
 func (d *DownloaderSvc) outputDirectory(p DownloadParams) string {
 	dir := d.cfg.(interface{ GetLocalDir() string }).GetLocalDir()
+	if p.DownloadDir != "" {
+		dir = filepath.Clean(p.DownloadDir)
+	}
 	if p.Folder != "" {
 		dir = filepath.Join(dir, p.Folder)
 	}
@@ -675,7 +673,14 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 		zap.String("id", string(p.ID)),
 		zap.String("binary", bin))
 
-	outputDir := d.outputDirectory(p)
+	desktopConfig, hasDesktopConfig := d.cfg.(interface{ IsDesktop() bool })
+	outputDir, err := ResolveDownloadDirectory(
+		d.cfg.(interface{ GetLocalDir() string }).GetLocalDir(), p.DownloadDir, p.Folder,
+		hasDesktopConfig && desktopConfig.IsDesktop(),
+	)
+	if err != nil {
+		return DownloadResult{}, err
+	}
 	outputBefore, inspectErr := captureOutputFiles(outputDir, p.Name)
 	if inspectErr != nil {
 		return DownloadResult{}, fmt.Errorf("inspect output directory before download: %w", inspectErr)

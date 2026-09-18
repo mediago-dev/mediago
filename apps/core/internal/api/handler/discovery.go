@@ -22,10 +22,10 @@ const (
 )
 
 var (
-	ErrDiscoveryDownloadUnavailable = errors.New("discovery download service unavailable")
-	ErrDiscoveryDownloadInvalid     = errors.New("invalid discovery download request")
-	ErrDiscoveryJobNotReady         = errors.New("discovery job is not ready for download")
-	ErrDiscoverySourceNotFound      = errors.New("discovery source not found")
+	ErrDiscoveryDownloadUnavailable = service.ErrDiscoveryDownloadUnavailable
+	ErrDiscoveryDownloadInvalid     = service.ErrDiscoveryDownloadInvalid
+	ErrDiscoveryJobNotReady         = service.ErrDiscoveryJobNotReady
+	ErrDiscoverySourceNotFound      = service.ErrDiscoverySourceNotFound
 )
 
 type DiscoveryHandler struct {
@@ -98,7 +98,7 @@ func (h *DiscoveryHandler) Downloads(c *gin.Context) {
 		return
 	}
 	startDownload := req.StartDownload == nil || *req.StartDownload
-	videos, err := h.createDownloads(c.Request.Context(), c.Param("id"), req.SourceIDs, req.Folder, req.Names, req.VariantURLs, startDownload)
+	videos, err := h.createDownloads(c.Request.Context(), c.Param("id"), req.SourceIDs, req.Folder, "", req.Names, req.VariantURLs, startDownload)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrDiscoveryDownloadUnavailable):
@@ -122,97 +122,124 @@ func (h *DiscoveryHandler) Downloads(c *gin.Context) {
 }
 
 // CreateDownloads is the shared discovery-to-download handoff used by HTTP
-// and MCP. Sensitive browser credentials stay in memory and are only supplied
-// to active queue workers; persisted records receive the safe header subset.
-func (h *DiscoveryHandler) CreateDownloads(_ context.Context, jobID string, sourceIDs []string, folderName string, startDownload bool) ([]*db.Video, error) {
-	return h.createDownloads(context.Background(), jobID, sourceIDs, folderName, nil, nil, startDownload)
+// and MCP. Sensitive browser credentials stay in task memory for deferred starts
+// and retries; persisted records receive only the safe header subset.
+func (h *DiscoveryHandler) CreateDownloads(ctx context.Context, jobID string, sourceIDs []string, folderName, downloadDir string, startDownload bool) ([]*db.Video, error) {
+	return h.createDownloads(ctx, jobID, sourceIDs, folderName, downloadDir, nil, nil, startDownload)
 }
 
-func (h *DiscoveryHandler) createDownloads(_ context.Context, jobID string, sourceIDs []string, folderName string, names, variantURLs map[string]string, startDownload bool) ([]*db.Video, error) {
+func (h *DiscoveryHandler) createDownloads(ctx context.Context, jobID string, sourceIDs []string, folderName, downloadDir string, names, variantURLs map[string]string, startDownload bool) ([]*db.Video, error) {
+	selections := make([]service.DiscoveryDownloadSelection, 0, len(sourceIDs))
+	for _, id := range sourceIDs {
+		selections = append(selections, service.DiscoveryDownloadSelection{SourceID: id, Name: names[id], VariantURL: variantURLs[id]})
+	}
+	results, err := h.CreateDownloadBatch(ctx, jobID, selections, folderName, downloadDir, startDownload)
+	if err != nil {
+		return nil, err
+	}
+	videos := make([]*db.Video, 0, len(results))
+	for _, result := range results {
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		if result.Outcome == "created" {
+			videos = append(videos, result.Video)
+		}
+	}
+	if len(videos) == 0 {
+		return nil, service.ErrDownloadURLAlreadyExists
+	}
+	return videos, nil
+}
+
+// CreateDownloadBatch validates every selection before creating records, then
+// returns every outcome, including existing records and failures after creation.
+func (h *DiscoveryHandler) CreateDownloadBatch(ctx context.Context, jobID string, selections []service.DiscoveryDownloadSelection, folderName, downloadDir string, startDownload bool) ([]service.DiscoveryDownloadResult, error) {
 	if h.downloadSvc == nil {
 		return nil, ErrDiscoveryDownloadUnavailable
 	}
-	if len(sourceIDs) == 0 || len(sourceIDs) > maxDiscoveryDownloadSources {
+	if len(selections) == 0 || len(selections) > maxDiscoveryDownloadSources {
 		return nil, ErrDiscoveryDownloadInvalid
 	}
-	job, err := h.discoverySvc.Get(jobID)
+	job, privateHeaders, err := h.discoverySvc.DownloadSnapshot(jobID)
 	if err != nil {
 		return nil, err
 	}
 	if job.Status != discovery.StatusCompleted && job.Status != discovery.StatusFailed {
 		return nil, ErrDiscoveryJobNotReady
 	}
-
 	sources := make(map[string]discovery.DiscoverySource, len(job.Sources))
 	for _, source := range job.Sources {
 		sources[source.ID] = source
 	}
-	seen := make(map[string]struct{}, len(sourceIDs))
-	inputs := make([]*service.AddDownloadTaskInput, 0, len(sourceIDs))
-	runtimeHeaders := make([][]string, 0, len(sourceIDs))
-	for _, rawSourceID := range sourceIDs {
-		sourceID := strings.TrimSpace(rawSourceID)
-		source, ok := sources[sourceID]
+	seen := make(map[string]bool, len(selections))
+	inputs := make([]*service.AddDownloadTaskInput, 0, len(selections))
+	for _, selection := range selections {
+		id := strings.TrimSpace(selection.SourceID)
+		source, ok := sources[id]
 		if !ok {
 			return nil, ErrDiscoverySourceNotFound
 		}
-		if _, duplicate := seen[sourceID]; duplicate {
+		if seen[id] {
 			return nil, ErrDiscoveryDownloadInvalid
 		}
-		seen[sourceID] = struct{}{}
-		selectedURL, err := selectedDiscoverySourceURL(source, variantURLs)
+		seen[id] = true
+		selectedURL, err := selectedDiscoverySourceURL(source, map[string]string{id: selection.VariantURL})
 		if err != nil {
 			return nil, err
 		}
-		headers, _ := h.discoverySvc.PrivateHeaders(job.ID, sourceID)
+		headers := privateHeaders[id]
 		var folder *string
 		if folderName != "" {
 			value := folderName
 			folder = &value
 		}
 		inputs = append(inputs, &service.AddDownloadTaskInput{
-			Name:    discoverySourceName(source, names),
-			Type:    string(source.Type),
-			URL:     selectedURL,
-			Headers: service.PersistentDiscoveryHeaders(headers),
-			Folder:  folder,
+			DownloadDir:    downloadDir,
+			Name:           discoverySourceName(source, map[string]string{id: selection.Name}),
+			Type:           string(source.Type),
+			URL:            selectedURL,
+			Headers:        service.PersistentDiscoveryHeaders(headers),
+			Folder:         folder,
+			RuntimeHeaders: headers,
 		})
-		runtimeHeaders = append(runtimeHeaders, headers)
 	}
-
-	videos := make([]*db.Video, 0, len(inputs))
-	createdRuntimeHeaders := make([][]string, 0, len(inputs))
-	for index, input := range inputs {
-		video, err := h.downloadSvc.AddDownloadTask(input)
-		if errors.Is(err, service.ErrDownloadURLAlreadyExists) {
+	results := make([]service.DiscoveryDownloadResult, 0, len(inputs))
+	createdIDs := make([]int64, 0, len(inputs))
+	for i, input := range inputs {
+		item := service.DiscoveryDownloadResult{SourceID: strings.TrimSpace(selections[i].SourceID), Outcome: "created"}
+		if err := ctx.Err(); err != nil {
+			item.Outcome, item.Err = "failed", err
+			results = append(results, item)
 			continue
 		}
-		if err != nil {
-			return nil, err
-		}
-		videos = append(videos, video)
-		createdRuntimeHeaders = append(createdRuntimeHeaders, runtimeHeaders[index])
-	}
-	if len(videos) == 0 {
-		return nil, service.ErrDownloadURLAlreadyExists
-	}
-	if startDownload {
-		localPath, _ := h.conf.Get("local").(string)
-		deleteSegments, _ := h.conf.Get("deleteSegments").(bool)
-		for index, video := range videos {
-			if err := h.downloadSvc.StartDownloadWithRuntimeHeaders(video.ID, localPath, deleteSegments, createdRuntimeHeaders[index]); err != nil {
-				return nil, err
+		item.Video, item.Err = h.downloadSvc.AddDownloadTaskWithContext(ctx, input)
+		if errors.Is(item.Err, service.ErrDownloadURLAlreadyExists) {
+			item.Video, item.Err = h.downloadSvc.FindByURL(input.URL)
+			item.Outcome = "existing"
+			if item.Err == nil && item.Video == nil {
+				item.Err = ErrDiscoveryDownloadUnavailable
+			}
+			if item.Err == nil && item.Video != nil && len(input.RuntimeHeaders) > 0 {
+				item.Err = h.downloadSvc.SetRuntimeHeaders(item.Video.ID, input.URL, input.RuntimeHeaders)
+			}
+		} else if item.Err == nil {
+			createdIDs = append(createdIDs, item.Video.ID)
+			if startDownload {
+				localPath, _ := h.conf.Get("local").(string)
+				deleteSegments, _ := h.conf.Get("deleteSegments").(bool)
+				item.Err = h.downloadSvc.StartDownloadIfNeededWithContext(ctx, item.Video.ID, input.URL, localPath, deleteSegments, nil)
 			}
 		}
-	}
-	if h.hub != nil && len(videos) > 0 {
-		ids := make([]int64, 0, len(videos))
-		for _, video := range videos {
-			ids = append(ids, video.ID)
+		if item.Err != nil || item.Video == nil {
+			item.Outcome = "failed"
 		}
-		h.hub.Broadcast("download-create", map[string]any{"ids": ids, "count": len(ids)})
+		results = append(results, item)
 	}
-	return videos, nil
+	if h.hub != nil && len(createdIDs) > 0 {
+		h.hub.Broadcast("download-create", map[string]any{"ids": createdIDs, "count": len(createdIDs)})
+	}
+	return results, nil
 }
 
 // selectedDiscoverySourceURL only accepts a URL advertised by the inspected

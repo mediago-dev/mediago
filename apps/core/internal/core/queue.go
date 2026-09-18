@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -28,6 +29,7 @@ type TaskQueue struct {
 
 	// event callback functions
 	onStart    func(TaskID)
+	onComplete func(TaskID, DownloadResult) error
 	onSuccess  func(TaskID, DownloadResult)
 	onFailed   func(TaskID, error)
 	onStopped  func(TaskID)
@@ -58,6 +60,21 @@ func (q *TaskQueue) IsFull() bool {
 
 func (q *TaskQueue) Downloader() Downloader {
 	return q.downloader
+}
+
+// IsScheduled includes terminal tasks whose completion callbacks are still running.
+func (q *TaskQueue) IsScheduled(id TaskID) bool {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	if _, ok := q.active[id]; ok {
+		return true
+	}
+	for _, pending := range q.queue {
+		if pending.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // SetMaxRunner sets the maximum concurrency.
@@ -128,6 +145,9 @@ func (q *TaskQueue) Stop(id TaskID) error {
 	q.mu.Lock()
 	if cancel, ok := q.active[id]; ok {
 		isLive := q.tasks[id] != nil && q.tasks[id].IsLive
+		if task := q.tasks[id]; task != nil && task.Status == StatusDownloading {
+			task.StopRequested = true
+		}
 		q.mu.Unlock()
 		if isLive {
 			logger.Info("Ending live recording", zap.String("id", string(id)))
@@ -261,6 +281,17 @@ func (q *TaskQueue) execute(p DownloadParams, ctx context.Context) {
 		},
 	})
 
+	// Completion persistence must finish before any observer can see success.
+	// Never hold q.mu across callbacks: the service also reads the queue.
+	q.mu.RLock()
+	_, discarded := q.discarded[p.ID]
+	q.mu.RUnlock()
+	if err == nil && !discarded && q.onComplete != nil {
+		if persistErr := q.onComplete(p.ID, result); persistErr != nil {
+			err = fmt.Errorf("%w: %v", ErrResultPersistence, persistErr)
+		}
+	}
+
 	q.mu.Lock()
 	if _, discarded := q.discarded[p.ID]; discarded {
 		delete(q.discarded, p.ID)
@@ -288,6 +319,8 @@ func (q *TaskQueue) execute(p DownloadParams, ctx context.Context) {
 		if task != nil {
 			task.Status = StatusFailed
 			task.Error = err.Error()
+			failure := DescribeDownloadFailure(err)
+			task.Failure = &failure
 		}
 	}
 	q.mu.Unlock()
@@ -335,6 +368,11 @@ func (q *TaskQueue) OnStart(fn func(TaskID)) {
 
 func (q *TaskQueue) OnSuccess(fn func(TaskID, DownloadResult)) {
 	q.onSuccess = fn
+}
+
+// OnComplete registers persistence that must succeed before publishing success.
+func (q *TaskQueue) OnComplete(fn func(TaskID, DownloadResult) error) {
+	q.onComplete = fn
 }
 
 func (q *TaskQueue) OnFailed(fn func(TaskID, error)) {

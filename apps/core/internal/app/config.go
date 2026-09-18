@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // AppConfig stores startup configuration options passed by flags or environment.
@@ -69,6 +70,11 @@ func (c *AppConfig) ApplyEnvAndDefaults() {
 
 func (c *AppConfig) GetLocalDir() string {
 	return c.LocalDir
+}
+
+// IsDesktop uses the private startup token supplied by the Electron host.
+func (c *AppConfig) IsDesktop() bool {
+	return strings.TrimSpace(c.ElectronBridgeToken) != ""
 }
 
 func (c *AppConfig) GetDeleteSegments() bool {

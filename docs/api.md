@@ -99,7 +99,7 @@ mediago discover cancel <discovery-id>
 mediago discover download <discovery-id> --source source-1
 ```
 
-需要登录态时显式添加 `--session-cookies`。内置 MCP 的对应工具是 `discover_media`、`get_media_discovery`、`cancel_media_discovery` 和 `download_discovered_media`；MCP 使用 `/mcp`、Bearer token，并在设置中启用。
+需要登录态时显式添加 `--session-cookies`。内置 MCP 使用 `/mcp`、Bearer token，并在设置中启用。它提供下载创建、启动、停止、查询、媒体发现和运行能力查询共 11 个工具；完整参数、响应、凭证生命周期和升级说明见 [MCP 协议](./mcp)。
 
 ## 快速上手
 

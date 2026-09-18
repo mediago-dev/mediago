@@ -19,6 +19,7 @@ type mcpRouteDownloadConfig struct{}
 
 func (mcpRouteDownloadConfig) GetLocalDir() string     { return "" }
 func (mcpRouteDownloadConfig) GetDeleteSegments() bool { return true }
+func (mcpRouteDownloadConfig) IsDesktop() bool         { return false }
 
 func TestRegisterMCPRoutesUsesMainGinEngine(t *testing.T) {
 	gin.SetMode(gin.TestMode)

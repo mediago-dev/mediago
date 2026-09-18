@@ -285,6 +285,7 @@ export interface DownloadTask {
   type: string;
   url: string;
   folder?: string | null;
+  downloadDir?: string;
   headers?: string | null;
   outputPath?: string;
   isLive: boolean;

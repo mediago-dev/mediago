@@ -61,7 +61,9 @@ func (s *Service) Create(ctx context.Context, input CreateDiscoveryInput) (Disco
 			return DiscoveryJob{}, err
 		}
 		if err := s.dispatchNext(ctx); err != nil {
-			return DiscoveryJob{}, err
+			// The job has already been stored with a safe failure code. Return
+			// its identity so callers can inspect it without creating duplicates.
+			return s.mustGet(job.ID), nil
 		}
 		return s.mustGet(job.ID), nil
 	}
@@ -249,6 +251,13 @@ func (s *Service) cancelTimeout(id string) {
 
 func (s *Service) PrivateHeaders(jobID, sourceID string) ([]string, bool) {
 	return s.store.PrivateHeaders(jobID, sourceID)
+}
+
+func (s *Service) InspectorAvailable() bool { return s.inspector != nil }
+
+// DownloadSnapshot is a Core-only handoff; private headers must never be serialized.
+func (s *Service) DownloadSnapshot(id string) (DiscoveryJob, map[string][]string, error) {
+	return s.store.downloadSnapshot(id)
 }
 
 func (s *Service) dispatchNext(ctx context.Context) error {

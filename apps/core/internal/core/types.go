@@ -164,12 +164,13 @@ const (
 
 // DownloadParams holds the parameters for a download task
 type DownloadParams struct {
-	ID      TaskID       `json:"id"`      // task ID
-	Type    DownloadType `json:"type"`    // download type
-	URL     string       `json:"url"`     // download URL
-	Name    string       `json:"name"`    // file name
-	Folder  string       `json:"folder"`  // subdirectory
-	Headers []string     `json:"headers"` // HTTP request headers
+	ID          TaskID       `json:"id"`                    // task ID
+	Type        DownloadType `json:"type"`                  // download type
+	URL         string       `json:"url"`                   // download URL
+	Name        string       `json:"name"`                  // file name
+	Folder      string       `json:"folder"`                // subdirectory
+	DownloadDir string       `json:"downloadDir,omitempty"` // desktop task download root override
+	Headers     []string     `json:"headers"`               // HTTP request headers
 }
 
 // ProgressEvent is a progress update event
@@ -189,18 +190,20 @@ type MessageEvent struct {
 
 // TaskInfo holds information about a task
 type TaskInfo struct {
-	ID            TaskID       `json:"id"`                      // task ID
-	Type          DownloadType `json:"type"`                    // download type
-	URL           string       `json:"url"`                     // download URL
-	Name          string       `json:"name"`                    // file name
-	OutputPath    string       `json:"outputPath,omitempty"`    // verified primary output path
-	ArtifactPaths []string     `json:"artifactPaths,omitempty"` // every verified output path
-	Status        TaskStatus   `json:"status"`                  // task status
-	Percent       float64      `json:"percent"`                 // completion percentage
-	Speed         string       `json:"speed"`                   // download speed
-	IsLive        bool         `json:"isLive"`                  // whether this is a live stream
-	StartedAt     *time.Time   `json:"startedAt,omitempty"`     // actual task execution start time
-	Error         string       `json:"error,omitempty"`         // error message (if any)
+	ID            TaskID           `json:"id"`                      // task ID
+	Type          DownloadType     `json:"type"`                    // download type
+	URL           string           `json:"url"`                     // download URL
+	Name          string           `json:"name"`                    // file name
+	OutputPath    string           `json:"outputPath,omitempty"`    // verified primary output path
+	ArtifactPaths []string         `json:"artifactPaths,omitempty"` // every verified output path
+	Status        TaskStatus       `json:"status"`                  // task status
+	Percent       float64          `json:"percent"`                 // completion percentage
+	Speed         string           `json:"speed"`                   // download speed
+	IsLive        bool             `json:"isLive"`                  // whether this is a live stream
+	StartedAt     *time.Time       `json:"startedAt,omitempty"`     // actual task execution start time
+	StopRequested bool             `json:"stopRequested,omitempty"`
+	Failure       *DownloadFailure `json:"failure,omitempty"`
+	Error         string           `json:"error,omitempty"` // error message (if any)
 }
 
 // DownloadResult identifies every verified artifact produced by a downloader.

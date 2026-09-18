@@ -9,6 +9,7 @@ export interface DownloadTask {
   url: string;
   headers?: string;
   outputPath?: string;
+  downloadDir?: string;
   status?: DownloadStatus;
   folder?: string;
   isLive?: boolean;

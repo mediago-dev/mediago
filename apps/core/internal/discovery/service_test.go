@@ -43,6 +43,19 @@ func (e *fakeExecutor) Cancel(_ context.Context, id string) error {
 	return nil
 }
 
+func TestServiceReturnsJobIdentityWhenExecutorDispatchFails(t *testing.T) {
+	executor := &fakeExecutor{available: true, dispatchErr: errors.New("private executor details")}
+	svc := NewService(nil, nil, executor)
+	t.Cleanup(svc.Close)
+	job, err := svc.Create(context.Background(), CreateDiscoveryInput{URL: "https://example.com/watch", Mode: ModeBrowser})
+	if err != nil || job.ID == "" || job.Status != StatusFailed || job.ErrorCode != "discovery_executor_unavailable" {
+		t.Fatalf("dispatch failure lost its job: %+v, %v", job, err)
+	}
+	if _, err := svc.Get(job.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestServiceRoutesDirectHLSIntoExistingInspector(t *testing.T) {
 	manifest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720\n720.m3u8\n"))

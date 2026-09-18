@@ -283,7 +283,7 @@ func TestStartDownloadWithRuntimeHeadersDoesNotPersistCredentials(t *testing.T) 
 		t.Fatalf("persisted headers = %v", stored.Headers)
 	}
 
-	if err := svc.StartDownloadWithRuntimeHeaders(video.ID, t.TempDir(), false, runtimeHeaders); err != nil {
+	if err := svc.StartDownloadWithRuntimeHeaders(video.ID, video.URL, t.TempDir(), false, runtimeHeaders); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -321,6 +321,34 @@ func TestGetDownloadTaskUsesPersistedOutputOutsideCurrentDirectory(t *testing.T)
 	}
 	if !result.Exists || result.File != actualOutput {
 		t.Fatalf("GetDownloadTask() = exists %v, file %q", result.Exists, result.File)
+	}
+}
+
+func TestDownloadFileLookupUsesTaskDirectory(t *testing.T) {
+	svc, repository := newTestDownloadTaskService(t)
+	customDir, folder := t.TempDir(), "courses"
+	output := filepath.Join(customDir, folder, "video.mp4")
+	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestOutput(t, output, "media")
+	video, err := repository.Create(&db.Video{Name: "video", Type: "direct", URL: "https://example.com/video.mp4", Status: "success", DownloadDir: customDir, Folder: &folder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := svc.GetDownloadTask(video.ID, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Exists || result.File != output {
+		t.Fatalf("unexpected file lookup: %+v", result)
+	}
+	listed, err := svc.GetDownloadTasks(1, 10, "done", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.List) != 1 || listed.List[0].File != output {
+		t.Fatalf("unexpected list: %+v", listed)
 	}
 }
 

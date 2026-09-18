@@ -55,6 +55,21 @@ func TestGetVideoFilePathUsesPersistedOutputOutsideConfiguredRoot(t *testing.T) 
 	}
 }
 
+func TestGetVideoFilePathUsesTaskDownloadDirectory(t *testing.T) {
+	videoRepo := newVideoServiceTestRepository(t)
+	root, folder := t.TempDir(), "courses"
+	want := filepath.Join(root, folder, "video.mp4")
+	createVideoServiceTestOutput(t, want)
+	record, err := videoRepo.Create(&db.Video{Name: "video", Type: "direct", URL: "https://example.com/video.mp4", Status: "success", DownloadDir: root, Folder: &folder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := NewService(videoRepo, t.TempDir(), nil).GetVideoFilePath(record.ID)
+	if err != nil || got != want {
+		t.Fatalf("GetVideoFilePath() = %q, %v; want %q", got, err, want)
+	}
+}
+
 func TestGetVideoFilePathBackfillsLegacyPathFromTaskLog(t *testing.T) {
 	videoRepo := newVideoServiceTestRepository(t)
 	logs := tasklog.NewManager(filepath.Join(t.TempDir(), "logs"))

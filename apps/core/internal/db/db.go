@@ -30,10 +30,25 @@ func New(dbPath string) (*Database, error) {
 			return nil, err
 		}
 	}
+	if videoTableExists && !db.Migrator().HasColumn(&Video{}, "downloadDir") {
+		if err := db.Exec(`ALTER TABLE "video" ADD COLUMN "downloadDir" TEXT NOT NULL DEFAULT ''`).Error; err != nil {
+			return nil, err
+		}
+	}
 
 	if !videoTableExists {
 		if err := db.AutoMigrate(&Video{}); err != nil {
 			return nil, err
+		}
+	}
+	for _, column := range []struct{ name, definition string }{
+		{"requiresRuntimeHeaders", `INTEGER NOT NULL DEFAULT 0`},
+		{"lastErrorCode", `TEXT NOT NULL DEFAULT ''`},
+	} {
+		if videoTableExists && !db.Migrator().HasColumn(&Video{}, column.name) {
+			if err := db.Exec(`ALTER TABLE "video" ADD COLUMN "` + column.name + `" ` + column.definition).Error; err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err := db.AutoMigrate(&Favorite{}, &Conversion{}, &DownloadArtifact{}); err != nil {

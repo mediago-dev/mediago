@@ -62,6 +62,17 @@ func (s *Server) setupQueueCallbacks() {
 		s.hub.Broadcast("download-start", map[string]interface{}{"id": id})
 	})
 
+	s.queue.OnComplete(func(id core.TaskID, result core.DownloadResult) error {
+		if s.downloadService == nil {
+			return nil
+		}
+		dbID, err := strconv.ParseInt(string(id), 10, 64)
+		if err != nil {
+			return err
+		}
+		return s.downloadService.CompleteDownload(dbID, result)
+	})
+
 	s.queue.OnSuccess(func(id core.TaskID, result core.DownloadResult) {
 		forgetLiveTask(id)
 		if s.logs != nil {
@@ -81,18 +92,6 @@ func (s *Server) setupQueueCallbacks() {
 			}
 		}
 
-		// Persist the actual output path together with the success status.
-		if s.downloadService != nil {
-			if dbID, err := strconv.ParseInt(string(id), 10, 64); err == nil {
-				if err := s.downloadService.CompleteDownload(dbID, result); err != nil {
-					logger.Warn("Failed to update DB status on success",
-						zap.String("id", string(id)),
-						zap.Error(err))
-					return
-				}
-			}
-		}
-
 		s.hub.Broadcast("download-success", map[string]interface{}{"id": id})
 	})
 
@@ -109,7 +108,7 @@ func (s *Server) setupQueueCallbacks() {
 		// Update database status
 		if s.downloadService != nil {
 			if dbID, parseErr := strconv.ParseInt(string(id), 10, 64); parseErr == nil {
-				if updateErr := s.downloadService.SetStatus([]int64{dbID}, "failed"); updateErr != nil {
+				if updateErr := s.downloadService.FailDownload(dbID, err); updateErr != nil {
 					logger.Warn("Failed to update DB status on failed",
 						zap.String("id", string(id)),
 						zap.Error(updateErr))

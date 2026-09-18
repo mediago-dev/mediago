@@ -49,3 +49,16 @@ func TestAppConfigReadsTaskRuntimeEnvironment(t *testing.T) {
 		t.Fatalf("DepsDir = %q", cfg.DepsDir)
 	}
 }
+
+func TestAppConfigOnlyIdentifiesElectronAsDesktop(t *testing.T) {
+	for _, test := range []struct {
+		token string
+		want  bool
+	}{{"", false}, {" \t", false}, {"electron-private-token", true}} {
+		cfg := DefaultConfig()
+		cfg.ElectronBridgeToken = test.token
+		if got := cfg.IsDesktop(); got != test.want {
+			t.Fatalf("IsDesktop() = %v, want %v", got, test.want)
+		}
+	}
+}

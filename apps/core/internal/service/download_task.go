@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,10 +21,13 @@ var ErrDownloadURLAlreadyExists = errors.New("download URL already exists")
 
 // DownloadTaskService is the business logic layer for download tasks.
 type DownloadTaskService struct {
-	repo     *repo.VideoRepository
-	queue    *core.TaskQueue
-	logs     *tasklog.Manager
-	createMu sync.Mutex
+	repo           *repo.VideoRepository
+	queue          *core.TaskQueue
+	logs           *tasklog.Manager
+	createMu       sync.Mutex
+	taskMu         sync.Mutex // coordinates persisted state, credentials and queue publication
+	runtimeMu      sync.Mutex
+	runtimeHeaders map[int64]runtimeHeaderEntry
 }
 
 // NewDownloadTaskService creates a DownloadTaskService.
@@ -33,19 +37,23 @@ func NewDownloadTaskService(repo *repo.VideoRepository, queue *core.TaskQueue, l
 
 // AddDownloadTaskInput holds the input for adding a download task.
 type AddDownloadTaskInput struct {
-	Name    string  `json:"name"`
-	Type    string  `json:"type"`
-	URL     string  `json:"url"`
-	Headers *string `json:"headers"`
-	Folder  *string `json:"folder"`
+	DownloadDir    string   `json:"downloadDir,omitempty"`
+	Name           string   `json:"name"`
+	Type           string   `json:"type"`
+	URL            string   `json:"url"`
+	Headers        *string  `json:"headers"`
+	Folder         *string  `json:"folder"`
+	RuntimeHeaders []string `json:"-"`
 }
 
 // DownloadTaskWithFile is a download task augmented with file existence information.
 type DownloadTaskWithFile struct {
 	*db.Video
-	Exists bool     `json:"exists"`
-	File   string   `json:"file,omitempty"`
-	Files  []string `json:"files,omitempty"`
+	Exists         bool                   `json:"exists"`
+	File           string                 `json:"file,omitempty"`
+	Files          []string               `json:"files,omitempty"`
+	Runtime        *core.TaskInfo         `json:"-"`
+	Authentication DownloadAuthentication `json:"-"`
 }
 
 // PaginatedResult holds the paginated result.
@@ -56,8 +64,17 @@ type PaginatedResult struct {
 
 // AddDownloadTask adds a single download task (with automatic title generation and name uniqueness check).
 func (s *DownloadTaskService) AddDownloadTask(input *AddDownloadTaskInput) (*db.Video, error) {
+	return s.AddDownloadTaskWithContext(context.Background(), input)
+}
+
+// AddDownloadTaskWithContext cancels title lookup and checks cancellation before
+// publishing a persisted task. Existing callers can use AddDownloadTask.
+func (s *DownloadTaskService) AddDownloadTaskWithContext(ctx context.Context, input *AddDownloadTaskInput) (*db.Video, error) {
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	if strings.TrimSpace(input.Type) == "" {
 		input.Type = string(core.InferDownloadType(input.URL))
@@ -71,20 +88,31 @@ func (s *DownloadTaskService) AddDownloadTask(input *AddDownloadTaskInput) (*db.
 		return nil, ErrDownloadURLAlreadyExists
 	}
 
-	title, err := s.prepareDownloadTitle(input, nil)
+	title, err := s.prepareDownloadTitle(ctx, input, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	video := &db.Video{
-		Name:    title,
-		Type:    input.Type,
-		URL:     input.URL,
-		Headers: input.Headers,
-		Folder:  input.Folder,
+		DownloadDir:            input.DownloadDir,
+		Name:                   title,
+		Type:                   input.Type,
+		URL:                    input.URL,
+		Headers:                input.Headers,
+		Folder:                 input.Folder,
+		RequiresRuntimeHeaders: HasPrivateHeaders(input.RuntimeHeaders),
 	}
 
-	return s.repo.Create(video)
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	created, err := s.repo.Create(video)
+	if err == nil && len(input.RuntimeHeaders) > 0 {
+		s.rememberRuntimeHeaders(created.ID, created.URL, input.RuntimeHeaders)
+	}
+	return created, err
 }
 
 // AddDownloadTasks adds multiple download tasks in bulk.
@@ -111,24 +139,37 @@ func (s *DownloadTaskService) AddDownloadTasks(inputs []*AddDownloadTaskInput) (
 		}
 		seenURLs[input.URL] = struct{}{}
 
-		title, err := s.prepareDownloadTitle(input, reservedTitles)
+		title, err := s.prepareDownloadTitle(context.Background(), input, reservedTitles)
 		if err != nil {
 			return nil, err
 		}
 
 		videos = append(videos, &db.Video{
-			Name:    title,
-			Type:    input.Type,
-			URL:     input.URL,
-			Headers: input.Headers,
-			Folder:  input.Folder,
+			DownloadDir:            input.DownloadDir,
+			Name:                   title,
+			Type:                   input.Type,
+			URL:                    input.URL,
+			Headers:                input.Headers,
+			Folder:                 input.Folder,
+			RequiresRuntimeHeaders: HasPrivateHeaders(input.RuntimeHeaders),
 		})
 	}
 
-	return s.repo.CreateMany(videos)
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	created, err := s.repo.CreateMany(videos)
+	if err != nil {
+		return nil, err
+	}
+	for i, video := range created {
+		if len(inputs[i].RuntimeHeaders) > 0 {
+			s.rememberRuntimeHeaders(video.ID, video.URL, inputs[i].RuntimeHeaders)
+		}
+	}
+	return created, nil
 }
 
-func (s *DownloadTaskService) prepareDownloadTitle(input *AddDownloadTaskInput, reserved map[string]struct{}) (string, error) {
+func (s *DownloadTaskService) prepareDownloadTitle(ctx context.Context, input *AddDownloadTaskInput, reserved map[string]struct{}) (string, error) {
 	title := input.Name
 	statusID := ""
 	isSocialTitle := false
@@ -143,11 +184,14 @@ func (s *DownloadTaskService) prepareDownloadTitle(input *AddDownloadTaskInput, 
 		isSocialTitle = true
 	} else {
 		if title == "" && input.Type == "bilibili" {
-			title = GetPageTitle(input.URL, "")
+			title = GetPageTitleWithContext(ctx, input.URL, "")
 		}
 		if title == "" {
 			title = fmt.Sprintf("untitled-%s", RandomName())
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 
 	// Sanitize before checking uniqueness so the database name is the same
@@ -203,6 +247,12 @@ func reserveDownloadTitle(title string, reserved map[string]struct{}) {
 func (s *DownloadTaskService) EditDownloadTask(id int64, data map[string]interface{}) (*db.Video, error) {
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	video, err := s.repo.FindByIDOrFail(id)
+	if err != nil {
+		return nil, err
+	}
 
 	if url, ok := data["url"].(string); ok {
 		existingURL, err := s.repo.FindByURL(url)
@@ -214,11 +264,42 @@ func (s *DownloadTaskService) EditDownloadTask(id int64, data map[string]interfa
 		}
 	}
 
-	return s.repo.Update(id, data)
+	// An explicit header edit replaces both persistent and ephemeral headers.
+	// Changing the URL without new headers invalidates the old credentials.
+	updates := make(map[string]any, len(data)+2)
+	for key, value := range data {
+		updates[key] = value
+	}
+	rawHeaders, replaceHeaders := data["headers"].(string)
+	url, editURL := data["url"].(string)
+	urlChanged := editURL && url != video.URL
+	var headers []string
+	if replaceHeaders {
+		headers = ParseStoredHeaders(rawHeaders)
+		updates["headers"] = PersistentDiscoveryHeaders(headers)
+		updates["requiresRuntimeHeaders"] = HasPrivateHeaders(headers)
+	} else if urlChanged {
+		updates["headers"] = nil
+		updates["requiresRuntimeHeaders"] = video.RequiresRuntimeHeaders || (video.Headers != nil && HasPrivateHeaders(ParseStoredHeaders(*video.Headers)))
+	}
+	updated, err := s.repo.Update(id, updates)
+	if err != nil {
+		return nil, err
+	}
+	if replaceHeaders || urlChanged {
+		s.forgetRuntimeHeaders(id)
+		if len(headers) > 0 {
+			s.rememberRuntimeHeaders(id, updated.URL, headers)
+		}
+	}
+	return updated, nil
 }
 
 // GetDownloadTasks retrieves a paginated list of download tasks (including file existence check).
 func (s *DownloadTaskService) GetDownloadTasks(current, pageSize int, filter, localPath string) (*PaginatedResult, error) {
+	// File resolution can backfill persisted artifact paths.
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
 	result, err := s.repo.FindWithPagination(current, pageSize, filter)
 	if err != nil {
 		return nil, err
@@ -247,6 +328,7 @@ func (s *DownloadTaskService) GetDownloadTasks(current, pageSize int, filter, lo
 			taskWithFile.File = file
 			taskWithFile.Files = files
 		}
+		s.captureRuntime(taskWithFile)
 		list = append(list, taskWithFile)
 	}
 
@@ -255,6 +337,13 @@ func (s *DownloadTaskService) GetDownloadTasks(current, pageSize int, filter, lo
 
 // GetDownloadTask retrieves one download task with file existence information.
 func (s *DownloadTaskService) GetDownloadTask(id int64, localPath string) (*DownloadTaskWithFile, error) {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	return s.getDownloadTask(id, localPath)
+}
+
+// getDownloadTask requires taskMu to be held.
+func (s *DownloadTaskService) getDownloadTask(id int64, localPath string) (*DownloadTaskWithFile, error) {
 	item, err := s.repo.FindByIDOrFail(id)
 	if err != nil {
 		return nil, err
@@ -271,6 +360,7 @@ func (s *DownloadTaskService) GetDownloadTask(id int64, localPath string) (*Down
 			return nil, err
 		}
 	}
+	s.captureRuntime(result)
 	return result, nil
 }
 
@@ -301,10 +391,18 @@ func (s *DownloadTaskService) resolveTaskFiles(item *db.Video, localPath string,
 		}
 		return true, primary, files, nil
 	}
+	// A known output that disappeared must not be replaced by a same-name
+	// fragment or unrelated file. Fallback is only for records without identity.
+	if item.OutputPath != "" || len(storedArtifacts) > 0 {
+		return false, "", nil, nil
+	}
 
 	searchDir := localPath
+	if item.DownloadDir != "" {
+		searchDir = item.DownloadDir
+	}
 	if searchDir != "" && item.Folder != nil && *item.Folder != "" {
-		searchDir = filepath.Join(localPath, *item.Folder)
+		searchDir = filepath.Join(searchDir, *item.Folder)
 	}
 	if s.logs != nil {
 		if content, readErr := s.logs.Read(string(queueTaskIDForDownload(item.ID))); readErr == nil {
@@ -332,19 +430,68 @@ func (s *DownloadTaskService) resolveTaskFiles(item *db.Video, localPath string,
 
 // StartDownload starts a download task.
 func (s *DownloadTaskService) StartDownload(taskID int64, localPath string, deleteSegments bool) error {
-	return s.startDownload(taskID, localPath, deleteSegments, nil)
+	return s.startDownload(context.Background(), taskID, "", localPath, deleteSegments, nil, false)
 }
 
 // StartDownloadWithRuntimeHeaders starts a task with ephemeral request headers.
-// Runtime headers are passed to the queue only and are never written to the
-// persisted video record.
-func (s *DownloadTaskService) StartDownloadWithRuntimeHeaders(taskID int64, localPath string, deleteSegments bool, runtimeHeaders []string) error {
-	return s.startDownload(taskID, localPath, deleteSegments, runtimeHeaders)
+// Private headers stay in expiring task memory; only allowlisted headers persist.
+func (s *DownloadTaskService) StartDownloadWithRuntimeHeaders(taskID int64, expectedURL, localPath string, deleteSegments bool, runtimeHeaders []string) error {
+	return s.startDownload(context.Background(), taskID, expectedURL, localPath, deleteSegments, runtimeHeaders, false)
 }
 
-func (s *DownloadTaskService) startDownload(taskID int64, localPath string, deleteSegments bool, runtimeHeaders []string) error {
+// StartDownloadIfNeeded preserves completed tasks with an existing output and
+// retries missing outputs. The check and enqueue are one lifecycle operation.
+func (s *DownloadTaskService) StartDownloadIfNeeded(taskID int64, expectedURL, localPath string, deleteSegments bool, runtimeHeaders []string) error {
+	return s.StartDownloadIfNeededWithContext(context.Background(), taskID, expectedURL, localPath, deleteSegments, runtimeHeaders)
+}
+
+// StartDownloadIfNeededWithContext observes cancellation before accepting work.
+// Once queued, the worker has its own lifetime and is stopped with StopDownload.
+func (s *DownloadTaskService) StartDownloadIfNeededWithContext(ctx context.Context, taskID int64, expectedURL, localPath string, deleteSegments bool, runtimeHeaders []string) error {
+	return s.startDownload(ctx, taskID, expectedURL, localPath, deleteSegments, runtimeHeaders, true)
+}
+
+func (s *DownloadTaskService) startDownload(ctx context.Context, taskID int64, expectedURL, localPath string, deleteSegments bool, runtimeHeaders []string, preserveCompleted bool) error {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	video, err := s.repo.FindByIDOrFail(taskID)
 	if err != nil {
+		return err
+	}
+	if (expectedURL != "" || runtimeHeaders != nil) && video.URL != expectedURL {
+		return ErrDownloadURLChanged
+	}
+	if s.queue != nil && s.queue.IsScheduled(queueTaskIDForDownload(taskID)) {
+		return nil
+	}
+	if preserveCompleted && video.Status == "success" {
+		record, err := s.getDownloadTask(taskID, localPath)
+		if err != nil {
+			return err
+		}
+		if record.Exists {
+			return nil
+		}
+	}
+	if s.queue == nil {
+		return ErrDownloadQueueUnavailable
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if runtimeHeaders != nil {
+		if err := s.setRuntimeHeaders(video, runtimeHeaders); err != nil {
+			return err
+		}
+	}
+	runtimeHeaders, _, available := s.runtimeHeadersFor(taskID, video.URL)
+	if video.RequiresRuntimeHeaders && !available {
+		return ErrRuntimeHeadersExpired
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 
@@ -360,10 +507,9 @@ func (s *DownloadTaskService) startDownload(taskID int64, localPath string, dele
 
 	status := s.queue.Enqueue(params)
 
-	if status == core.StatusDownloading {
-		return s.repo.UpdateStatus([]int64{taskID}, "downloading")
-	} else if status == core.StatusPending {
-		// Keep the pending status
+	if status == core.StatusDownloading || status == core.StatusPending {
+		// The queue's onStart callback owns the downloading transition. Writing
+		// it here could overwrite a task that already completed on another goroutine.
 		return nil
 	}
 
@@ -372,7 +518,7 @@ func (s *DownloadTaskService) startDownload(taskID int64, localPath string, dele
 }
 
 // PersistentDiscoveryHeaders serializes only headers that are safe to retain.
-// Session credentials stay exclusively in the in-memory discovery store.
+// Session credentials stay exclusively in discovery/task memory.
 func PersistentDiscoveryHeaders(headers []string) *string {
 	safe := make([]string, 0, len(headers))
 	for _, header := range headers {
@@ -395,12 +541,20 @@ func PersistentDiscoveryHeaders(headers []string) *string {
 
 // StopDownload stops a download task.
 func (s *DownloadTaskService) StopDownload(id int64) error {
+	if s.queue == nil {
+		return ErrDownloadQueueUnavailable
+	}
 	return s.queue.Stop(queueTaskIDForDownload(id))
 }
 
 // DeleteDownloadTask removes a download task.
 func (s *DownloadTaskService) DeleteDownloadTask(id int64) error {
-	s.queue.Remove(queueTaskIDForDownload(id))
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	s.forgetRuntimeHeaders(id)
+	if s.queue != nil {
+		s.queue.Remove(queueTaskIDForDownload(id))
+	}
 	return s.repo.Delete(id)
 }
 
@@ -437,17 +591,34 @@ func (s *DownloadTaskService) ExportDownloadList() (string, error) {
 
 // SetStatus updates the download status for multiple tasks in bulk.
 func (s *DownloadTaskService) SetStatus(ids []int64, status string) error {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
 	return s.repo.UpdateStatus(ids, status)
+}
+
+func (s *DownloadTaskService) FailDownload(id int64, err error) error {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	failure := core.DescribeDownloadFailure(err)
+	_, updateErr := s.repo.Update(id, map[string]any{"status": "failed", "lastErrorCode": failure.Code})
+	return updateErr
 }
 
 // CompleteDownload persists the verified primary output and success status in
 // one database update.
 func (s *DownloadTaskService) CompleteDownload(id int64, result core.DownloadResult) error {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	if _, err := s.repo.FindByIDOrFail(id); err != nil {
+		return err
+	}
 	return s.repo.CompleteDownload(id, result.PrimaryPath, result.ArtifactPaths)
 }
 
 // SetIsLive updates the live-stream flag.
 func (s *DownloadTaskService) SetIsLive(id int64, isLive bool) (*db.Video, error) {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
 	return s.repo.UpdateIsLive(id, isLive)
 }
 
@@ -506,12 +677,13 @@ func downloadParamsForVideo(video *db.Video, downloadID int64) core.DownloadPara
 	}
 
 	return core.DownloadParams{
-		ID:      queueTaskIDForDownload(downloadID),
-		Type:    core.DownloadType(video.Type),
-		URL:     video.URL,
-		Name:    video.Name,
-		Folder:  folder,
-		Headers: headers,
+		DownloadDir: video.DownloadDir,
+		ID:          queueTaskIDForDownload(downloadID),
+		Type:        core.DownloadType(video.Type),
+		URL:         video.URL,
+		Name:        video.Name,
+		Folder:      folder,
+		Headers:     headers,
 	}
 }
 
@@ -541,10 +713,10 @@ func mergeDownloadHeaders(stored, runtime []string) []string {
 
 func sensitiveDiscoveryHeader(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "cookie", "authorization", "proxy-authorization":
-		return true
-	default:
+	case "user-agent", "referer", "origin", "accept", "accept-language", "accept-encoding", "range":
 		return false
+	default:
+		return true
 	}
 }
 
