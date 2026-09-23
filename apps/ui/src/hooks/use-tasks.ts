@@ -113,10 +113,15 @@ export function useTasks(filter: DownloadFilter = DownloadFilter.list) {
     {
       keepPreviousData: true,
       refreshWhenHidden: false,
-      refreshInterval: (latest) =>
-        latest?.list.some((task) => task.status === DownloadStatus.Downloading)
-          ? 1_000
-          : 12_000,
+      refreshInterval: enableDocker
+        ? (latest) =>
+            Array.isArray(latest?.list) &&
+            latest.list.some(
+              (task) => task.status === DownloadStatus.Downloading,
+            )
+              ? 1_000
+              : 12_000
+        : 0,
       onSuccess: (response) =>
         replaceSnapshot(filter, response.list, response.total),
     },

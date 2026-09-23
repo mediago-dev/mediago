@@ -12,10 +12,24 @@ export const createDockerDownloadTasks = (
 ): Promise<Video[]> =>
   http.post("/api/docker/downloads", { tasks, startDownload });
 
-export const getDockerTasks = (
+export const getDockerTasks = async (
   params: DownloadTaskPagination,
-): Promise<DownloadTaskResponse> =>
-  http.get("/api/docker/downloads", { params });
+): Promise<DownloadTaskResponse> => {
+  const response: DownloadTaskResponse = await http.get(
+    "/api/docker/downloads",
+    {
+      params,
+    },
+  );
+  if (
+    !Array.isArray(response?.list) ||
+    !Number.isInteger(response.total) ||
+    response.total < 0
+  ) {
+    throw new Error("Invalid Docker task response");
+  }
+  return response;
+};
 
 export const getActiveDockerTasks = (): Promise<Video[]> =>
   http.get("/api/docker/downloads/active");
