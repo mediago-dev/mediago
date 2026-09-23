@@ -2,8 +2,11 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { electronTest as test, expect } from "../support/electron-app.ts";
 
 async function submitStream(page: Page, name: string, url: string) {
-  await page.goto("http://localhost:8500/");
-  await page.getByRole("button", { name: "New download" }).click();
+  await page.locator('aside a[href="/"]').click();
+  await page
+    .locator("header")
+    .getByRole("button", { name: "New download", exact: true })
+    .click();
   await page.getByLabel("Video name").fill(name);
   await page.getByLabel("Video link").fill(url);
   await page.getByRole("button", { name: "Add to list" }).click();
@@ -100,8 +103,11 @@ test("moves m3u8 fallback into smart discovery without reopening the form", asyn
   electronRuntime,
 }) => {
   const { client, media, page } = electronRuntime;
-  await page.goto("http://localhost:8500/");
-  await page.getByRole("button", { name: "New download" }).click();
+  await page.locator('aside a[href="/"]').click();
+  await page
+    .locator("header")
+    .getByRole("button", { name: "New download", exact: true })
+    .click();
   await page.getByLabel("Download type").click();
   await page.getByRole("option", { name: "Stream media (m3u8)" }).click();
   await page.getByLabel("Video name").fill("Prompt fixture");

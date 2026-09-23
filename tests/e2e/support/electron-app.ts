@@ -11,7 +11,17 @@ import {
   type Page,
 } from "@playwright/test";
 import { MediaGoClient } from "../../../packages/core-sdk/src/index.ts";
+import {
+  finalizeManualContextArtifacts,
+  manualArtifactPaths,
+  startManualContextArtifacts,
+} from "./artifacts.ts";
 import { scrubElectronEnvironment } from "./electron-network.ts";
+import {
+  closeElectron,
+  readProcessIdentity,
+  type ProcessIdentity,
+} from "./electron-process.ts";
 import { loadMediaFixture, type MediaFixture } from "./media.ts";
 import { assertPortFree, waitForPortFree } from "./ports.ts";
 import { startTestPage, type StartedTestPage } from "./test-page.ts";
@@ -87,29 +97,11 @@ function normalizeEnvPath(value: unknown): EnvPathPayload {
   return { coreUrl: payload.coreUrl };
 }
 
-async function closeElectron(application?: ElectronApplication): Promise<void> {
-  if (!application) return;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      application.close(),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(
-          () => reject(new Error("Electron close timed out")),
-          5_000,
-        );
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 export const electronTest = base.extend<{
   electronRuntime: ElectronAppRuntime;
 }>({
   electronRuntime: [
-    async ({ browserName: _browserName }, use) => {
+    async ({ browserName: _browserName }, use, testInfo) => {
       if (process.platform !== "linux" || process.arch !== "x64") {
         base.skip(
           true,
@@ -121,6 +113,9 @@ export const electronTest = base.extend<{
         path.join(tmpdir(), "mediago-e2e-browser-"),
       );
       let application: ElectronApplication | undefined;
+      let electronIdentity: ProcessIdentity | undefined;
+      let mainPage: Page | undefined;
+      let tracingStarted = false;
       let media: MediaFixture | undefined;
       let ui: StartedUIProcess | undefined;
       let tabA: StartedTestPage | undefined;
@@ -149,12 +144,23 @@ export const electronTest = base.extend<{
           title: "Fixture Agent",
         });
         ui = await startUIProcess("electron");
+        const artifactPaths = manualArtifactPaths(testInfo);
         application = await _electron.launch({
           executablePath: electronExecutablePath(),
           args: [ELECTRON_MAIN_PATH],
           env: electronEnvironment(runtimeRoot),
           locale: "en-US",
+          artifactsDir: artifactPaths.artifactsDir,
+          recordVideo: { dir: artifactPaths.videoDir },
         });
+        const electronPid = application.process().pid;
+        if (electronPid === undefined)
+          throw new Error("Electron PID is unavailable");
+        electronIdentity = await readProcessIdentity(electronPid);
+        if (!electronIdentity)
+          throw new Error("Electron exited during startup");
+        await startManualContextArtifacts(application.context());
+        tracingStarted = true;
 
         await application.firstWindow();
         await expect
@@ -169,6 +175,7 @@ export const electronTest = base.extend<{
           .windows()
           .find((candidate) => candidate.url() === "http://localhost:8500/");
         if (!page) throw new Error("Electron main window was not available");
+        mainPage = page;
 
         await expect
           .poll(() =>
@@ -216,7 +223,8 @@ export const electronTest = base.extend<{
           })
           .toBe(true);
 
-        await page.goto("http://localhost:8500/source");
+        await page.locator('aside a[href="/source"]').click();
+        await expect(page).toHaveURL("http://localhost:8500/source");
         await expect(
           page.getByRole("tablist", { name: "Browser tabs" }),
         ).toBeVisible();
@@ -232,7 +240,22 @@ export const electronTest = base.extend<{
       }
 
       for (const operation of [
-        () => closeElectron(application),
+        async () => {
+          if (!application) return;
+          const close = () => closeElectron(application, electronIdentity);
+          if (!tracingStarted) return close();
+          await finalizeManualContextArtifacts({
+            testInfo,
+            context: application.context(),
+            page: mainPage,
+            close,
+            failed:
+              primaryError !== undefined ||
+              testInfo.status !== testInfo.expectedStatus,
+            name: "electron",
+            processes: { ui: ui?.process },
+          });
+        },
         () => waitForPortFree("0.0.0.0", ELECTRON_CORE_PORT, 10_000),
         () => ui?.process.stop(),
         () => agent?.close(),

@@ -338,6 +338,10 @@ test("offers Smart Download when a manual m3u8 URL is not HLS", async ({
   await expect(
     page.getByRole("heading", { name: "No downloadable media found" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+  await page
+    .getByRole("dialog", { name: "No downloadable media found" })
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   await expect(downloadType).toContainText("Smart download");
 });
