@@ -560,15 +560,13 @@ export const MCPSettingsCard = memo(function MCPSettingsCard() {
   });
   const isStatusPending = status === undefined || status.enabled !== enabled;
   const coreUrl = getAdapterCoreUrl();
-  const endpoint = buildMCPEndpoint(coreUrl);
+  const target = isWeb ? "web" : "desktop";
+  const endpoint = buildMCPEndpoint(coreUrl, target);
   const agentConfig = buildMCPAgentConfig(
     coreUrl,
     token,
-    ({ endpoint: mcpEndpoint, token: mcpToken }) =>
-      t("mcpAgentConfigPrompt", {
-        endpoint: mcpEndpoint,
-        token: mcpToken,
-      }),
+    (values) => t("mcpAgentConfigPrompt", values),
+    target,
   );
   const canCopyAgentConfig = Boolean(
     endpoint && token && status?.running && !isStatusPending,

@@ -456,7 +456,7 @@ export const zh = {
   mcpSetting: "MCP 服务",
   mcpEnable: "启用 MCP",
   mcpEnableTooltip:
-    "与 MediaGo 后端使用相同地址，供 Agent 通过 Streamable HTTP 调用。",
+    "与 MediaGo 后端共用端口，桌面端使用 localhost，Web 端使用实际服务器地址，供 Agent 通过 Streamable HTTP 调用。",
   mcpStatus: "运行状态",
   mcpApplying: "应用中",
   mcpRunning: "运行中",
@@ -468,7 +468,7 @@ export const zh = {
   mcpCopyForAgent: "复制给 Agent",
   mcpConfigCopied: "MCP 配置已复制",
   mcpTokenRegenerated: "MCP 令牌已更新",
-  mcpAgentConfigPrompt: `请在当前 Agent 客户端中配置一个名为“mediago”的 MCP 服务。
+  mcpAgentConfigPrompt: `请在当前 Agent 客户端中配置 MCP 服务，配置标识为“{{serverId}}”，显示名为“{{serverName}}”。
 传输类型：Streamable HTTP
 URL：{{endpoint}}
 HTTP 请求头：
@@ -476,6 +476,8 @@ Authorization: Bearer {{token}}
 
 如果客户端支持，请使用其安全密钥或环境变量机制保存令牌；否则直接配置上述请求头。
 Agent 必须能够访问此 URL。localhost 或 127.0.0.1 地址仅在 Agent 与 MediaGo 运行于同一台机器时可用。
+
+如果已有名为“mediago”的配置，且确认它指向同一个 MediaGo 实例，请将其重命名为“{{serverId}}”并更新为上述 URL，保留有效凭证与其他设置。避免重复配置，不要覆盖其他实例的配置。
 
 请将配置写入当前客户端实际使用的 MCP 设置，并调用 health_check 工具验证连接。
 如果你无法直接修改设置，请返回适用于当前客户端的完整配置片段。`,

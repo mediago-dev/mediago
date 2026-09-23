@@ -5,16 +5,24 @@ outline: deep
 
 # MCP 协议
 
-MediaGo 的 MCP 服务与主 HTTP 服务使用同一端口，路径为 `/mcp`。在设置中启用 MCP 并取得专用 token，再使用支持 Streamable HTTP 的 MCP 客户端连接。
+MediaGo 的 MCP 服务显示名为 **mediago downloader**，配置标识为 `mediago-downloader`，与主 HTTP 服务使用同一端口，路径为 `/mcp`。在设置中启用 MCP 并取得专用 token，再使用支持 Streamable HTTP 的 MCP 客户端连接。
 
-| 环境 | 地址 |
-| --- | --- |
-| 桌面端 | `http://localhost:39719/mcp` |
+| 环境   | 地址                                               |
+| ------ | -------------------------------------------------- |
+| 桌面端 | `http://localhost:39719/mcp`                       |
 | Docker | `http://<服务器地址>:9900/mcp`，按实际端口映射调整 |
+
+桌面端设置页和“复制给 Agent”使用 `localhost`，端口以 Core 实际运行端口为准。Web 端保留实际服务器地址。`localhost` 仅适用于 Agent 与 MediaGo Core 运行于同一台机器的场景；远程 Agent 应使用可访问的服务器地址。
 
 所有请求都需要 `Authorization: Bearer <MCP token>`。下载站点的 Cookie 或 Authorization 应放入下载工具的 `headers` 参数，与 MCP 服务本身的认证 token 分开。
 
 `tools/list` 是各工具 `inputSchema`、`outputSchema` 的权威定义。本页对应 `get_capabilities.protocolRevision = "2"`；这是 MediaGo 工具契约的修订号，与 MCP 传输协议版本独立。
+
+## 客户端配置与旧配置迁移
+
+新配置使用 `mediago-downloader` 作为 MCP 配置键，支持显示名的客户端可显示 `mediago downloader`。服务端初始化响应中的 `serverInfo.name` 为 `mediago-downloader`，`serverInfo.title` 为 `mediago downloader`；部分客户端只展示配置键。
+
+升级 MediaGo 不会自动修改第三方客户端中已有的配置。如果旧 `mediago` 条目指向同一个 MediaGo 实例，请将其重命名为 `mediago-downloader`，更新连接地址并保留有效 token 和其他设置，避免重复注册。改名本身无需重置 token。不要覆盖指向其他实例的条目。按客户端要求重新连接，再调用 `health_check` 验证。
 
 ## 响应约定
 
@@ -39,18 +47,18 @@ MediaGo 的 MCP 服务与主 HTTP 服务使用同一端口，路径为 `/mcp`。
 
 ## 工具清单
 
-| 工具 | 用途 |
-| --- | --- |
-| `health_check` | 检查服务是否可调用 |
-| `get_capabilities` | 查询运行环境、能力和限制 |
-| `create_download` | 创建下载，默认立即启动 |
-| `start_download` | 启动待下载任务或重试失败、停止的任务 |
-| `get_download` | 查询当前状态、进度、文件和安全的失败信息 |
-| `list_downloads` | 分页查询下载任务 |
-| `stop_download` | 请求停止下载 |
-| `discover_media` | 创建媒体发现任务 |
-| `get_media_discovery` | 查询媒体发现结果 |
-| `cancel_media_discovery` | 取消媒体发现 |
+| 工具                        | 用途                                      |
+| --------------------------- | ----------------------------------------- |
+| `health_check`              | 检查服务是否可调用                        |
+| `get_capabilities`          | 查询运行环境、能力和限制                  |
+| `create_download`           | 创建下载，默认立即启动                    |
+| `start_download`            | 启动待下载任务或重试失败、停止的任务      |
+| `get_download`              | 查询当前状态、进度、文件和安全的失败信息  |
+| `list_downloads`            | 分页查询下载任务                          |
+| `stop_download`             | 请求停止下载                              |
+| `discover_media`            | 创建媒体发现任务                          |
+| `get_media_discovery`       | 查询媒体发现结果                          |
+| `cancel_media_discovery`    | 取消媒体发现                              |
 | `download_discovered_media` | 根据发现的资源创建下载，可选择 HLS 清晰度 |
 
 ### health_check
@@ -61,35 +69,35 @@ MediaGo 的 MCP 服务与主 HTTP 服务使用同一端口，路径为 `/mcp`。
 
 输入 `{}`。输出包含：
 
-| 字段 | 含义 |
-| --- | --- |
-| `protocolRevision` | 工具契约修订号，目前为 `"2"` |
-| `runtime` | `desktop` 或 `server`，Docker 属于 `server` |
-| `customDownloadDirectory` | 是否允许任务指定 `downloadDir` |
-| `defaultDownloadDirectory` | 当前配置的下载根目录 |
-| `downloadQueueAvailable` | 下载队列是否可用 |
-| `browserDiscoveryAvailable` | 浏览器嗅探执行器当前是否可用 |
-| `hlsInspectionAvailable` | HLS 检查器是否可用 |
-| `sessionCookiesSupported` | 是否可以使用桌面端登录会话 |
-| `variantSelection` | 是否支持发现资源的清晰度选择交接 |
-| `deferredDownloads` | 是否支持创建后延迟启动 |
-| `maxPageSize` | 分页上限，100 |
-| `maxBatchSize` | 单次发现下载选择上限，20 |
-| `credentialTtlSeconds` | 任务临时请求头的保留时间，600 秒 |
-| `maxCredentialTasks` | 临时请求头最多保留的任务数，1024 |
-| `downloadTypes` | 支持的下载类型名称；具体下载器二进制仍可能需要安装 |
+| 字段                        | 含义                                               |
+| --------------------------- | -------------------------------------------------- |
+| `protocolRevision`          | 工具契约修订号，目前为 `"2"`                       |
+| `runtime`                   | `desktop` 或 `server`，Docker 属于 `server`        |
+| `customDownloadDirectory`   | 是否允许任务指定 `downloadDir`                     |
+| `defaultDownloadDirectory`  | 当前配置的下载根目录                               |
+| `downloadQueueAvailable`    | 下载队列是否可用                                   |
+| `browserDiscoveryAvailable` | 浏览器嗅探执行器当前是否可用                       |
+| `hlsInspectionAvailable`    | HLS 检查器是否可用                                 |
+| `sessionCookiesSupported`   | 是否可以使用桌面端登录会话                         |
+| `variantSelection`          | 是否支持发现资源的清晰度选择交接                   |
+| `deferredDownloads`         | 是否支持创建后延迟启动                             |
+| `maxPageSize`               | 分页上限，100                                      |
+| `maxBatchSize`              | 单次发现下载选择上限，20                           |
+| `credentialTtlSeconds`      | 任务临时请求头的保留时间，600 秒                   |
+| `maxCredentialTasks`        | 临时请求头最多保留的任务数，1024                   |
+| `downloadTypes`             | 支持的下载类型名称；具体下载器二进制仍可能需要安装 |
 
 ### create_download
 
-| 参数 | 类型 | 必填 | 约束与默认行为 |
-| --- | --- | --- | --- |
-| `url` | string | 是 | HTTP(S) 绝对 URL，不允许嵌入用户名和密码；最多 8192 字符 |
-| `type` | string | 否 | `m3u8`、`bilibili`、`direct`、`mediago`、`youtube`、`xiaohongshu`；省略时从 URL 推断 |
-| `name` | string | 否 | 最多 255 字符，服务端会生成或清理文件名并处理名称冲突 |
-| `folder` | string | 否 | 下载根目录内的相对子目录，不允许目录穿越；最多 8192 字符 |
-| `downloadDir` | string | 否 | 桌面端的绝对下载根目录；Docker/server 拒绝非空覆盖值；最多 8192 字符 |
-| `headers` | string[] | 否 | 最多 64 条 `Name: value` 格式的 HTTP 头，每条最多 8192 字符，禁止非法控制字符 |
-| `startDownload` | boolean | 否 | 默认 `true`；`false` 仅创建任务，随后使用 `start_download` |
+| 参数            | 类型     | 必填 | 约束与默认行为                                                                       |
+| --------------- | -------- | ---- | ------------------------------------------------------------------------------------ |
+| `url`           | string   | 是   | HTTP(S) 绝对 URL，不允许嵌入用户名和密码；最多 8192 字符                             |
+| `type`          | string   | 否   | `m3u8`、`bilibili`、`direct`、`mediago`、`youtube`、`xiaohongshu`；省略时从 URL 推断 |
+| `name`          | string   | 否   | 最多 255 字符，服务端会生成或清理文件名并处理名称冲突                                |
+| `folder`        | string   | 否   | 下载根目录内的相对子目录，不允许目录穿越；最多 8192 字符                             |
+| `downloadDir`   | string   | 否   | 桌面端的绝对下载根目录；Docker/server 拒绝非空覆盖值；最多 8192 字符                 |
+| `headers`       | string[] | 否   | 最多 64 条 `Name: value` 格式的 HTTP 头，每条最多 8192 字符，禁止非法控制字符        |
+| `startDownload` | boolean  | 否   | 默认 `true`；`false` 仅创建任务，随后使用 `start_download`                           |
 
 ```json
 {
@@ -110,25 +118,25 @@ MediaGo 的 MCP 服务与主 HTTP 服务使用同一端口，路径为 `/mcp`。
 
 `create_download`、`start_download`、`get_download` 返回下载对象。列表中的元素和批量结果中的 `download` 也使用同一结构。
 
-| 字段 | 类型 | 含义 |
-| --- | --- | --- |
-| `id` | integer | 下载任务 ID |
-| `name`、`type`、`url` | string | 保存后的文件名、下载类型和资源 URL |
-| `folder` | string | 相对子目录，没有时为空字符串 |
-| `downloadDir` | string，可省略 | 任务覆盖的下载根目录；省略表示使用全局配置 |
-| `status` | string | `ready`、`pending`、`downloading`、`stopping`、`success`、`failed`、`stopped` |
-| `isLive` | boolean | 是否检测为直播 |
-| `exists` | boolean | 已完成任务的输出文件是否存在 |
-| `file` | string，可省略 | 已确认存在的主输出文件 |
-| `files` | string[] | 已确认存在的输出文件，没有时为 `[]` |
-| `createdDate`、`updatedDate` | string | 数据库记录的创建和更新时间，带时区；进度更新不一定修改 `updatedDate` |
-| `startedAt` | string，可省略 | 当前进程观察到的实际执行开始时间 |
-| `progress` | object，可省略 | `{ "percent": 42, "speed": "2 MB/s" }`；没有运行快照时省略 |
-| `lastError` | object，可省略 | 安全的 `code`、`message`、`retryable`，不含原始进程输出 |
-| `hasAuthentication` | boolean | 是否含有需要保护的请求头，包括自定义认证头 |
-| `authenticationAvailable` | boolean | 后续启动所需的临时请求头是否仍可用；无需认证时为 `true` |
-| `authenticationExpiresAt` | string，可省略 | 任务内存中临时请求头的过期时间 |
-| `outcome` | string，可省略 | 仅创建接口提供 `created` 或 `existing` |
+| 字段                         | 类型           | 含义                                                                          |
+| ---------------------------- | -------------- | ----------------------------------------------------------------------------- |
+| `id`                         | integer        | 下载任务 ID                                                                   |
+| `name`、`type`、`url`        | string         | 保存后的文件名、下载类型和资源 URL                                            |
+| `folder`                     | string         | 相对子目录，没有时为空字符串                                                  |
+| `downloadDir`                | string，可省略 | 任务覆盖的下载根目录；省略表示使用全局配置                                    |
+| `status`                     | string         | `ready`、`pending`、`downloading`、`stopping`、`success`、`failed`、`stopped` |
+| `isLive`                     | boolean        | 是否检测为直播                                                                |
+| `exists`                     | boolean        | 已完成任务的输出文件是否存在                                                  |
+| `file`                       | string，可省略 | 已确认存在的主输出文件                                                        |
+| `files`                      | string[]       | 已确认存在的输出文件，没有时为 `[]`                                           |
+| `createdDate`、`updatedDate` | string         | 数据库记录的创建和更新时间，带时区；进度更新不一定修改 `updatedDate`          |
+| `startedAt`                  | string，可省略 | 当前进程观察到的实际执行开始时间                                              |
+| `progress`                   | object，可省略 | `{ "percent": 42, "speed": "2 MB/s" }`；没有运行快照时省略                    |
+| `lastError`                  | object，可省略 | 安全的 `code`、`message`、`retryable`，不含原始进程输出                       |
+| `hasAuthentication`          | boolean        | 是否含有需要保护的请求头，包括自定义认证头                                    |
+| `authenticationAvailable`    | boolean        | 后续启动所需的临时请求头是否仍可用；无需认证时为 `true`                       |
+| `authenticationExpiresAt`    | string，可省略 | 任务内存中临时请求头的过期时间                                                |
+| `outcome`                    | string，可省略 | 仅创建接口提供 `created` 或 `existing`                                        |
 
 响应不会包含 `headers`。原来的 `outputPath` 不再直接暴露，使用 `file` 和 `files` 获取确认存在的输出。进度只有下载器当前提供的百分比和速度；没有提供的字节数不会推算或伪造。
 
@@ -174,13 +182,13 @@ MediaGo 的 MCP 服务与主 HTTP 服务使用同一端口，路径为 `/mcp`。
 
 ### discover_media
 
-| 参数 | 类型 | 必填 | 约束与默认行为 |
-| --- | --- | --- | --- |
-| `url` | string | 是 | 与创建下载相同的 HTTP(S) URL 限制 |
-| `mode` | string | 否 | `auto`、`browser`、`inspect`，默认 `auto` |
-| `timeoutMs` | integer | 否 | 浏览器执行超时，3000–30000，默认 20000 |
-| `useSessionCookies` | boolean | 否 | 默认 `false`；显式选择复用桌面端登录会话，需要可用的桌面端浏览器执行器 |
-| `waitSeconds` | integer | 否 | 0–25，默认 20；0 表示创建后立即返回 |
+| 参数                | 类型    | 必填 | 约束与默认行为                                                         |
+| ------------------- | ------- | ---- | ---------------------------------------------------------------------- |
+| `url`               | string  | 是   | 与创建下载相同的 HTTP(S) URL 限制                                      |
+| `mode`              | string  | 否   | `auto`、`browser`、`inspect`，默认 `auto`                              |
+| `timeoutMs`         | integer | 否   | 浏览器执行超时，3000–30000，默认 20000                                 |
+| `useSessionCookies` | boolean | 否   | 默认 `false`；显式选择复用桌面端登录会话，需要可用的桌面端浏览器执行器 |
+| `waitSeconds`       | integer | 否   | 0–25，默认 20；0 表示创建后立即返回                                    |
 
 `auto` 对 `.m3u8` URL 使用 HLS 检查器，对其他 URL 使用浏览器嗅探。`inspect` 使用 HLS 检查器；`browser` 需要 Electron 执行器。登录会话只支持浏览器嗅探；需要登录态的直接 HLS 地址应显式选择 `mode: "browser"`，检查器模式不会静默忽略登录会话选项。`waitSeconds` 控制浏览器任务创建后的轮询等待，不会改变任务执行超时；HLS 检查在创建调用中同步执行。
 
@@ -231,13 +239,13 @@ MediaGo 的 MCP 服务与主 HTTP 服务使用同一端口，路径为 `/mcp`。
 
 响应为 `{ "items": [...] }`，输入与输出顺序对应，每项包含：
 
-| 字段 | 含义 |
-| --- | --- |
-| `sourceId` | 输入资源 ID |
-| `outcome` | `created`、`existing` 或 `failed` |
+| 字段         | 含义                                            |
+| ------------ | ----------------------------------------------- |
+| `sourceId`   | 输入资源 ID                                     |
+| `outcome`    | `created`、`existing` 或 `failed`               |
 | `downloadId` | 已创建或已有的任务 ID；即使后续启动失败也会保留 |
-| `download` | 能读取到时提供完整下载对象 |
-| `error` | 该项失败时提供统一错误结构 |
+| `download`   | 能读取到时提供完整下载对象                      |
+| `error`      | 该项失败时提供统一错误结构                      |
 
 批量请求通过验证后，逐项执行。取消调用会中止当前项尚未完成的创建和后续项，已创建的任务会保留；已入队任务仍需单独停止。部分或全部项执行失败时，顶层 `isError` 仍为 `false`，调用方必须检查每项 `outcome`；请求验证失败、发现任务不存在等整体错误使用 `isError: true`。
 

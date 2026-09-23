@@ -469,7 +469,7 @@ export const en = {
   mcpSetting: "MCP server",
   mcpEnable: "Enable MCP",
   mcpEnableTooltip:
-    "Use the MediaGo backend address for Agent access over Streamable HTTP.",
+    "Shares the MediaGo backend port. Desktop uses localhost; web uses the actual server address for Agent access over Streamable HTTP.",
   mcpStatus: "Status",
   mcpApplying: "Applying",
   mcpRunning: "Running",
@@ -481,7 +481,7 @@ export const en = {
   mcpCopyForAgent: "Copy for Agent",
   mcpConfigCopied: "MCP configuration copied",
   mcpTokenRegenerated: "MCP token updated",
-  mcpAgentConfigPrompt: `Configure an MCP server named "mediago" in the current Agent client.
+  mcpAgentConfigPrompt: `Configure an MCP server with configuration ID "{{serverId}}" and display name "{{serverName}}" in the current Agent client.
 Transport: Streamable HTTP
 URL: {{endpoint}}
 HTTP header:
@@ -489,6 +489,8 @@ Authorization: Bearer {{token}}
 
 Use the client's secure secret or environment-variable mechanism for the token when available; otherwise configure the header directly.
 The Agent must be able to reach this URL. A localhost or 127.0.0.1 URL works only when the Agent runs on the same machine as MediaGo.
+
+If an existing "mediago" entry is confirmed to point to this same MediaGo instance, rename it to "{{serverId}}" and update its URL to the one above, preserving its valid credentials and other settings. Avoid duplicate entries and do not overwrite entries for other instances.
 
 Write this configuration to the client's active MCP settings and verify the connection by calling the health_check tool.
 If you cannot modify the settings directly, return the exact configuration snippet for the current client.`,

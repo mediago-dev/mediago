@@ -165,6 +165,11 @@ func TestManagerServesAuthenticatedMCPRequest(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = session.Close() })
 
+	info := session.InitializeResult().ServerInfo
+	if info.Name != "mediago-downloader" || info.Title != "mediago downloader" {
+		t.Fatalf("unexpected MCP server identity: %+v", info)
+	}
+
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "health_check"})
 	if err != nil {
 		t.Fatal(err)

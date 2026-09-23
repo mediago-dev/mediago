@@ -50,9 +50,18 @@ const webAppearanceStoreMocks = vi.hoisted(() => ({
   },
 }));
 
+const environmentMocks = vi.hoisted(() => ({
+  isWeb: true,
+  coreUrl: "http://192.168.1.20:9900",
+}));
+
+const translationMocks = vi.hoisted(() => ({
+  t: vi.fn((key: string) => key),
+}));
+
 vi.mock("react-i18next", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-i18next")>()),
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => translationMocks,
 }));
 
 vi.mock("swr", () => ({
@@ -63,7 +72,7 @@ vi.mock("swr", () => ({
 }));
 
 vi.mock("@/services/adapter-bootstrap", () => ({
-  getAdapterCoreUrl: () => "http://192.168.1.20:9900",
+  getAdapterCoreUrl: () => environmentMocks.coreUrl,
 }));
 
 vi.mock("@/hooks/use-platform", () => ({
@@ -93,7 +102,9 @@ vi.mock("@/store/web-appearance", async (importOriginal) => ({
 
 vi.mock("@/utils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/utils")>()),
-  isWeb: true,
+  get isWeb() {
+    return environmentMocks.isWeb;
+  },
 }));
 
 const { SettingsFormProvider } = await import("./setting-fields");
@@ -101,6 +112,9 @@ const { BasicSettingsCard, MCPSettingsCard, MoreSettingsCard } =
   await import("./setting-sections");
 
 beforeEach(() => {
+  environmentMocks.isWeb = true;
+  environmentMocks.coreUrl = "http://192.168.1.20:9900";
+  translationMocks.t.mockClear();
   appStoreMocks.state.enableMcp = true;
   appStoreMocks.state.mcpToken = "test-token";
   appStoreMocks.state.apiKey = "test-api-key";
@@ -122,6 +136,46 @@ test("renders MCP URL and token as separate labelled read-only inputs", () => {
   expect(html).toContain('value="test-token"');
   expect(html.match(/readOnly=""/g) ?? []).toHaveLength(2);
   expect(html).not.toContain("<textarea");
+  expect(translationMocks.t).toHaveBeenCalledWith("mcpAgentConfigPrompt", {
+    endpoint: "http://192.168.1.20:9900/mcp",
+    token: "test-token",
+    serverId: "mediago-downloader",
+    serverName: "mediago downloader",
+  });
+});
+
+test.each(["http://127.0.0.1:39719", "http://192.168.1.20:39719"])(
+  "uses localhost in the desktop display and Agent configuration for %s",
+  (coreUrl) => {
+    environmentMocks.isWeb = false;
+    environmentMocks.coreUrl = coreUrl;
+    const html = renderToStaticMarkup(
+      createElement(SettingsFormProvider, null, createElement(MCPSettingsCard)),
+    );
+
+    expect(html).toContain('value="http://localhost:39719/mcp"');
+    expect(translationMocks.t).toHaveBeenCalledWith("mcpAgentConfigPrompt", {
+      endpoint: "http://localhost:39719/mcp",
+      token: "test-token",
+      serverId: "mediago-downloader",
+      serverName: "mediago downloader",
+    });
+  },
+);
+
+test("keeps the desktop MCP URL empty until Core is ready", () => {
+  environmentMocks.isWeb = false;
+  environmentMocks.coreUrl = "";
+  const html = renderToStaticMarkup(
+    createElement(SettingsFormProvider, null, createElement(MCPSettingsCard)),
+  );
+
+  expect(html).not.toContain("http://localhost");
+  expect(html).toContain("mcpCopyRequiresRunning");
+  expect(translationMocks.t).not.toHaveBeenCalledWith(
+    "mcpAgentConfigPrompt",
+    expect.anything(),
+  );
 });
 
 test("renders the browser-local theme selector in web settings", () => {

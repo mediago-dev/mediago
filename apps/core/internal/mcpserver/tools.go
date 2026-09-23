@@ -36,7 +36,7 @@ func (m *Manager) registerTools(server *mcp.Server) {
 	read := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(false)}
 	localWrite := &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: ptr(false), OpenWorldHint: ptr(false)}
 	networkWrite := &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: ptr(false), OpenWorldHint: ptr(true)}
-	addTool(server, &mcp.Tool{Name: "health_check", Description: "Check whether MediaGo MCP is running.", Annotations: read}, func(context.Context, emptyInput) (healthOutput, error) {
+	addTool(server, &mcp.Tool{Name: "health_check", Description: "Check whether mediago downloader MCP is running.", Annotations: read}, func(context.Context, emptyInput) (healthOutput, error) {
 		return healthOutput{Status: "ok"}, nil
 	})
 	addTool(server, &mcp.Tool{Name: "get_capabilities", Description: "Read runtime capabilities and limits before selecting download directories or discovery modes.", Annotations: read}, func(context.Context, emptyInput) (capabilitiesOutput, error) {

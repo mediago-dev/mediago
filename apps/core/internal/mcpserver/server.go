@@ -147,7 +147,11 @@ func (m *Manager) serveHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (m *Manager) httpHandler() http.Handler {
 	server := mcp.NewServer(
-		&mcp.Implementation{Name: "mediago", Version: "3.5.0"},
+		&mcp.Implementation{
+			Name:    "mediago-downloader",
+			Title:   "mediago downloader",
+			Version: "3.5.0",
+		},
 		nil,
 	)
 	m.registerTools(server)
