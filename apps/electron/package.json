@@ -21,7 +21,7 @@
     "@types/mime-types": "^3.0.1",
     "@types/node": "^26.3.0",
     "cross-env": "^10.1.0",
-    "electron": "43.2.0",
+    "electron": "44.1.1",
     "electron-builder-squirrel-windows": "26.15.3",
     "electron-updater": "^6.8.9",
     "glob": "^13.0.6",
