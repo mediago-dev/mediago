@@ -80,6 +80,9 @@ importers:
       '@mediago/browser-extension':
         specifier: workspace:*
         version: link:../../packages/browser-extension
+      '@mediago/common':
+        specifier: workspace:*
+        version: link:../../packages/common
       '@mediago/core-sdk':
         specifier: workspace:*
         version: link:../../packages/core-sdk
@@ -89,9 +92,6 @@ importers:
       '@mediago/service-runner':
         specifier: workspace:*
         version: link:../../packages/node-service
-      '@mediago/common':
-        specifier: workspace:*
-        version: link:../../packages/common
       axios:
         specifier: ^1.19.0
         version: 1.19.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
@@ -256,12 +256,12 @@ importers:
 
   apps/ui:
     dependencies:
-      '@mediago/core-sdk':
-        specifier: workspace:*
-        version: link:../../packages/core-sdk
       '@mediago/common':
         specifier: workspace:*
         version: link:../../packages/common
+      '@mediago/core-sdk':
+        specifier: workspace:*
+        version: link:../../packages/core-sdk
       '@radix-ui/react-avatar':
         specifier: ^1.2.6
         version: 1.2.6(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -341,8 +341,8 @@ importers:
         specifier: ^4.2.0
         version: 4.2.0(react@19.2.8)
       qs:
-        specifier: ^6.15.3
-        version: 6.15.3
+        specifier: ^6.16.0
+        version: 6.16.0
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -465,6 +465,18 @@ importers:
       '@mediago/common':
         specifier: workspace:*
         version: link:../common
+    devDependencies:
+      '@types/node':
+        specifier: ^26.3.0
+        version: 26.3.0
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.12)(typescript@7.0.2)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/common:
     devDependencies:
       '@types/node':
         specifier: ^26.3.0
@@ -641,18 +653,6 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.3.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.11.6)(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
-
-  packages/common:
-    devDependencies:
-      '@types/node':
-        specifier: ^26.3.0
-        version: 26.3.0
-      tsdown:
-        specifier: ^0.22.14
-        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.12)(typescript@7.0.2)
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
 
   packages/tooling:
     dependencies:
@@ -4989,8 +4989,8 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  qs@6.15.3:
-    resolution: {integrity: sha512-O9gl3zCl5h5blw1KGUzQKhA5oUXSl8rwUIM5o0S3nCXMliSvy5Dzx7/DJcI+SwgICv+IneSZwhBh1oSyEHA71A==}
+  qs@6.16.0:
+    resolution: {integrity: sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==}
     engines: {node: '>=0.6'}
 
   quansync@1.0.0:
@@ -9861,7 +9861,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  qs@6.15.3:
+  qs@6.16.0:
     dependencies:
       es-define-property: 1.0.1
       side-channel: 1.1.1
