@@ -23,7 +23,7 @@
   "devDependencies": {
     "@types/node": "^26.3.0",
     "electron-builder": "26.15.3",
-    "sharp": "0.35.3",
+    "sharp": "0.35.4",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
