@@ -54,7 +54,12 @@ export function ListHeader({
   return (
     <div className="flex flex-row items-center justify-between border-b px-3 py-2">
       <div className="flex flex-row items-center gap-3">
-        <Checkbox checked={checked} onCheckedChange={onSelectAll} />
+        <Checkbox
+          checked={checked === true}
+          indeterminate={checked === "indeterminate"}
+          onCheckedChange={onSelectAll}
+          aria-label={t("selectAll")}
+        />
         <span
           className="cursor-pointer text-sm text-foreground"
           onClick={() => onSelectAll(true)}
@@ -92,11 +97,11 @@ export function ListHeader({
         )}
         {!isWeb && (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button>{t("more")}</Button>
+            <DropdownMenuTrigger render={<Button />}>
+              {t("more")}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={handleExportDownloadList}>
+              <DropdownMenuItem onClick={handleExportDownloadList}>
                 {t("exportDownloadList")}
               </DropdownMenuItem>
             </DropdownMenuContent>

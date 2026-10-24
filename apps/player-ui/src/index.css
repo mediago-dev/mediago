@@ -4,6 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 #root {
+  isolation: isolate;
   height: 100vh;
   width: 100vw;
 }

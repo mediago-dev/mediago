@@ -67,6 +67,35 @@ test("refusal never loads SDK and remains off after reload", async ({
   expect(scripts).toBe(0);
 });
 
+test("opens statistics details and privacy policy access from the keyboard", async ({
+  page,
+}, testInfo) => {
+  await page.goto(baseURL + "/@fs/" + fixture);
+  await page
+    .getByRole("button", { name: "Continue without statistics", exact: true })
+    .click();
+  const help = page.getByRole("button", {
+    name: /Share usage statistics.*Help/i,
+  });
+  await help.focus();
+  await page.keyboard.press("Enter");
+  const info = page.getByRole("dialog", {
+    name: "Share usage statistics",
+    exact: true,
+  });
+  await expect(info).toContainText("TalkingData");
+  await expect(
+    info.getByRole("button", { name: "Privacy policy", exact: true }),
+  ).toBeVisible();
+  await info.screenshot({
+    path: testInfo.outputPath("statistics-info-tip.png"),
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(info).toHaveCount(0);
+  await expect(help).toBeFocused();
+});
+
 test("allows statistics then stops SDK timers in all tabs on withdrawal", async ({
   page,
   context,

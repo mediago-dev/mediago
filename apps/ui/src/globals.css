@@ -3,6 +3,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+#root {
+  isolation: isolate;
+}
+
 html,
 body,
 #root {

@@ -1,5 +1,5 @@
 import * as React from "react";
-import * as ProgressPrimitive from "@radix-ui/react-progress";
+import { Progress as ProgressPrimitive } from "@base-ui/react/progress";
 
 import { cn } from "@/utils";
 
@@ -8,10 +8,11 @@ function Progress({
   value,
   max = 100,
   ...props
-}: React.ComponentProps<typeof ProgressPrimitive.Root>) {
+}: React.ComponentProps<typeof ProgressPrimitive.Root> & {
+  className?: string;
+}) {
   const normalizedMax = Math.max(1, max);
   const normalizedValue = Math.min(normalizedMax, Math.max(0, value ?? 0));
-  const percentage = (normalizedValue / normalizedMax) * 100;
 
   return (
     <ProgressPrimitive.Root
@@ -24,11 +25,12 @@ function Progress({
       max={normalizedMax}
       {...props}
     >
-      <ProgressPrimitive.Indicator
-        data-slot="progress-indicator"
-        className="h-full w-full flex-1 bg-primary transition-all"
-        style={{ transform: `translateX(-${100 - percentage}%)` }}
-      />
+      <ProgressPrimitive.Track className="h-full w-full">
+        <ProgressPrimitive.Indicator
+          data-slot="progress-indicator"
+          className="h-full bg-primary transition-[width]"
+        />
+      </ProgressPrimitive.Track>
     </ProgressPrimitive.Root>
   );
 }

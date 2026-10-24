@@ -14,11 +14,10 @@ import {
 } from "@/components/ui/dialog";
 
 interface Props {
-  trigger: React.ReactNode;
+  trigger: React.ReactElement;
   title: string;
   id: number;
   origin?: TaskOrigin;
-  asChild?: boolean;
 }
 
 export function TerminalDialog({
@@ -26,7 +25,6 @@ export function TerminalDialog({
   title,
   id,
   origin = "local",
-  asChild,
 }: Props) {
   const { t } = useTranslation();
   const stopContextPropagation = useMemoizedFn(
@@ -35,7 +33,7 @@ export function TerminalDialog({
 
   return (
     <Dialog>
-      <DialogTrigger asChild={asChild}>{trigger}</DialogTrigger>
+      <DialogTrigger render={trigger} />
       <DialogContent
         showCloseButton={false}
         className="gap-0 overflow-hidden border-[#252936] bg-[#0b0d12] p-0 text-[#d7dce5] shadow-2xl sm:max-w-[780px]"
@@ -51,15 +49,17 @@ export function TerminalDialog({
             </DialogTitle>
             <DialogDescription className="sr-only">{title}</DialogDescription>
           </div>
-          <DialogClose asChild>
-            <button
-              type="button"
-              title={t("close")}
-              aria-label={t("close")}
-              className="flex size-7 items-center justify-center rounded-md text-[#7f8795] transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <X className="size-4" />
-            </button>
+          <DialogClose
+            render={
+              <button
+                type="button"
+                title={t("close")}
+                aria-label={t("close")}
+                className="flex size-7 items-center justify-center rounded-md text-[#7f8795] transition-colors hover:bg-white/10 hover:text-white"
+              />
+            }
+          >
+            <X className="size-4" />
           </DialogClose>
         </div>
         <Terminal

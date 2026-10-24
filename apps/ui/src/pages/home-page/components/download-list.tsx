@@ -248,8 +248,12 @@ export function DownloadTaskList({
                   {t("newDownload")}
                 </Button>
               ) : (
-                <Button asChild variant="outline">
-                  <Link to="/">{t("downloadList")}</Link>
+                <Button
+                  nativeButton={false}
+                  render={<Link to="/" />}
+                  variant="outline"
+                >
+                  {t("downloadList")}
                 </Button>
               )
             }

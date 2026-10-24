@@ -211,10 +211,16 @@ export function ToolBar({ page }: Props) {
         {appStore.privacy ? (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 items-center text-muted-foreground">
-                  <EyeOff className="size-4" />
-                </span>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={t("privacy")}
+                    className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer items-center rounded-sm text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                  />
+                }
+              >
+                <EyeOff className="size-4" />
               </TooltipTrigger>
               <TooltipContent side="top">{t("privacy")}</TooltipContent>
             </Tooltip>

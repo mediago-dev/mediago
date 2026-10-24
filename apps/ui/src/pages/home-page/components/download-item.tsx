@@ -141,7 +141,6 @@ export const DownloadTaskItem = memo(function DownloadTaskItem({
       appStore.showTerminal && !task.remoteOffline ? (
         <TerminalDialog
           key="terminal"
-          asChild
           trigger={
             <Button
               type="button"
@@ -517,7 +516,6 @@ export const DownloadTaskItem = memo(function DownloadTaskItem({
                 ·
               </span>
               <TerminalDialog
-                asChild
                 trigger={
                   <button
                     type="button"

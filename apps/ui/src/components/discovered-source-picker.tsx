@@ -147,6 +147,20 @@ export function DiscoveredSourcePicker({
                     </span>
                     {variants.length > 0 ? (
                       <Select
+                        items={[
+                          {
+                            value: source.url,
+                            label: source.quality
+                              ? `${t("hlsAutoBest")} · ${t("hlsHighestAvailable", { quality: source.quality })}`
+                              : t("hlsAutoBest"),
+                          },
+                          ...variants.map((variant) => ({
+                            value: variant.url,
+                            label:
+                              formatSmartStreamVariant(variant) ||
+                              t("hlsQualityUnknown"),
+                          })),
+                        ]}
                         value={variantUrls[source.id] ?? source.url}
                         disabled={!source.available || !checked || busy}
                         onValueChange={(url) =>
@@ -164,7 +178,7 @@ export function DiscoveredSourcePicker({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent
-                          position="popper"
+                          alignItemWithTrigger={false}
                           className="max-w-[min(520px,calc(100vw-3rem))]"
                         >
                           <SelectItem value={source.url}>

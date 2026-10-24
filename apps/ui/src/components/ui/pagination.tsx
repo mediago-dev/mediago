@@ -143,7 +143,14 @@ function PaginationControl({
       </Button>
 
       {canChangePageSize ? (
-        <Select value={String(safePageSize)} onValueChange={changePageSize}>
+        <Select
+          items={sizeOptions.map((size) => ({
+            value: String(size),
+            label: t("itemsPerPageCount", { count: size }),
+          }))}
+          value={String(safePageSize)}
+          onValueChange={changePageSize}
+        >
           <SelectTrigger
             size="sm"
             className={cn("ml-2 min-w-24", !isWeb && "h-6 min-w-20")}
@@ -151,7 +158,7 @@ function PaginationControl({
           >
             <SelectValue />
           </SelectTrigger>
-          <SelectContent align="end" position="popper">
+          <SelectContent align="end" alignItemWithTrigger={false}>
             {sizeOptions.map((size) => (
               <SelectItem key={size} value={String(size)}>
                 {t("itemsPerPageCount", { count: size })}

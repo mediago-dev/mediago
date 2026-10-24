@@ -119,6 +119,10 @@ export function ConversionSettingsDialog({
                 </label>
                 <Select
                   value={outputType}
+                  items={OUTPUT_TYPES.map((type) => ({
+                    value: type,
+                    label: t(type === "video" ? "videoOutput" : "audioOutput"),
+                  }))}
                   disabled={isSubmitting}
                   onValueChange={(value) =>
                     onOutputTypeChange(value as ConversionOutputType)
@@ -149,6 +153,10 @@ export function ConversionSettingsDialog({
                 </label>
                 <Select
                   value={outputFormat}
+                  items={OUTPUT_FORMATS[outputType].map((format) => ({
+                    value: format,
+                    label: format,
+                  }))}
                   disabled={isSubmitting}
                   onValueChange={onOutputFormatChange}
                 >
@@ -181,6 +189,10 @@ export function ConversionSettingsDialog({
                 </label>
                 <Select
                   value={quality}
+                  items={QUALITY_OPTIONS.map((option) => ({
+                    value: option,
+                    label: t(QUALITY_LABEL_KEYS[option]),
+                  }))}
                   disabled={isSubmitting}
                   onValueChange={onQualityChange}
                 >

@@ -37,12 +37,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  InfoTip,
+  InfoTipContent,
+  InfoTipTrigger,
+} from "@/components/ui/info-tip";
 import { shouldApplyPersistedValue } from "@/services/config-write-coordinator";
 import { settingConfigWriter } from "@/services/setting-config-writer";
 import { useAppStore } from "@/store/app";
@@ -299,18 +299,22 @@ export const SettingCard = memo(function SettingCard({
 
 function LabelHelp({ content }: { content: ReactNode }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={String(content)}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <CircleHelp className="size-4" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent sideOffset={6}>{content}</TooltipContent>
-    </Tooltip>
+    <InfoTip>
+      <InfoTipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={String(content)}
+            className="cursor-pointer rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          />
+        }
+      >
+        <CircleHelp className="size-4" />
+      </InfoTipTrigger>
+      <InfoTipContent aria-label={String(content)} sideOffset={6}>
+        {content}
+      </InfoTipContent>
+    </InfoTip>
   );
 }
 
@@ -559,7 +563,7 @@ export function SettingSelectRow({
 }) {
   return (
     <SettingRow label={label} htmlFor={id} tooltip={tooltip} error={error}>
-      <Select value={value} onValueChange={onValueChange}>
+      <Select items={options} value={value} onValueChange={onValueChange}>
         <SelectTrigger id={id} className="w-full" aria-invalid={Boolean(error)}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>

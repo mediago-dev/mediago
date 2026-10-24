@@ -70,12 +70,14 @@ const HomePage: FC<Props> = ({ filter = DownloadFilter.list }) => {
           {filter === DownloadFilter.done &&
           !isWeb &&
           appStore.enableMobilePlayer ? (
-            <HoverCard openDelay={100} closeDelay={100}>
-              <HoverCardTrigger asChild>
-                <Button variant="outline">
-                  <QrCodeIcon />
-                  {t("playOnMobile")}
-                </Button>
+            <HoverCard>
+              <HoverCardTrigger
+                delay={100}
+                closeDelay={100}
+                render={<Button variant="outline" />}
+              >
+                <QrCodeIcon />
+                {t("playOnMobile")}
               </HoverCardTrigger>
               <HoverCardContent align="end" className="w-auto">
                 <div className="bg-white p-3">

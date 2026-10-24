@@ -210,7 +210,12 @@ describe("DownloadTaskItem live recording actions", () => {
 
     expect(container.textContent).toContain("dockerOffline");
     expect(
-      container.querySelector<HTMLInputElement>('button[role="checkbox"]')
+      container
+        .querySelector('[role="checkbox"]')
+        ?.getAttribute("aria-disabled"),
+    ).toBe("true");
+    expect(
+      container.querySelector<HTMLInputElement>('input[type="checkbox"]')
         ?.disabled,
     ).toBe(true);
     expect(

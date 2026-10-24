@@ -166,6 +166,10 @@ export function DownloadFormFields({
           rules={{ required: t("pleaseEnterVideoName") }}
           render={({ field }) => (
             <Select
+              items={DOWNLOAD_TYPE_OPTIONS.map((option) => ({
+                value: option.value,
+                label: t(option.labelKey),
+              }))}
               value={field.value}
               disabled={isEdit}
               onValueChange={(value) => {

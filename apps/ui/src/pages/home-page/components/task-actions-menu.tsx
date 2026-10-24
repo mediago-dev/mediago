@@ -56,19 +56,26 @@ export function TaskActionsMenu({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="sm" disabled={disabled}>
-          <MoreHorizontal />
-          {t("actions")}
-        </Button>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+          />
+        }
+      >
+        <MoreHorizontal />
+        {t("actions")}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">
-        <DropdownMenuItem onSelect={onSelect}>
+        <DropdownMenuItem onClick={onSelect}>
           <ListChecks />
           {t("select")}
         </DropdownMenuItem>
         {canRestart ? (
-          <DropdownMenuItem onSelect={onStart}>
+          <DropdownMenuItem onClick={onStart}>
             <Download />
             {task.status === DownloadStatus.Failed
               ? t("redownload")
@@ -82,7 +89,7 @@ export function TaskActionsMenu({
         {task.status === DownloadStatus.Downloading ? (
           <DropdownMenuItem
             disabled={task.isLive && isStoppingRecording}
-            onSelect={onStop}
+            onClick={onStop}
           >
             {task.isLive ? <Square /> : <Pause />}
             {task.isLive
@@ -95,24 +102,24 @@ export function TaskActionsMenu({
         {task.status === DownloadStatus.Success ? (
           <DropdownMenuItem
             disabled={disablePlay || !task.exists}
-            onSelect={onPlay}
+            onClick={onPlay}
           >
             <CirclePlay />
             {t("playVideo")}
           </DropdownMenuItem>
         ) : null}
         {canEdit ? (
-          <DropdownMenuItem onSelect={onEdit}>
+          <DropdownMenuItem onClick={onEdit}>
             <Pencil />
             {t("edit")}
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem onSelect={onRefresh}>
+        <DropdownMenuItem onClick={onRefresh}>
           <RefreshCw />
           {t("refresh")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+        <DropdownMenuItem variant="destructive" onClick={onDelete}>
           <Trash2 />
           {t("delete")}
         </DropdownMenuItem>

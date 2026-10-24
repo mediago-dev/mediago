@@ -108,14 +108,16 @@ export function ConversionTaskList({
     const errorMessage = t(getConversionErrorKey(item.error));
     return (
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex cursor-help rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-            tabIndex={0}
-            aria-label={errorMessage}
-          >
-            {statusTag}
-          </span>
+        <TooltipTrigger
+          render={
+            <span
+              className="inline-flex cursor-help rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+              tabIndex={0}
+              aria-label={errorMessage}
+            />
+          }
+        >
+          {statusTag}
         </TooltipTrigger>
         <TooltipContent className="max-w-72" side="top" sideOffset={6}>
           {t("failReason")}: {errorMessage}
@@ -196,7 +198,7 @@ export function ConversionTaskList({
   };
 
   return (
-    <TooltipProvider delayDuration={250}>
+    <TooltipProvider delay={250}>
       <section className="flex min-h-72 flex-1 flex-col overflow-hidden">
         <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-2">
           <div className="flex min-w-0 items-center">

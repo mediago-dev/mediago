@@ -10,8 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@radix-ui/react-dialog": "^1.1.23",
-    "@radix-ui/react-scroll-area": "^1.2.18",
+    "@base-ui/react": "1.9.0",
     "@videojs/themes": "^1.0.1",
     "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",

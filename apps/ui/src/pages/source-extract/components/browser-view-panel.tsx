@@ -132,7 +132,23 @@ const SourceItem = memo(function SourceItem({
           <span className="shrink-0 text-xs text-muted-foreground">
             {t("streamQuality")}
           </span>
-          <Select value={selectedURL} onValueChange={setSelectedURL}>
+          <Select
+            items={[
+              {
+                value: item.url,
+                label: item.mediaInfo?.maxQuality
+                  ? `${t("hlsAutoBest")} · ${t("hlsHighestAvailable", { quality: item.mediaInfo.maxQuality })}`
+                  : t("hlsAutoBest"),
+              },
+              ...variants.map((variant) => ({
+                value: variant.url,
+                label:
+                  formatSmartStreamVariant(variant) || t("hlsQualityUnknown"),
+              })),
+            ]}
+            value={selectedURL}
+            onValueChange={setSelectedURL}
+          >
             <SelectTrigger
               size="sm"
               className="min-w-0 flex-1"
@@ -141,7 +157,7 @@ const SourceItem = memo(function SourceItem({
               <SelectValue />
             </SelectTrigger>
             <SelectContent
-              position="popper"
+              alignItemWithTrigger={false}
               className="max-w-[min(520px,calc(100vw-3rem))]"
             >
               <SelectItem value={item.url}>

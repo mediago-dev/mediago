@@ -242,10 +242,6 @@ export default function PlayerPage() {
     setOpen(false);
   });
 
-  const onClose = useMemoizedFn(() => {
-    setOpen(false);
-  });
-
   const handleOpen = useMemoizedFn(() => {
     setOpen(true);
   });
@@ -286,22 +282,23 @@ export default function PlayerPage() {
     <div className="group relative flex h-full w-full flex-col dark:bg-[#141415] md:flex-row">
       {/* Desktop/Tablet: Show list button on hover (hidden on mobile) */}
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
-          <button
-            type="button"
-            className="absolute right-5 top-5 z-50 hidden cursor-pointer items-center gap-2 rounded-md border border-white/80 bg-black/50 px-3 py-1.5 text-sm text-white backdrop-blur-sm transition-all hover:bg-black/70 md:group-hover:flex"
-            onClick={handleOpen}
-          >
-            <ListVideo className="size-4 shrink-0 stroke-[1.75]" />
-            <span className="hidden sm:inline">{t("playlist")}</span>
-          </button>
+        <SheetTrigger
+          render={
+            <button
+              type="button"
+              className="absolute right-5 top-5 z-50 hidden cursor-pointer items-center gap-2 rounded-md border border-white/80 bg-black/50 px-3 py-1.5 text-sm text-white backdrop-blur-sm transition-all hover:bg-black/70 md:group-hover:flex"
+              onClick={handleOpen}
+            />
+          }
+        >
+          <ListVideo className="size-4 shrink-0 stroke-[1.75]" />
+          <span className="hidden sm:inline">{t("playlist")}</span>
         </SheetTrigger>
 
         {/* Desktop/Tablet: Right drawer (not used on mobile) */}
         <SheetContent
           side="right"
           className="hidden w-full sm:max-w-md md:block md:max-w-lg"
-          onInteractOutside={onClose}
         >
           <SheetHeader>
             <SheetTitle>{t("playlist")}</SheetTitle>

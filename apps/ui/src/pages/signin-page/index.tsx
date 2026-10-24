@@ -154,8 +154,8 @@ export default function SigninPage() {
                     <div className="flex items-center justify-end">
                       <div className="text-sm/6">
                         <Dialog>
-                          <DialogTrigger asChild>
-                            <a>{t("forgotPassword")}</a>
+                          <DialogTrigger className="cursor-pointer">
+                            {t("forgotPassword")}
                           </DialogTrigger>
                           <DialogContent className="w-sm">
                             <DialogHeader>

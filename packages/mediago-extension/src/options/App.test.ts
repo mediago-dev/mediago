@@ -305,10 +305,10 @@ describe("OptionsView workspace", () => {
 
 function labelClassFor(html: string, targetId: string): string {
   const label = html.match(
-    new RegExp(`<label class="([^"]*)" for="${targetId}">`),
-  )?.[1];
+    new RegExp(`<label\\b[^>]*\\bfor="${targetId}"[^>]*>`),
+  )?.[0];
   if (!label) throw new Error(`Missing label for ${targetId}`);
-  return label;
+  return label.match(/\bclass="([^"]*)"/)?.[1] ?? "";
 }
 
 function classForText(html: string, text: string): string {
