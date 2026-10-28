@@ -10,6 +10,15 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { AppLanguage } from "@mediago/common";
+import { Languages } from "lucide-react";
 import { useAuthApi } from "@/hooks/use-auth-api";
 import { useMemoizedFn } from "ahooks";
 import { useNavigate } from "react-router-dom";
@@ -21,8 +30,15 @@ export default function SigninPage() {
     useAuthApi();
   const [submitting, setSubmitting] = useState(false);
   const { setAppStore } = useAppStore(useShallow(setAppStoreSelector));
+  const language = useAppStore((state) => state.language);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const languageOptions = [
+    { value: AppLanguage.System, label: t("followSystem") },
+    { value: AppLanguage.ZH, label: "简体中文" },
+    { value: AppLanguage.EN, label: "English" },
+    { value: AppLanguage.IT, label: "Italiano" },
+  ];
 
   const handleSubmit = useMemoizedFn(
     async (e: React.FormEvent<HTMLFormElement>) => {
@@ -65,7 +81,36 @@ export default function SigninPage() {
   return (
     <div className="flex h-full items-center justify-center overflow-hidden bg-canvas px-8 py-6 max-lg:p-0">
       <div className="grid h-full max-h-[780px] w-full max-w-[1320px] grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] max-lg:max-h-none">
-        <div className="flex h-full min-w-0 flex-col justify-center overflow-hidden rounded-2xl border bg-surface px-4 py-12 shadow-sm sm:px-6 lg:px-12 xl:px-16 max-lg:rounded-none max-lg:border-0 max-lg:shadow-none">
+        <div className="relative flex h-full min-w-0 flex-col justify-center overflow-hidden rounded-2xl border bg-surface px-4 py-12 shadow-sm sm:px-6 lg:px-12 xl:px-16 max-lg:rounded-none max-lg:border-0 max-lg:shadow-none">
+          <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+            <Select
+              value={language}
+              onValueChange={(value) => {
+                const selectedOption = languageOptions.find(
+                  (option) => option.value === value,
+                );
+                if (selectedOption)
+                  setAppStore({ language: selectedOption.value });
+              }}
+            >
+              <SelectTrigger aria-label={t("displayLanguage")}>
+                <Languages className="size-4" aria-hidden="true" />
+                <SelectValue>
+                  {
+                    languageOptions.find((option) => option.value === language)
+                      ?.label
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent align="end" alignItemWithTrigger={false}>
+                {languageOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="mx-auto w-full max-w-sm">
             <div>
               <h2 className="mt-8 text-2xl/9 font-bold tracking-tight text-gray-900 dark:text-white">
