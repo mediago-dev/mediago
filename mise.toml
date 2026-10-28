@@ -619,3 +619,8 @@ run = 'task security:js'
 [tasks.'security:go']
 description = 'Check backend vulnerable function calls'
 run = 'task security:go'
+
+[tasks.'ci:windows-signing']
+description = 'Coordinate isolated SignPath test-signing packaging checkpoints'
+run = 'task ci:windows-signing'
+depends = []

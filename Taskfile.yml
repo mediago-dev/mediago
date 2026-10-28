@@ -6,6 +6,12 @@ vars:
   MEDIAGO_WEB_RUNTIME_ROOT: '{{default (printf "%s/.task/web-core" .ROOT_DIR) .MEDIAGO_WEB_RUNTIME_ROOT}}'
 
 tasks:
+  ci:windows-signing:
+    desc: Coordinate isolated SignPath test-signing packaging checkpoints
+    cmds:
+      - task: internal:require-task-version
+      - node packages/tooling/src/electron/windows-signing-workflow.ts {{.CLI_ARGS}}
+
   security:js:
     desc: Fail on any workspace dependency vulnerability or audit execution error
     cmds:

@@ -4,6 +4,8 @@ import {
   getApplicationCopyright,
 } from "./installer-metadata.ts";
 import { withAppleNetworkRetry } from "./macos-network-retry.ts";
+import { signWindowsTestFile } from "./windows-signing.ts";
+import { SIGNPATH_PUBLISHER_DN } from "../../../../apps/electron/src/vendor/windows-signature.ts";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path, { dirname } from "node:path";
@@ -148,6 +150,15 @@ function getReleaseConfig(): Configuration {
     ],
     win: {
       icon: "../assets/icon.ico",
+      signtoolOptions: {
+        publisherName: SIGNPATH_PUBLISHER_DN,
+        ...(process.env.MEDIAGO_SIGNPATH_TEST === "1"
+          ? {
+              signingHashAlgorithms: ["sha256"] as const,
+              sign: signWindowsTestFile,
+            }
+          : {}),
+      },
       target: [
         {
           target: "nsis",
