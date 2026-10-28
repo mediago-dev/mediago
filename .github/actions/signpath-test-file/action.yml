@@ -1,0 +1,49 @@
+name: Sign one MediaGo test executable
+description: Submit a packaging checkpoint to the fixed SignPath test policy
+inputs:
+  phase:
+    required: true
+    description: Packaging checkpoint (app, uninstaller, installer, portable)
+  api-token:
+    required: true
+    description: CI builds submitter token
+runs:
+  using: composite
+  steps:
+    - name: Wait for unsigned executable
+      id: request
+      shell: pwsh
+      env:
+        SIGNPATH_PHASE: ${{ inputs.phase }}
+        SIGNPATH_OPERATION: await
+      run: task ci:windows-signing
+    - name: Upload unsigned signing input
+      id: unsigned
+      uses: actions/upload-artifact@v7
+      with:
+        name: signpath-input-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.phase }}
+        path: .task/signpath/${{ inputs.phase }}/unsigned/mediago.exe
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+        include-hidden-files: true
+    - name: Submit to SignPath test policy
+      uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+      with:
+        api-token: ${{ inputs.api-token }}
+        organization-id: 8cac2eb1-674c-4c23-b04a-4cfa954add79
+        project-slug: mediago
+        signing-policy-slug: test-signing
+        artifact-configuration-slug: mediago-windows-test
+        github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+        wait-for-completion: true
+        wait-for-completion-timeout-in-seconds: 1800
+        output-artifact-directory: .task/signpath/${{ inputs.phase }}/signed
+        parameters: |
+          version: ${{ toJSON(steps.request.outputs.version) }}
+    - name: Validate and apply signed executable
+      shell: pwsh
+      env:
+        SIGNPATH_PHASE: ${{ inputs.phase }}
+        SIGNPATH_OPERATION: complete
+      run: task ci:windows-signing

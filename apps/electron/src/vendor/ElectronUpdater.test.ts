@@ -38,6 +38,14 @@ vi.mock("electron-is-dev", () => ({ default: false }));
 
 vi.mock("electron-updater", () => updaterMocks);
 
+vi.mock("./VerifiedNsisUpdater", () => ({
+  default: class {
+    constructor() {
+      return updaterMocks.autoUpdater;
+    }
+  },
+}));
+
 vi.mock("../core/i18n", () => ({
   i18n: { t: vi.fn((key: string) => key) },
 }));
@@ -56,6 +64,7 @@ const { default: ElectronUpdater } = await import("./ElectronUpdater");
 
 function createUpdater() {
   const logger = {
+    error: vi.fn(),
     logger: {
       error: vi.fn(),
       info: vi.fn(),
@@ -149,6 +158,23 @@ test("does not recheck when the selected channel did not change", () => {
   updater.changeAllowBeta(false);
 
   expect(updaterMocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+});
+
+test("test-signed previews never contact update feeds or install updates", async () => {
+  electronMocks.version = "3.6.0-test.1";
+  const { updater } = createUpdater();
+  updater.init({ allowBeta: true, autoUpgrade: true });
+  updater.changeAllowBeta(false);
+  updater.changeAutoUpgrade(true);
+  await vi.advanceTimersByTimeAsync(120_000);
+  expect(updaterMocks.autoUpdater.autoDownload).toBe(false);
+  expect(updaterMocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+  expect(
+    updaterMocks.autoUpdater.checkForUpdatesAndNotify,
+  ).not.toHaveBeenCalled();
+  expect((await updater.manualUpdate()).mode).toBe("external");
+  await updater.install();
+  expect(updaterMocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
 });
 
 test("does not run an in-app channel refresh for portable builds", () => {

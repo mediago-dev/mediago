@@ -96,6 +96,7 @@ const normativeDocumentation = {
 } as const;
 
 const publicTasks = [
+  "ci:windows-signing",
   "security:js",
   "security:go",
   "doctor",
@@ -538,6 +539,10 @@ const implementationGraph = {
 } as const;
 
 const prerequisiteGraph = {
+  "internal:ci:windows-signing": {
+    deps: [],
+    leaves: ["node packages/tooling/src/electron/windows-signing-workflow.ts"],
+  },
   "internal:dev:all:processes": {
     deps: [
       "internal:core:run:web",
@@ -1198,6 +1203,12 @@ describe("Task command leaves", () => {
         if (name === "internal:core:run:web") {
           expect(command.text).toBe(
             prerequisiteGraph["internal:core:run:web"].leaves[0],
+          );
+          continue;
+        }
+        if (name === "internal:ci:windows-signing") {
+          expect(command.text).toBe(
+            "node packages/tooling/src/electron/windows-signing-workflow.ts",
           );
           continue;
         }

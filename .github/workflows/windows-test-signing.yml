@@ -1,0 +1,129 @@
+name: Windows SignPath test signing
+run-name: SignPath test (${{ github.ref_name }})
+on:
+  workflow_dispatch:
+  # Allows the initial integration to be verified before this PR is merged.
+  push:
+    branches:
+      - codex/signpath-test-signing
+permissions:
+  contents: read
+concurrency:
+  group: signpath-test-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows-test-signing:
+    if: github.repository == 'mediago-dev/mediago'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      MEDIAGO_SIGNPATH_TEST: "1"
+      MEDIAGO_PROFILE: production
+      APP_TD_APPID: ""
+      BUILD_VERSION: 3.6.0-test.${{ github.run_number }}
+      RUN_MODE: test
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: go-task/setup-task@v2
+        with:
+          version: "3.51.1"
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.0"
+          cache: pnpm
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/core/go.mod
+          cache-dependency-path: apps/core/go.sum
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - name: Check signing prerequisites
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_TEST_CERTIFICATE_BASE64: ${{ secrets.SIGNPATH_TEST_CERTIFICATE_BASE64 }}
+          SIGNPATH_OPERATION: preflight
+        run: task ci:windows-signing
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test Windows update signature enforcement
+        run: pnpm exec vitest run apps/electron/src/vendor/windows-signature.test.ts apps/electron/src/vendor/VerifiedNsisUpdater.test.ts apps/electron/src/vendor/ElectronUpdater.test.ts packages/tooling/src/electron/windows-signing.test.ts
+      - name: Apply isolated test version
+        run: task ci:desktop:apply-version
+      - name: Trust only the pinned test certificate on this disposable runner
+        timeout-minutes: 2
+        shell: pwsh
+        env:
+          SIGNPATH_TEST_CERTIFICATE_BASE64: ${{ secrets.SIGNPATH_TEST_CERTIFICATE_BASE64 }}
+        run: pwsh -NoProfile -File packages/tooling/src/electron/windows-test-trust.ps1 -Operation install
+      - name: Start packaging with signing checkpoints
+        env:
+          SIGNPATH_OPERATION: start
+        run: task ci:windows-signing
+      - name: Sign application
+        uses: ./.github/actions/signpath-test-file
+        with:
+          phase: app
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      - name: Sign uninstaller
+        uses: ./.github/actions/signpath-test-file
+        with:
+          phase: uninstaller
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      - name: Sign installer
+        uses: ./.github/actions/signpath-test-file
+        with:
+          phase: installer
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      - name: Sign portable launcher
+        uses: ./.github/actions/signpath-test-file
+        with:
+          phase: portable
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      - name: Verify signed packages and updater metadata
+        env:
+          SIGNPATH_OPERATION: finish
+        run: task ci:windows-signing
+      - name: Upload test-signed preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: mediago-test-signed-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/electron/release/*.exe
+            apps/electron/release/*.blockmap
+            apps/electron/release/test.yml
+            .task/signpath/verification.json
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: true
+      - name: Stop packaging worker
+        if: always()
+        env:
+          SIGNPATH_OPERATION: stop
+        run: task ci:windows-signing
+      - name: Remove test certificate trust
+        timeout-minutes: 2
+        if: always()
+        shell: pwsh
+        run: pwsh -NoProfile -File packages/tooling/src/electron/windows-test-trust.ps1 -Operation remove
+      - name: Upload signing diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: signpath-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .task/signpath/build.log
+            .task/signpath/*/request.json
+            .task/signpath/*/applied.json
+          if-no-files-found: ignore
+          retention-days: 7
+          include-hidden-files: true

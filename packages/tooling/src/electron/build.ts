@@ -4,6 +4,12 @@ import {
   getApplicationCopyright,
 } from "./installer-metadata.ts";
 import { withAppleNetworkRetry } from "./macos-network-retry.ts";
+import {
+  getWindowsTestVersion,
+  signWindowsTestFile,
+  verifyWindowsReleaseArtifacts,
+} from "./windows-signing.ts";
+import { SIGNPATH_PUBLISHER_DN } from "../../../../apps/electron/src/vendor/windows-signature.ts";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path, { dirname } from "node:path";
@@ -71,6 +77,9 @@ function getReleaseConfig(): Configuration {
     asarUnpack: [],
     productName: process.env.APP_NAME,
     buildVersion: pkg.version,
+    ...(process.env.MEDIAGO_SIGNPATH_TEST === "1"
+      ? { buildNumber: getWindowsTestVersion(pkg.version).buildNumber }
+      : {}),
     appId: process.env.APP_ID,
     copyright: getApplicationCopyright(process.env.APP_COPYRIGHT),
     // Register the custom scheme at install/first-run time.
@@ -148,6 +157,15 @@ function getReleaseConfig(): Configuration {
     ],
     win: {
       icon: "../assets/icon.ico",
+      signtoolOptions: {
+        publisherName: SIGNPATH_PUBLISHER_DN,
+        ...(process.env.MEDIAGO_SIGNPATH_TEST === "1"
+          ? {
+              signingHashAlgorithms: ["sha256"] as const,
+              sign: signWindowsTestFile,
+            }
+          : {}),
+      },
       target: [
         {
           target: "nsis",
@@ -346,6 +364,14 @@ const artifacts = macOSSigning.enabled
     })
   : await packageArtifacts();
 
+verifyWindowsReleaseArtifacts({
+  platform: process.platform,
+  runMode: process.env.RUN_MODE,
+  isDir,
+  releaseDirectory: path.resolve(appRoot, "release"),
+  version: pkg.version,
+  arch,
+});
 if (macOSSigning.enabled) {
   await verifyMacOSDistributionArtifacts({
     releaseDirectory: path.resolve(appRoot, "release"),

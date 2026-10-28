@@ -9,7 +9,7 @@ import {
 import { app, shell } from "electron";
 import isDev from "electron-is-dev";
 import {
-  autoUpdater,
+  autoUpdater as defaultAutoUpdater,
   type ProgressInfo,
   type UpdateInfo,
 } from "electron-updater";
@@ -18,6 +18,10 @@ import { i18n } from "../core/i18n";
 import { logDir } from "../constants";
 import MainWindow from "../windows/main.window";
 import ElectronLogger from "./ElectronLogger";
+import VerifiedNsisUpdater from "./VerifiedNsisUpdater";
+
+const autoUpdater =
+  process.platform === "win32" ? new VerifiedNsisUpdater() : defaultAutoUpdater;
 
 const GITHUB_RELEASES_URL = "https://github.com/mediago-dev/mediago/releases";
 
@@ -51,6 +55,7 @@ function errorDetails(error: unknown): { code: string; message: string } {
 @injectable()
 @provide()
 export default class UpdateService {
+  private readonly testBuild = /-test\.\d+$/.test(app.getVersion());
   private initialized = false;
   private allowBeta = false;
   private channel: RuntimeUpdateChannel = "latest";
@@ -77,13 +82,14 @@ export default class UpdateService {
     autoUpdater.disableWebInstaller = true;
     autoUpdater.logger = this.logger.logger;
     this.configureChannel(allowBeta);
-    autoUpdater.autoDownload = autoUpgrade;
+    autoUpdater.autoDownload = this.testBuild ? false : autoUpgrade;
+    if (this.testBuild) autoUpdater.autoInstallOnAppQuit = false;
     if (isDev) autoUpdater.forceDevUpdateConfig = true;
 
-    this.patchState({ autoDownload: autoUpgrade });
+    this.patchState({ autoDownload: autoUpdater.autoDownload });
     this.registerListeners();
 
-    if (this.state.portable) return;
+    if (this.state.portable || this.testBuild) return;
     if (autoUpgrade) {
       void this.autoUpdate();
     } else {
@@ -96,7 +102,7 @@ export default class UpdateService {
   }
 
   async manualUpdate(): Promise<UpdateCheckResult> {
-    if (this.state.portable) {
+    if (this.state.portable || this.testBuild) {
       try {
         await shell.openExternal(GITHUB_RELEASES_URL);
         return {
@@ -129,7 +135,7 @@ export default class UpdateService {
   }
 
   async startDownload(): Promise<UpdateState> {
-    if (this.state.portable) {
+    if (this.state.portable || this.testBuild) {
       try {
         await shell.openExternal(GITHUB_RELEASES_URL);
       } catch (error) {
@@ -154,6 +160,10 @@ export default class UpdateService {
   }
 
   async install(): Promise<UpdateState> {
+    if (this.testBuild) {
+      this.setError("install", new Error("Test builds cannot install updates"));
+      return this.getState();
+    }
     if (this.state.status !== "downloaded") {
       this.setError("install", new Error(i18n.t("updateNotDownloaded")));
       return this.getState();
@@ -175,6 +185,7 @@ export default class UpdateService {
     if (
       !this.initialized ||
       this.state.portable ||
+      this.testBuild ||
       ["checking", "downloading", "downloaded"].includes(this.state.status)
     ) {
       return;
@@ -183,6 +194,7 @@ export default class UpdateService {
   }
 
   changeAutoUpgrade(autoUpgrade: boolean): void {
+    if (this.testBuild) return;
     autoUpdater.autoDownload = autoUpgrade;
     this.patchState({ autoDownload: autoUpgrade });
     if (autoUpgrade && this.state.status === "available") {
