@@ -78,7 +78,7 @@ with the executables; they are not repacked as standalone static binaries.
 - Corresponding source: <https://github.com/jellyfin/jellyfin-ffmpeg/tree/v8.1.3-1>
 - FFmpeg build license: GPL-3.0-or-later, with bundled components retaining their
   own licenses: <https://github.com/jellyfin/jellyfin-ffmpeg/blob/v8.1.3-1/LICENSE.md>
-- Package copyright notices are included under `/usr/share/doc/` in the image.
+- Package copyright notices are included under `/app/licenses/ffmpeg-runtime/` in the image.
 
 Desktop builds continue to use the platform-specific FFmpeg dependency recorded
 in `packages/tooling/manifests/runtime-deps.json`.

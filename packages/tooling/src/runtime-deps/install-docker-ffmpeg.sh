@@ -67,8 +67,8 @@ while IFS= read -r package; do
   name=${package%%:*}
   dpkg-query --status "$package" > "$output/var/lib/dpkg/status.d/$name"
   if [ -f "/usr/share/doc/$name/copyright" ]; then
-    mkdir -p "$output/usr/share/doc/$name"
-    cp -L "/usr/share/doc/$name/copyright" "$output/usr/share/doc/$name/copyright"
+    mkdir -p "$output/app/licenses/ffmpeg-runtime/$name"
+    cp -L "/usr/share/doc/$name/copyright" "$output/app/licenses/ffmpeg-runtime/$name/copyright"
   fi
 done < "$work/sorted-packages"
 printf 'Collected Jellyfin FFmpeg %s for %s with matching runtime libraries\n' "$version" "$architecture"
