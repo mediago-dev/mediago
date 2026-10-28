@@ -49,7 +49,7 @@ ENV NODE_ENV=production
 RUN pnpm build:web:raw
 
 # Download third-party tools for TARGET platform
-RUN pnpm deps:download:raw --platform "$(cat /tmp/deps-platform)"
+RUN pnpm deps:download:raw --tools N_m3u8DL-RE,BBDown,aria2,yt-dlp,deno,mediago --platform "$(cat /tmp/deps-platform)"
 
 # ===== Stage 2: Go Builder =====
 FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS go-builder
@@ -93,16 +93,19 @@ RUN mkdir -p /out/runtime-deps && \
     cp /out/deps/linux-*/* /out/runtime-deps/ && \
     chmod +x /out/runtime-deps/*
 
-# Prepare only the extra native libraries needed by the .NET download tools.
+# Prepare matching native libraries for the download tools and Jellyfin FFmpeg.
 FROM debian:trixie-slim AS runtime-libraries
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libicu76 zlib1g && \
+    apt-get install -y --no-install-recommends libicu76 zlib1g ca-certificates curl && \
     mkdir -p /runtime-libraries/var/lib/dpkg/status.d && \
     cp --parents -a /usr/lib/*-linux-gnu/libicudata.so.76* \
       /usr/lib/*-linux-gnu/libicui18n.so.76* /usr/lib/*-linux-gnu/libicuuc.so.76* \
       /usr/lib/*-linux-gnu/libz.so.1* /runtime-libraries/ && \
     dpkg-query --status libicu76 > /runtime-libraries/var/lib/dpkg/status.d/libicu76 && \
     dpkg-query --status zlib1g > /runtime-libraries/var/lib/dpkg/status.d/zlib1g
+
+COPY packages/tooling/src/runtime-deps/install-docker-ffmpeg.sh /tmp/install-docker-ffmpeg.sh
+RUN sh /tmp/install-docker-ffmpeg.sh /runtime-libraries
 
 # ===== Stage 3: Runtime =====
 FROM gcr.io/distroless/cc-debian13:latest

@@ -65,3 +65,20 @@ packages/tooling/src/runtime-deps/rebuild-mediago.go.
 ## Docker icon
 
 The Docker mark used in the interface comes from [Simple Icons](https://github.com/simple-icons/simple-icons/blob/develop/icons/docker.svg), under [CC0 1.0](https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md). Docker is a trademark of Docker, Inc.
+
+## Jellyfin FFmpeg 8.1.3-1 (Docker)
+
+Docker images use the matching Debian Trixie AMD64 or ARM64 package from
+<https://github.com/jellyfin/jellyfin-ffmpeg/releases/tag/v8.1.3-1>.
+The exact package SHA-256 checksums are pinned in
+`packages/tooling/src/runtime-deps/install-docker-ffmpeg.sh`.
+The complete FFmpeg library bundle and required Debian runtime libraries remain
+with the executables; they are not repacked as standalone static binaries.
+
+- Corresponding source: <https://github.com/jellyfin/jellyfin-ffmpeg/tree/v8.1.3-1>
+- FFmpeg build license: GPL-3.0-or-later, with bundled components retaining their
+  own licenses: <https://github.com/jellyfin/jellyfin-ffmpeg/blob/v8.1.3-1/LICENSE.md>
+- Package copyright notices are included under `/usr/share/doc/` in the image.
+
+Desktop builds continue to use the platform-specific FFmpeg dependency recorded
+in `packages/tooling/manifests/runtime-deps.json`.
