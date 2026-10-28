@@ -61,3 +61,7 @@ packages/tooling/src/runtime-deps/rebuild-mediago.go.
 
 - Source: <https://github.com/mediago-dev/mediago-core/tree/v0.2.1>
 - License: <https://github.com/mediago-dev/mediago-core/blob/v0.2.1/LICENSE>
+
+## Docker icon
+
+The Docker mark used in the interface comes from [Simple Icons](https://github.com/simple-icons/simple-icons/blob/develop/icons/docker.svg), under [CC0 1.0](https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md). Docker is a trademark of Docker, Inc.
