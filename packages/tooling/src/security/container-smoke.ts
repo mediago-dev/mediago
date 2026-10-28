@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { verifyContainerArchitecture } from "./container-architecture.ts";
+import { verifyContainerFfmpeg } from "./container-ffmpeg.ts";
 
 const image = process.argv[2] || "mediago:security";
 const expectedArchitecture =
@@ -83,6 +84,8 @@ try {
     docker(["run", "--rm", "--entrypoint", binary, image, ...args]);
     console.log(`Native startup passed: ${binary}`);
   }
+
+  verifyContainerFfmpeg(image);
 
   // An appended flag must override the image default without a shell wrapper.
   docker(["start", container]);

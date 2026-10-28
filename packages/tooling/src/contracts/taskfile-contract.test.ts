@@ -1349,7 +1349,7 @@ describe("Docker repository command contract", () => {
       "pnpm install --frozen-lockfile",
       "pnpm --filter @mediago/player-ui run build",
       "pnpm build:web:raw",
-      'pnpm deps:download:raw --platform "$(cat /tmp/deps-platform)"',
+      'pnpm deps:download:raw --tools N_m3u8DL-RE,BBDown,aria2,yt-dlp,deno,mediago --platform "$(cat /tmp/deps-platform)"',
     ]);
     expect(dockerfileSource).not.toMatch(
       /(?:COPY\s+Taskfile\.yml|go-task|RUN\s+task(?:\.exe)?\s)/i,
