@@ -4,7 +4,10 @@ import {
   getApplicationCopyright,
 } from "./installer-metadata.ts";
 import { withAppleNetworkRetry } from "./macos-network-retry.ts";
-import { signWindowsTestFile } from "./windows-signing.ts";
+import {
+  getWindowsTestVersion,
+  signWindowsTestFile,
+} from "./windows-signing.ts";
 import { SIGNPATH_PUBLISHER_DN } from "../../../../apps/electron/src/vendor/windows-signature.ts";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -73,6 +76,9 @@ function getReleaseConfig(): Configuration {
     asarUnpack: [],
     productName: process.env.APP_NAME,
     buildVersion: pkg.version,
+    ...(process.env.MEDIAGO_SIGNPATH_TEST === "1"
+      ? { buildNumber: getWindowsTestVersion(pkg.version).buildNumber }
+      : {}),
     appId: process.env.APP_ID,
     copyright: getApplicationCopyright(process.env.APP_COPYRIGHT),
     // Register the custom scheme at install/first-run time.

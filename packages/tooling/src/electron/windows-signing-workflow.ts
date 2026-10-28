@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertTestSigningEnvironment,
+  getWindowsTestVersion,
   SIGNING_PHASES,
   TEST_CERTIFICATE_SHA256,
   unsignedPeDigest,
@@ -112,7 +113,10 @@ async function main() {
     const githubOutput = process.env.GITHUB_OUTPUT;
     if (!githubOutput)
       throw new Error("GitHub step output path is unavailable");
-    await fs.appendFile(githubOutput, `version=${request.version}\n`);
+    await fs.appendFile(
+      githubOutput,
+      `version=${getWindowsTestVersion(request.version).productVersion}\n`,
+    );
   } else if (operation === "complete") {
     const phase = phaseArgument();
     const directory = path.join(queue, phase);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   assertTestSigningEnvironment,
+  getWindowsTestVersion,
   signingPhase,
   unsignedPeDigest,
 } from "./windows-signing.ts";
@@ -25,6 +26,29 @@ test("only a test build from the expected repository can request signing", () =>
     expect(() =>
       assertTestSigningEnvironment({ ...environment, ...invalid }),
     ).toThrow();
+  }
+});
+test("maps test prereleases to bounded Windows product versions", () => {
+  expect(getWindowsTestVersion("3.6.0-test.4")).toEqual({
+    buildNumber: "4",
+    productVersion: "3.6.0.4",
+  });
+  expect(getWindowsTestVersion("0.0.0-test.0")).toEqual({
+    buildNumber: "0",
+    productVersion: "0.0.0.0",
+  });
+  expect(
+    getWindowsTestVersion("65535.65535.65535-test.65535").productVersion,
+  ).toBe("65535.65535.65535.65535");
+  for (const version of [
+    "3.6.0-beta.4",
+    "3.6.0",
+    "3.6.0-test.65536",
+    "65536.0.0-test.1",
+    "3.06.0-test.4",
+    "3.6.0-test.04",
+  ]) {
+    expect(() => getWindowsTestVersion(version)).toThrow();
   }
 });
 test("limits signing to the four MediaGo packaging checkpoints", () => {

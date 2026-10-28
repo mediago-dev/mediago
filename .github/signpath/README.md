@@ -14,7 +14,7 @@ tag, modifies the stable update channel, or uses `release-signing`.
    [windows-test.xml](windows-test.xml). Keep the existing production policy and
    default configuration unchanged. This configuration accepts a ZIP containing
    one `mediago.exe`, requires the product name `mediago`, and binds its product
-   version to the required `version` request parameter. It does not recursively
+   four-part Windows product version to the required `version` request parameter. It does not recursively
    sign other executables or third-party tools.
    Leave signature description fields unset: the Foundation plan supplies its
    own mandatory signature watermark and rejects custom descriptions.
@@ -44,6 +44,10 @@ tag, modifies the stable update channel, or uses `release-signing`.
 
 Run **Windows SignPath test signing** from GitHub Actions. Its initial integration
 branch also triggers the workflow so the first PR can be tested before merging.
+The displayed version and artifact filenames keep `3.6.0-test.N`; the Windows
+product version and signing parameter use `3.6.0.N`. The test build number is
+explicit and every numeric component is restricted to 0-65535.
+
 Only GitHub-hosted Windows runners are supported. The source and fixed test
 policy are recorded on every request; unsigned inputs must first be stored as
 GitHub workflow artifacts so SignPath can verify their origin.

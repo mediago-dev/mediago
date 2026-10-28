@@ -20,6 +20,21 @@ export const SIGNING_PHASES = [
 ] as const;
 export type SigningPhase = (typeof SIGNING_PHASES)[number];
 
+export function getWindowsTestVersion(version: string): {
+  buildNumber: string;
+  productVersion: string;
+} {
+  const match =
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-test\.(0|[1-9]\d*)$/.exec(
+      version,
+    );
+  if (!match || match.slice(1).some((part) => Number(part) > 65535)) {
+    throw new Error(
+      "The test version must fit a four-part Windows version (0-65535 per part)",
+    );
+  }
+  return { buildNumber: match[4], productVersion: match.slice(1).join(".") };
+}
 export function signingPhase(
   file: string,
   version: string,
