@@ -68,17 +68,19 @@ The Docker mark used in the interface comes from [Simple Icons](https://github.c
 
 ## Jellyfin FFmpeg 8.1.3-1 (Docker)
 
-Docker images use the matching Debian Trixie AMD64 or ARM64 package from
+Docker images use the official GPL portable Linux AMD64 or ARM64 build from
 <https://github.com/jellyfin/jellyfin-ffmpeg/releases/tag/v8.1.3-1>.
-The exact package SHA-256 checksums are pinned in
+The archive and license SHA-256 checksums are pinned in
 `packages/tooling/src/runtime-deps/install-docker-ffmpeg.sh`.
-The complete FFmpeg library bundle and required Debian runtime libraries remain
-with the executables; they are not repacked as standalone static binaries.
+The portable executables keep their bundled codec libraries and GNU libiconv;
+they only use the image's compatible glibc runtime, not distro codec libraries.
 
-- Corresponding source: <https://github.com/jellyfin/jellyfin-ffmpeg/tree/v8.1.3-1>
-- FFmpeg build license: GPL-3.0-or-later, with bundled components retaining their
-  own licenses: <https://github.com/jellyfin/jellyfin-ffmpeg/blob/v8.1.3-1/LICENSE.md>
-- Package copyright notices are included under `/app/licenses/ffmpeg-runtime/` in the image.
+- Corresponding source and dependency build revisions:
+  <https://github.com/jellyfin/jellyfin-ffmpeg/tree/v8.1.3-1>
+- FFmpeg build license: GPL-3.0-or-later. Bundled components retain their own
+  licenses: <https://github.com/jellyfin/jellyfin-ffmpeg/blob/v8.1.3-1/LICENSE.md>
+- The GPL license and exact asset provenance are included in the image under
+  `/app/licenses/ffmpeg/`.
 
 Desktop builds continue to use the platform-specific FFmpeg dependency recorded
 in `packages/tooling/manifests/runtime-deps.json`.

@@ -96,7 +96,7 @@ RUN mkdir -p /out/runtime-deps && \
 # Prepare matching native libraries for the download tools and Jellyfin FFmpeg.
 FROM debian:trixie-slim AS runtime-libraries
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libicu76 zlib1g ca-certificates curl && \
+    apt-get install -y --no-install-recommends libicu76 zlib1g ca-certificates curl xz-utils && \
     mkdir -p /runtime-libraries/var/lib/dpkg/status.d && \
     cp --parents -a /usr/lib/*-linux-gnu/libicudata.so.76* \
       /usr/lib/*-linux-gnu/libicui18n.so.76* /usr/lib/*-linux-gnu/libicuuc.so.76* \
