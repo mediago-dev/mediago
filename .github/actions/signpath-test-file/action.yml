@@ -15,7 +15,8 @@ runs:
       shell: pwsh
       env:
         SIGNPATH_PHASE: ${{ inputs.phase }}
-      run: task ci:windows-signing -- await "$env:SIGNPATH_PHASE"
+        SIGNPATH_OPERATION: await
+      run: task ci:windows-signing
     - name: Upload unsigned signing input
       id: unsigned
       uses: actions/upload-artifact@v7
@@ -44,4 +45,5 @@ runs:
       shell: pwsh
       env:
         SIGNPATH_PHASE: ${{ inputs.phase }}
-      run: task ci:windows-signing -- complete "$env:SIGNPATH_PHASE"
+        SIGNPATH_OPERATION: complete
+      run: task ci:windows-signing

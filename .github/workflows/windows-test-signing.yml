@@ -51,7 +51,8 @@ jobs:
         env:
           SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
           SIGNPATH_TEST_CERTIFICATE_BASE64: ${{ secrets.SIGNPATH_TEST_CERTIFICATE_BASE64 }}
-        run: task ci:windows-signing -- preflight
+          SIGNPATH_OPERATION: preflight
+        run: task ci:windows-signing
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: Test Windows update signature enforcement
@@ -64,7 +65,9 @@ jobs:
           SIGNPATH_TEST_CERTIFICATE_BASE64: ${{ secrets.SIGNPATH_TEST_CERTIFICATE_BASE64 }}
         run: pwsh -NoProfile -File packages/tooling/src/electron/windows-test-trust.ps1 -Operation install
       - name: Start packaging with signing checkpoints
-        run: task ci:windows-signing -- start
+        env:
+          SIGNPATH_OPERATION: start
+        run: task ci:windows-signing
       - name: Sign application
         uses: ./.github/actions/signpath-test-file
         with:
@@ -86,7 +89,9 @@ jobs:
           phase: portable
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
       - name: Verify signed packages and updater metadata
-        run: task ci:windows-signing -- finish
+        env:
+          SIGNPATH_OPERATION: finish
+        run: task ci:windows-signing
       - name: Upload test-signed preview
         uses: actions/upload-artifact@v7
         with:
@@ -101,7 +106,9 @@ jobs:
           include-hidden-files: true
       - name: Stop packaging worker
         if: always()
-        run: task ci:windows-signing -- stop
+        env:
+          SIGNPATH_OPERATION: stop
+        run: task ci:windows-signing
       - name: Remove test certificate trust
         if: always()
         shell: pwsh

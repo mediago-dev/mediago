@@ -23,7 +23,7 @@ const queue = path.join(root, ".task/signpath");
 const release = path.join(root, "apps/electron/release");
 
 function phaseArgument(): SigningPhase {
-  const phase = process.argv[3] as SigningPhase;
+  const phase = (process.env.SIGNPATH_PHASE ?? process.argv[3]) as SigningPhase;
   if (!SIGNING_PHASES.includes(phase)) throw new Error("Unknown signing phase");
   return phase;
 }
@@ -32,7 +32,7 @@ async function main() {
   assertTestSigningEnvironment();
   if (process.platform !== "win32")
     throw new Error("Windows signing requires Windows");
-  const operation = process.argv[2];
+  const operation = process.argv[2] ?? process.env.SIGNPATH_OPERATION;
   if (operation === "preflight") {
     if (!process.env.SIGNPATH_API_TOKEN?.trim())
       throw new Error("Configure the SIGNPATH_API_TOKEN Actions Secret first");

@@ -10,7 +10,12 @@ tasks:
     desc: Coordinate isolated SignPath test-signing packaging checkpoints
     cmds:
       - task: internal:require-task-version
-      - node packages/tooling/src/electron/windows-signing-workflow.ts {{.CLI_ARGS}}
+      - task: internal:ci:windows-signing
+
+  internal:ci:windows-signing:
+    internal: true
+    cmds:
+      - node packages/tooling/src/electron/windows-signing-workflow.ts
 
   security:js:
     desc: Fail on any workspace dependency vulnerability or audit execution error
