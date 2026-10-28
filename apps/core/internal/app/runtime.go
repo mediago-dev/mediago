@@ -109,10 +109,10 @@ func NewRuntime(cfg *AppConfig) (*Runtime, error) {
 			logger.Info("proxy updated via config change")
 		}
 	})
-	appStore.OnDidChange("useProxy", func(newVal, oldVal any) {
+	appStore.OnDidChange("downloadProxySwitch", func(newVal, oldVal any) {
 		if v, ok := newVal.(bool); ok {
 			cfg.SetUseProxy(v)
-			logger.Infof("useProxy updated to %v via config change", v)
+			logger.Infof("downloadProxySwitch updated to %v via config change", v)
 		}
 	})
 	appStore.OnDidChange("deleteSegments", func(newVal, oldVal any) {
@@ -182,7 +182,7 @@ func syncAppStoreToCfg(store *conf.Conf[AppStore], cfg *AppConfig) {
 		cfg.LocalDir = s.Local
 	}
 	cfg.Proxy = s.Proxy
-	cfg.UseProxy = s.UseProxy
+	cfg.UseProxy = s.DownloadProxySwitch
 	cfg.DeleteSegments = s.DeleteSegments
 	if s.MaxRunner > 0 {
 		cfg.MaxRunner = s.MaxRunner

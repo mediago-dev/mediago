@@ -38,8 +38,10 @@ store.addSource(store.activeTabId, {
 
 function Fixture() {
   const [editor, setEditor] = useState<DownloadFormItem>();
+  const [editing, setEditing] = useState(false);
   const enabled = useAppStore((state) => state.enableDocker);
-  const openEditor = (origin: "local" | "docker", id?: number) =>
+  const openEditor = (origin: "local" | "docker", id?: number) => {
+    setEditing(true);
     setEditor({
       origin,
       id,
@@ -49,6 +51,7 @@ function Fixture() {
       headers: "Referer: https://example.com/watch",
       folder: "series",
     });
+  };
   return (
     <Toaster>
       <main
@@ -74,6 +77,18 @@ function Fixture() {
           启用 Docker
         </label>
         <div className="flex gap-3">
+          <Button
+            onClick={() => {
+              setEditing(false);
+              setEditor({
+                name: "待下载的视频",
+                url: "https://example.com/video.mp4",
+                type: DownloadType.direct,
+              });
+            }}
+          >
+            新建下载任务
+          </Button>
           <Button onClick={() => openEditor("local", 77)}>编辑本地任务</Button>
           <Button onClick={() => openEditor("local")}>编辑提取素材</Button>
           <Button onClick={() => openEditor("docker", 42)}>
@@ -91,7 +106,7 @@ function Fixture() {
             key={`${editor.origin}-${editor.id}`}
             id="fixture-editor"
             open
-            isEdit
+            isEdit={editing}
             initialValues={editor}
             onOpenChange={(open) => {
               if (!open) setEditor(undefined);

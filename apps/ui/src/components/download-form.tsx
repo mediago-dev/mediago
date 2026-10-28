@@ -1,7 +1,7 @@
 import { useAsyncEffect, useMemoizedFn } from "ahooks";
 import { Download, ListPlus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/toast";
 import { useShallow } from "zustand/react/shallow";
@@ -40,6 +40,7 @@ import { tdApp } from "@/utils";
 import { isWeb } from "@/environment";
 import { DiscoveredSourcePicker } from "./discovered-source-picker";
 import { DownloadFormFields } from "./download-form-fields";
+import { DownloadTargetField } from "./download-network-fields";
 import {
   buildDownloadTasks,
   createDownloadFormValues,
@@ -89,6 +90,11 @@ export default function DownloadForm({
   const form = useForm<DownloadFormItem>({
     defaultValues: createDownloadFormValues(initialValues),
   });
+  const downloadTarget =
+    useWatch({ control: form.control, name: "downloadTarget" }) ?? "local";
+  const existingTask =
+    isEdit && resolveEditTaskId(initialValues.id) !== undefined;
+  const dockerTarget = !isWeb && downloadTarget === "docker";
 
   useEffect(() => {
     if (!open) {
@@ -98,7 +104,13 @@ export default function DownloadForm({
 
     const values = createDownloadFormValues(initialValues);
     form.reset(values);
-    setAdvancedOpen(Boolean(values.folder?.trim() || values.headers?.trim()));
+    setAdvancedOpen(
+      Boolean(
+        values.folder?.trim() ||
+        values.headers?.trim() ||
+        values.proxyMode !== "inherit",
+      ),
+    );
   }, [form, initialValues, open]);
 
   useAsyncEffect(async () => {
@@ -156,7 +168,11 @@ export default function DownloadForm({
         values,
         {
           startDownload: intent === "download-now",
-          target: intent === "docker" ? "docker" : "local",
+          target:
+            intent === "docker" ||
+            (!isWeb && values.downloadTarget === "docker")
+              ? "docker"
+              : "local",
         },
         { allowBrowserDiscovery: mode === "smart" },
       );
@@ -170,15 +186,29 @@ export default function DownloadForm({
     setSubmittingIntent(intent);
     try {
       const values = form.getValues();
+      const target =
+        intent === "docker" || (!isWeb && values.downloadTarget === "docker")
+          ? "docker"
+          : "local";
+      if (target === "docker" && !enableDocker)
+        throw new Error(t("dockerDownloadSetupHelp"));
       const smartSubmitMode = resolveSmartSubmitMode(values, isEdit);
       if (smartSubmitMode) {
         await beginSourceInspection(values, intent, smartSubmitMode);
         return;
       }
-      const tasks = buildDownloadTasks(values);
+      const tasks = buildDownloadTasks(values, isWeb ? "docker" : target);
 
-      if (intent === "docker") {
-        await addVideosToDocker({ items: tasks });
+      if (
+        target === "docker" &&
+        (!existingTask ||
+          initialValues.origin !== "docker" ||
+          intent === "docker")
+      ) {
+        await addVideosToDocker({
+          items: tasks,
+          immediate: intent === "download-now",
+        });
         toast.add({ title: t("addToDockerSuccess"), type: "success" });
         setOpen(false);
         onConfirm?.(values);
@@ -240,7 +270,7 @@ export default function DownloadForm({
       try {
         await smartStream.confirm(sourceIds, names, variantUrls);
         const values = form.getValues();
-        if (intent === "docker")
+        if (intent === "docker" || dockerTarget)
           toast.add({ title: t("addToDockerSuccess"), type: "success" });
         if (intent === "save") tdApp.onEvent(ADD_TO_LIST, { id });
         if (intent === "download-now") tdApp.onEvent(DOWNLOAD_NOW, { id });
@@ -319,6 +349,12 @@ export default function DownloadForm({
             className="space-y-4 overflow-y-auto px-6 py-5 sm:px-7"
             onSubmit={(event) => event.preventDefault()}
           >
+            <DownloadTargetField
+              form={form}
+              formId={formId}
+              enabled={enableDocker}
+              locked={existingTask}
+            />
             {resolveEditTaskId(initialValues.id) !== undefined ? (
               <input
                 type="hidden"
@@ -332,7 +368,7 @@ export default function DownloadForm({
               isEdit={isEdit}
               onAdvancedOpenChange={setAdvancedOpen}
               onShowTextMenu={showTextMenu}
-              videoFolders={videoFolders}
+              videoFolders={dockerTarget ? [] : videoFolders}
             />
           </form>
 
@@ -346,7 +382,9 @@ export default function DownloadForm({
               {t("cancel")}
             </Button>
             <div className="flex flex-wrap justify-end gap-2">
-              {enableDocker && initialValues.origin !== "docker" ? (
+              {enableDocker &&
+              existingTask &&
+              initialValues.origin !== "docker" ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -354,7 +392,7 @@ export default function DownloadForm({
                   onClick={() => submit("docker")}
                 >
                   <DockerIcon className="size-4" />
-                  {t("addToDocker")}
+                  {t("copyToDocker")}
                 </Button>
               ) : null}
               <Button
@@ -364,7 +402,11 @@ export default function DownloadForm({
                 onClick={() => submit("save")}
               >
                 <ListPlus className="size-4" />
-                {isEdit ? t("save") : t("addToList")}
+                {existingTask
+                  ? t("save")
+                  : dockerTarget
+                    ? t("addToDockerList")
+                    : t("addToList")}
               </Button>
               <Button
                 type="button"
@@ -372,7 +414,7 @@ export default function DownloadForm({
                 onClick={() => submit("download-now")}
               >
                 <Download className="size-4" />
-                {t("downloadNow")}
+                {dockerTarget ? t("downloadOnDocker") : t("downloadNow")}
               </Button>
             </div>
           </DialogFooter>

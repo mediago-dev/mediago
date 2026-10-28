@@ -16,6 +16,13 @@ var (
 	ErrTaskNotFound = errors.New("task not found")
 )
 
+func (q *TaskQueue) DownloadConfig() interface{} {
+	if q == nil || q.downloader == nil {
+		return nil
+	}
+	return q.downloader.Config()
+}
+
 // TaskQueue is the task queue, responsible for concurrency control, task scheduling, and event dispatching
 type TaskQueue struct {
 	downloader Downloader // downloader instance

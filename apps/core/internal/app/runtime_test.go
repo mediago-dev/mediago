@@ -126,6 +126,24 @@ func TestRuntimeLogsDoNotExposeProxyValues(t *testing.T) {
 	if !proxyPropagated {
 		t.Fatal("runtime proxy propagation changed")
 	}
+	if err := rt.AppStore.Set("downloadProxySwitch", true); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.GetUseProxy() {
+		t.Fatal("download proxy switch did not reach the downloader")
+	}
+	if err := rt.AppStore.Set("useProxy", false); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.GetUseProxy() {
+		t.Fatal("browser switch changed the download proxy")
+	}
+	if err := rt.AppStore.Set("downloadProxySwitch", false); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GetUseProxy() {
+		t.Fatal("download proxy stayed enabled")
+	}
 
 	secretMarkers := []string{
 		startupProxy,

@@ -229,12 +229,12 @@ async function renderEditor(origin: "local" | "docker", id?: number) {
   );
 }
 
-test.each([42, undefined])(
+test.each([42])(
   "local edit/overlay can send a new remote task without changing the local task (id=%s)",
   async (id) => {
     await renderEditor("local", id);
     const button = [...container.querySelectorAll("button")].find(
-      (node) => node.textContent === "addToDocker",
+      (node) => node.textContent === "copyToDocker",
     );
     expect(button).toBeDefined();
     await act(async () => requiredControl(button).click());

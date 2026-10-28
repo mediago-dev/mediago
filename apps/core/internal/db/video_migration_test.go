@@ -56,7 +56,7 @@ func TestVideoOutputPathMigrationPreservesLegacyRows(t *testing.T) {
 	if !database.DB.Migrator().HasColumn(&Video{}, "downloadDir") {
 		t.Fatal("video.downloadDir column was not added")
 	}
-	for _, column := range []string{"requiresRuntimeHeaders", "lastErrorCode"} {
+	for _, column := range []string{"requiresRuntimeHeaders", "lastErrorCode", "proxyMode", "proxyUrl"} {
 		if !database.DB.Migrator().HasColumn(&Video{}, column) {
 			t.Fatalf("video.%s column was not added", column)
 		}
@@ -70,6 +70,9 @@ func TestVideoOutputPathMigrationPreservesLegacyRows(t *testing.T) {
 	}
 	if video.Name != "legacy" || video.Status != "success" || video.OutputPath != "" || video.DownloadDir != "" || video.RequiresRuntimeHeaders || video.LastErrorCode != "" {
 		t.Fatalf("migrated legacy row = %#v", video)
+	}
+	if video.ProxyMode != "inherit" || video.ProxyURL != "" {
+		t.Fatalf("legacy proxy = %q %q", video.ProxyMode, video.ProxyURL)
 	}
 }
 

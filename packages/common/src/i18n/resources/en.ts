@@ -1,4 +1,29 @@
 export const en = {
+  taskProxyBilibiliHelp:
+    "BBDown cannot force a direct connection. Disable the system proxy or use yt-dlp to download without a proxy.",
+  downloadTarget: "Download location",
+  downloadOnThisDevice: "This device",
+  addToDockerList: "Add to Docker queue",
+  downloadOnDocker: "Download on Docker",
+  copyToDocker: "Copy to Docker",
+  dockerDownloadNetworkHelp:
+    "The Docker server downloads the file using its own proxy settings.",
+  dockerDownloadSetupHelp:
+    "Configure and enable the Docker connection in Settings first.",
+  taskProxyStrategy: "Proxy policy",
+  taskProxyInherit: "Use global download settings",
+  taskProxyDirect: "Do not use a MediaGo proxy",
+  taskProxyCustom: "Custom proxy",
+  taskProxyAddress: "Proxy address for this task",
+  taskProxyAddressInvalid:
+    "Enter an HTTP or SOCKS5 proxy URL without credentials or an extra path.",
+  taskProxyInheritHelp:
+    "Uses global download proxy settings when starting or retrying. The embedded browser keeps its own settings.",
+  taskProxyDirectHelp:
+    "Bypasses application and system proxies for this task. Router-level proxy rules can still apply.",
+  taskProxyCustomHelp:
+    "Used for local downloads and playlist inspection. Direct file downloads require HTTP; proxy credentials are not supported here yet.",
+  dockerProxyInherited: "Use the Docker server's proxy settings",
   analyticsUsage: "Share usage statistics",
   analyticsChoiceTitle: "Optional usage statistics",
   analyticsDescription:

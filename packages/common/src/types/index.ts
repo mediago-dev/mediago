@@ -2,7 +2,13 @@ import type { Conversion, Favorite, Video } from "./entities";
 
 export type Controller = Record<string | symbol, any>;
 
-export interface DownloadTask {
+export type TaskProxyMode = "inherit" | "direct" | "custom";
+export interface DownloadProxySettings {
+  proxyMode?: TaskProxyMode;
+  proxyUrl?: string;
+}
+
+export interface DownloadTask extends DownloadProxySettings {
   id: number;
   type: DownloadType;
   name: string;

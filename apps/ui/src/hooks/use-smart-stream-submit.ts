@@ -35,6 +35,9 @@ const DISCOVERY_POLL_MS = 350;
 const DISCOVERY_TIMEOUT_MS = 20_000;
 
 export interface SmartStreamDiscoveryInput {
+  proxyMode?: "inherit" | "direct" | "custom";
+  proxyUrl?: string;
+  target?: "local" | "docker";
   allowBrowserDiscovery?: boolean;
   headers: string[];
   isWeb: boolean;
@@ -53,6 +56,11 @@ export interface SmartStreamDiscoveryDependencies {
     url: string,
     headers: string[],
     signal?: AbortSignal,
+    proxy?: {
+      proxyMode?: "inherit" | "direct" | "custom";
+      proxyUrl?: string;
+      target?: "local" | "docker";
+    },
   ) => Promise<SourceInspection>;
   wait: (signal?: AbortSignal) => Promise<void>;
 }
@@ -144,11 +152,13 @@ export async function runSmartStreamDiscovery(
 ): Promise<SmartStreamDiscoveryResult> {
   let inspection: SourceInspection | undefined;
   try {
-    inspection = await dependencies.inspect(
-      input.url,
-      input.headers,
-      input.signal,
-    );
+    inspection = input.proxyMode
+      ? await dependencies.inspect(input.url, input.headers, input.signal, {
+          proxyMode: input.proxyMode,
+          proxyUrl: input.proxyUrl,
+          target: input.target,
+        })
+      : await dependencies.inspect(input.url, input.headers, input.signal);
   } catch (error) {
     if (input.signal?.aborted) throw error;
   }
@@ -279,6 +289,12 @@ export function useSmartStreamSubmit() {
         {
           allowBrowserDiscovery: options.allowBrowserDiscovery,
           headers: formattedHeadersToArray(values.headers),
+          proxyMode:
+            intent.target === "docker" || isWeb
+              ? "inherit"
+              : (values.proxyMode ?? "inherit"),
+          proxyUrl: intent.target === "docker" || isWeb ? "" : values.proxyUrl,
+          target: intent.target,
           isWeb,
           onDiscoveryCreated: (discoveryId) => {
             discoveryIdRef.current = discoveryId;
@@ -368,6 +384,15 @@ export function useSmartStreamSubmit() {
       machine: transitionSmartStreamSubmit(current.machine, { type: "create" }),
     }));
     const params = {
+      ...(context.intent.target === "local" && !isWeb
+        ? {
+            proxyMode: context.values.proxyMode ?? "inherit",
+            proxyUrl:
+              context.values.proxyMode === "custom"
+                ? context.values.proxyUrl
+                : "",
+          }
+        : {}),
       sourceIds: selected.map((source) => source.id),
       folder: context.values.folder,
       names,
@@ -383,6 +408,15 @@ export function useSmartStreamSubmit() {
         }
       } else {
         const tasks: Omit<DownloadTask, "id">[] = selected.map((source) => ({
+          ...(context.intent.target === "local" && !isWeb
+            ? {
+                proxyMode: context.values.proxyMode ?? "inherit",
+                proxyUrl:
+                  context.values.proxyMode === "custom"
+                    ? context.values.proxyUrl
+                    : "",
+              }
+            : {}),
           folder: context.values.folder,
           headers: context.values.headers,
           name: names[source.id]?.trim() || source.name,

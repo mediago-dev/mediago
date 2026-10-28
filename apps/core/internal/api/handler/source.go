@@ -40,9 +40,11 @@ func (h *SourceHandler) Inspect(c *gin.Context) {
 	inputs := make([]service.InspectSourceInput, len(req.Sources))
 	for index, source := range req.Sources {
 		inputs[index] = service.InspectSourceInput{
-			ID:      source.ID,
-			URL:     source.URL,
-			Headers: source.Headers,
+			ProxyMode: source.ProxyMode,
+			ProxyURL:  source.ProxyURL,
+			ID:        source.ID,
+			URL:       source.URL,
+			Headers:   source.Headers,
 		}
 	}
 	results := h.inspector.InspectBatch(c.Request.Context(), inputs)

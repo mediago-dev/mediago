@@ -34,10 +34,11 @@ func NewDockerHandler(forwarder DockerForwarder, discoveryServices ...*discovery
 	return handler
 }
 
-func (h *DockerHandler) Status(c *gin.Context) { h.proxy(c, "/healthy") }
-func (h *DockerHandler) List(c *gin.Context)   { h.proxy(c, "/api/downloads") }
-func (h *DockerHandler) Create(c *gin.Context) { h.proxy(c, "/api/downloads") }
-func (h *DockerHandler) Active(c *gin.Context) { h.proxy(c, "/api/downloads/active") }
+func (h *DockerHandler) Status(c *gin.Context)         { h.proxy(c, "/healthy") }
+func (h *DockerHandler) List(c *gin.Context)           { h.proxy(c, "/api/downloads") }
+func (h *DockerHandler) Create(c *gin.Context)         { h.proxy(c, "/api/downloads") }
+func (h *DockerHandler) Active(c *gin.Context)         { h.proxy(c, "/api/downloads/active") }
+func (h *DockerHandler) InspectSources(c *gin.Context) { h.proxy(c, "/api/sources/inspect") }
 
 func (h *DockerHandler) Get(c *gin.Context) {
 	h.proxyDownload(c, "")

@@ -87,6 +87,8 @@ export interface TaskLogResponse {
 }
 
 export interface InspectSourceInput {
+  proxyMode?: "inherit" | "direct" | "custom";
+  proxyUrl?: string;
   id: string;
   url: string;
   headers?: string[];
@@ -187,6 +189,8 @@ export interface DiscoveryRequestOptions {
 }
 
 export interface CreateDiscoveryDownloadsParams {
+  proxyMode?: "inherit" | "direct" | "custom";
+  proxyUrl?: string;
   sourceIds: string[];
   folder?: string;
   names?: Record<string, string>;
@@ -280,6 +284,8 @@ export interface TaskFailedEventPayload {
  * A download task persisted in the database.
  */
 export interface DownloadTask {
+  proxyMode?: "inherit" | "direct" | "custom";
+  proxyUrl?: string;
   id: number;
   name: string;
   type: string;
@@ -309,6 +315,8 @@ export interface PaginatedResponse<T> {
  * Parameters for adding a download task.
  */
 export interface AddDownloadTaskParams {
+  proxyMode?: "inherit" | "direct" | "custom";
+  proxyUrl?: string;
   type: string;
   url: string;
   name?: string;
@@ -328,6 +336,8 @@ export interface AddDownloadBatchParams {
  * Parameters for editing a download task.
  */
 export interface EditDownloadTaskParams {
+  proxyMode?: "inherit" | "direct" | "custom";
+  proxyUrl?: string;
   name?: string;
   url?: string;
   headers?: string;

@@ -2,6 +2,7 @@ import {
   DownloadType,
   type DownloadTask,
   type TaskOrigin,
+  type DownloadProxySettings,
 } from "@mediago/common";
 import { create } from "zustand";
 
@@ -12,7 +13,8 @@ import { create } from "zustand";
 export const SMART_DOWNLOAD_TYPE = "smart" as const;
 export type DownloadFormType = DownloadType | typeof SMART_DOWNLOAD_TYPE;
 
-export interface DownloadFormItem {
+export interface DownloadFormItem extends DownloadProxySettings {
+  downloadTarget?: "local" | "docker";
   batch?: boolean;
   batchList?: string;
   name?: string;
@@ -62,6 +64,9 @@ export const useDownloadDialogStore = create<DownloadDialogState>((set) => ({
         type: task.type,
         folder: task.folder,
         origin: task.origin,
+        downloadTarget: task.origin === "docker" ? "docker" : "local",
+        proxyMode: task.proxyMode ?? "inherit",
+        proxyUrl: task.proxyUrl ?? "",
       },
     })),
   close: () => set({ open: false }),

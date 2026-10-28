@@ -56,6 +56,7 @@ func (s *Server) registerRoutes() {
 		{
 			docker.GET("/status", s.dockerHandler.Status)
 			docker.POST("/discoveries/:id/downloads", s.dockerHandler.DiscoveryDownloads)
+			docker.POST("/sources/inspect", s.dockerHandler.InspectSources)
 			docker.GET("/downloads", s.dockerHandler.List)
 			docker.POST("/downloads", s.dockerHandler.Create)
 			docker.GET("/downloads/active", s.dockerHandler.Active)

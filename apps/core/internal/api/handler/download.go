@@ -6,6 +6,7 @@ import (
 
 	"caorushizi.cn/mediago/internal/api/dto"
 	"caorushizi.cn/mediago/internal/api/sse"
+	"caorushizi.cn/mediago/internal/core"
 	"caorushizi.cn/mediago/internal/db/repo"
 	"caorushizi.cn/mediago/internal/i18n"
 	"caorushizi.cn/mediago/internal/logger"
@@ -43,6 +44,8 @@ func (h *DownloadHandler) Create(c *gin.Context) {
 			storedHeaders = service.PersistentDiscoveryHeaders(ephemeralHeaders)
 		}
 		inputs = append(inputs, &service.AddDownloadTaskInput{
+			ProxyMode:      t.ProxyMode,
+			ProxyURL:       t.ProxyURL,
 			Name:           t.Name,
 			Type:           t.Type,
 			URL:            t.URL,
@@ -54,6 +57,10 @@ func (h *DownloadHandler) Create(c *gin.Context) {
 
 	videos, err := h.svc.AddDownloadTasks(inputs)
 	if err != nil {
+		if errors.Is(err, core.ErrInvalidDownloadProxy) {
+			writeErrorResponse(c, http.StatusBadRequest, "invalid_download_proxy", err.Error())
+			return
+		}
 		if errors.Is(err, service.ErrDownloadURLAlreadyExists) {
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Success: false, Code: http.StatusConflict, Message: i18n.T(c, i18n.MsgURLAlreadyExists)})
 			return
@@ -147,6 +154,12 @@ func (h *DownloadHandler) Edit(c *gin.Context) {
 	}
 
 	data := make(map[string]interface{})
+	if req.ProxyMode != nil {
+		data["proxyMode"] = *req.ProxyMode
+	}
+	if req.ProxyURL != nil {
+		data["proxyUrl"] = *req.ProxyURL
+	}
 	if req.Name != nil {
 		data["name"] = *req.Name
 	}
@@ -162,6 +175,10 @@ func (h *DownloadHandler) Edit(c *gin.Context) {
 
 	video, err := h.svc.EditDownloadTask(id, data)
 	if err != nil {
+		if errors.Is(err, core.ErrInvalidDownloadProxy) {
+			writeErrorResponse(c, http.StatusBadRequest, "invalid_download_proxy", err.Error())
+			return
+		}
 		if errors.Is(err, repo.ErrVideoNotFound) {
 			writeDownloadNotFound(c, id)
 			return

@@ -31,6 +31,8 @@ export type FavoriteIconStatus =
   | "retryable";
 
 export interface Video {
+  proxyMode?: "inherit" | "direct" | "custom";
+  proxyUrl?: string;
   id: number;
   name: string;
   type: string;

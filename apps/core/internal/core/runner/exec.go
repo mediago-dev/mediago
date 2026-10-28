@@ -41,6 +41,9 @@ func (r *ExecRunner) RunWithOptions(ctx context.Context, binPath string, args []
 		return err
 	}
 	cmd := exec.Command(binPath, args...)
+	if options.Environment != nil {
+		cmd.Env = options.Environment
+	}
 
 	// obtain stdout and stderr pipes
 	stdout, err := cmd.StdoutPipe()

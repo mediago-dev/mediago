@@ -1,4 +1,29 @@
 export const it = {
+  taskProxyBilibiliHelp:
+    "BBDown non può forzare una connessione diretta. Disattiva il proxy di sistema o usa yt-dlp per scaricare senza proxy.",
+  downloadTarget: "Destinazione del download",
+  downloadOnThisDevice: "Questo dispositivo",
+  addToDockerList: "Aggiungi alla coda Docker",
+  downloadOnDocker: "Scarica su Docker",
+  copyToDocker: "Copia su Docker",
+  dockerDownloadNetworkHelp:
+    "Il server Docker scarica il file usando le proprie impostazioni proxy.",
+  dockerDownloadSetupHelp:
+    "Configura e abilita la connessione Docker nelle impostazioni.",
+  taskProxyStrategy: "Criterio proxy",
+  taskProxyInherit: "Usa le impostazioni globali di download",
+  taskProxyDirect: "Non usare un proxy MediaGo",
+  taskProxyCustom: "Proxy personalizzato",
+  taskProxyAddress: "Indirizzo proxy per questa attività",
+  taskProxyAddressInvalid:
+    "Inserisci un URL proxy HTTP o SOCKS5 senza credenziali o percorsi aggiuntivi.",
+  taskProxyInheritHelp:
+    "Usa il proxy globale all'avvio o al nuovo tentativo. Il browser integrato mantiene le proprie impostazioni.",
+  taskProxyDirectHelp:
+    "Ignora i proxy dell'app e del sistema. Le regole proxy del router possono ancora applicarsi.",
+  taskProxyCustomHelp:
+    "Usato per download locali e analisi delle playlist. I file diretti richiedono HTTP; le credenziali proxy non sono ancora supportate.",
+  dockerProxyInherited: "Usa le impostazioni proxy del server Docker",
   analyticsUsage: "Condividi statistiche di utilizzo",
   analyticsChoiceTitle: "Statistiche facoltative",
   analyticsDescription:
