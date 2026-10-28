@@ -35,6 +35,15 @@ export function getWindowsTestVersion(version: string): {
   }
   return { buildNumber: match[4], productVersion: match.slice(1).join(".") };
 }
+// Electron and NSIS expose different ProductVersion string resources.
+export function getSigningProductVersion(
+  version: string,
+  phase: SigningPhase,
+): string {
+  const windowsVersion = getWindowsTestVersion(version);
+  if (!SIGNING_PHASES.includes(phase)) throw new Error("Unknown signing phase");
+  return phase === "app" ? windowsVersion.productVersion : version;
+}
 export function signingPhase(
   file: string,
   version: string,

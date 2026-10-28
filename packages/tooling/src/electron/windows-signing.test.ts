@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   assertTestSigningEnvironment,
   getWindowsTestVersion,
+  getSigningProductVersion,
   signingPhase,
   unsignedPeDigest,
 } from "./windows-signing.ts";
@@ -50,6 +51,15 @@ test("maps test prereleases to bounded Windows product versions", () => {
   ]) {
     expect(() => getWindowsTestVersion(version)).toThrow();
   }
+});
+test("binds each signing phase to its exact ProductVersion representation", () => {
+  const version = "3.6.0-test.5";
+  expect(getSigningProductVersion(version, "app")).toBe("3.6.0.5");
+  for (const phase of ["uninstaller", "installer", "portable"] as const) {
+    expect(getSigningProductVersion(version, phase)).toBe(version);
+    expect(() => getSigningProductVersion("3.6.0", phase)).toThrow();
+  }
+  expect(() => getSigningProductVersion(version, "unknown" as never)).toThrow();
 });
 test("limits signing to the four MediaGo packaging checkpoints", () => {
   expect(
