@@ -16,6 +16,8 @@ tag, modifies the stable update channel, or uses `release-signing`.
    one `mediago.exe`, requires the product name `mediago`, and binds its product
    version to the required `version` request parameter. It does not recursively
    sign other executables or third-party tools.
+   Leave signature description fields unset: the Foundation plan supplies its
+   own mandatory signature watermark and rejects custom descriptions.
 3. In **Users and Groups → CI builds**, obtain a CI submitter API token and put
    it directly in the repository's GitHub Actions Secret **SIGNPATH_API_TOKEN**.
    Do not paste it in issues, PRs, chat, workflow inputs, or repository files.

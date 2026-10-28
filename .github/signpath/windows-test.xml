@@ -5,7 +5,7 @@
   </parameters>
   <zip-file>
     <pe-file path="mediago.exe" product-name="mediago" product-version="${version}">
-      <authenticode-sign description="MediaGo test build" description-url="https://github.com/mediago-dev/mediago" />
+      <authenticode-sign />
     </pe-file>
   </zip-file>
 </artifact-configuration>
