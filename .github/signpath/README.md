@@ -57,7 +57,9 @@ checks. Updater SHA-512, size and blockmaps are consequently generated after
 signing, and the final `test.yml` is checked against the signed installer.
 
 The self-signed certificate is trusted **only in the disposable hosted signing
-runner**, after checking its SHA-256 fingerprint. An unconditional cleanup step
+runner LocalMachine Root store**, after checking its SHA-256 fingerprint. The
+CurrentUser Root store requires an interactive Windows prompt and is unsuitable
+for unattended CI. Both trust operations have a two-minute timeout. An unconditional cleanup step
 removes that trust. Neither MediaGo nor its installer imports test certificates
 into users' trust stores. Test builds disable automatic updates and installation
 of updates; their manual update action opens the public Releases page.

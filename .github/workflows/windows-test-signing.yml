@@ -60,6 +60,7 @@ jobs:
       - name: Apply isolated test version
         run: task ci:desktop:apply-version
       - name: Trust only the pinned test certificate on this disposable runner
+        timeout-minutes: 2
         shell: pwsh
         env:
           SIGNPATH_TEST_CERTIFICATE_BASE64: ${{ secrets.SIGNPATH_TEST_CERTIFICATE_BASE64 }}
@@ -110,6 +111,7 @@ jobs:
           SIGNPATH_OPERATION: stop
         run: task ci:windows-signing
       - name: Remove test certificate trust
+        timeout-minutes: 2
         if: always()
         shell: pwsh
         run: pwsh -NoProfile -File packages/tooling/src/electron/windows-test-trust.ps1 -Operation remove

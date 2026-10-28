@@ -1,6 +1,6 @@
 param([Parameter(Mandatory=$true)][ValidateSet('install','remove')][string]$Operation)
 $ErrorActionPreference = 'Stop'
-if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:MEDIAGO_SIGNPATH_TEST -ne '1') {
+if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:MEDIAGO_SIGNPATH_TEST -ne '1' -or $env:GITHUB_REPOSITORY -ne 'mediago-dev/mediago' -or $env:RUNNER_OS -ne 'Windows' -or $env:BUILD_VERSION -notmatch '^\d+\.\d+\.\d+-test\.\d+$') {
   throw 'Test certificate trust is restricted to an ephemeral GitHub-hosted signing job.'
 }
 $certificatePath = Join-Path $PSScriptRoot '../../../../.task/signpath/test-certificate.cer'
@@ -20,10 +20,17 @@ if ($Operation -eq 'install') {
   [System.IO.Directory]::CreateDirectory((Split-Path -Parent $certificatePath)) | Out-Null
   [System.IO.File]::WriteAllBytes($certificatePath,$certificate.RawData)
 }
-$store = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root','CurrentUser')
+# CurrentUser Root imports display a confirmation dialog and hang unattended jobs.
+# LocalMachine is safe here only because the guards restrict this to a disposable hosted runner.
+$store = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root','LocalMachine')
 try {
   $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
   if ($Operation -eq 'install') { $store.Add($certificate) } else { $store.Remove($certificate) }
+  $trustedCertificates = $store.Certificates.Find([System.Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,$certificate.Thumbprint,$false)
+  if (($Operation -eq 'install' -and $trustedCertificates.Count -ne 1) -or ($Operation -eq 'remove' -and $trustedCertificates.Count -ne 0)) {
+    throw 'The temporary test certificate trust operation did not complete.'
+  }
+  Write-Host ($Operation + ' pinned test certificate in the disposable runner LocalMachine Root store')
 } finally {
   $store.Close()
   $certificate.Dispose()

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +45,67 @@ describe("test signing workflow safety", () => {
     expect(cleanup.run).toContain("-Operation remove");
     expect(cleanup.env).toBeUndefined();
   });
+  test("bounds both temporary certificate trust operations", () => {
+    const steps = workflow.jobs["windows-test-signing"].steps;
+    for (const name of [
+      "Trust only the pinned test certificate on this disposable runner",
+      "Remove test certificate trust",
+    ]) {
+      expect(
+        steps.find((step: { name: string }) => step.name === name)[
+          "timeout-minutes"
+        ],
+      ).toBe(2);
+    }
+  });
+  test.runIf(process.platform === "win32")(
+    "rejects unsafe trust contexts before opening any certificate store",
+    () => {
+      const executable = path.join(
+        process.env.SystemRoot!,
+        "System32/WindowsPowerShell/v1.0/powershell.exe",
+      );
+      const environment = {
+        ...process.env,
+        GITHUB_ACTIONS: "true",
+        RUNNER_ENVIRONMENT: "github-hosted",
+        MEDIAGO_SIGNPATH_TEST: "1",
+        GITHUB_REPOSITORY: "mediago-dev/mediago",
+        RUNNER_OS: "Windows",
+        BUILD_VERSION: "3.6.0-test.1",
+        SIGNPATH_TEST_CERTIFICATE_BASE64: "",
+      };
+      for (const invalid of [
+        { GITHUB_REPOSITORY: "fork/mediago" },
+        { BUILD_VERSION: "3.6.0-beta.1" },
+        { RUNNER_ENVIRONMENT: "self-hosted" },
+      ]) {
+        const result = spawnSync(
+          executable,
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            path.join(
+              root,
+              "packages/tooling/src/electron/windows-test-trust.ps1",
+            ),
+            "-Operation",
+            "install",
+          ],
+          {
+            env: { ...environment, ...invalid },
+            encoding: "utf8",
+            timeout: 10_000,
+            windowsHide: true,
+          },
+        );
+        expect(result.error).toBeUndefined();
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("Test certificate trust is restricted");
+      }
+    },
+  );
   test("uploads a single explicit executable and invokes a fixed official test policy", () => {
     const upload = action.runs.steps.find((step: { uses?: string }) =>
       step.uses?.startsWith("actions/upload-artifact@"),
