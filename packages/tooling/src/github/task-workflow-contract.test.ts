@@ -121,6 +121,7 @@ const desktopRunAllowlist = {
       name: "Build desktop artifacts",
       run: "task ci:desktop:release",
       env: {
+        RUN_MODE: "release",
         APP_TD_APPID:
           "${{ inputs.run_mode == 'release' && secrets.APP_TD_APPID || '' }}",
         CSC_LINK: "${{ runner.os == 'macOS' && secrets.CSC_LINK || '' }}",
@@ -144,6 +145,7 @@ const desktopRunAllowlist = {
       name: "Build private desktop artifacts",
       run: "task ci:desktop:release",
       env: {
+        RUN_MODE: "test",
         APP_TD_APPID: "",
         CSC_LINK: "${{ runner.os == 'macOS' && secrets.CSC_LINK || '' }}",
         CSC_KEY_PASSWORD:
