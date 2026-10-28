@@ -1,5 +1,5 @@
 import { useAsyncEffect, useMemoizedFn } from "ahooks";
-import { Container, Download, ListPlus } from "lucide-react";
+import { Download, ListPlus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import {
   startDockerDownload,
 } from "@/api/docker-download-task";
 import { Button } from "@/components/ui/button";
+import { DockerIcon } from "@/components/docker-icon";
 import {
   Dialog,
   DialogContent,
@@ -345,14 +346,14 @@ export default function DownloadForm({
               {t("cancel")}
             </Button>
             <div className="flex flex-wrap justify-end gap-2">
-              {enableDocker && !isEdit ? (
+              {enableDocker && initialValues.origin !== "docker" ? (
                 <Button
                   type="button"
                   variant="outline"
                   disabled={submitting || smartBusy}
                   onClick={() => submit("docker")}
                 >
-                  <Container className="size-4" />
+                  <DockerIcon className="size-4" />
                   {t("addToDocker")}
                 </Button>
               ) : null}

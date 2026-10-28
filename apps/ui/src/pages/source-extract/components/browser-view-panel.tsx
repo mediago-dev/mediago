@@ -1,17 +1,25 @@
 import { useMemoizedFn } from "ahooks";
 import {
-  Container,
   LoaderCircle,
   PanelRightClose,
   Pencil,
   Search,
   Trash2,
 } from "lucide-react";
-import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  memo,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/toast";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
+import { DockerIcon } from "@/components/docker-icon";
+import { postVideosToDocker } from "@/hooks/use-docker-api";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -44,6 +52,7 @@ interface SourceItemProps {
   onDelete: (url: string) => void;
   onEdit: (items: SourceData[]) => void;
   onDownload: (item: SourceData) => void;
+  onSendToDocker: (item: SourceData) => Promise<void>;
 }
 
 const SourceItem = memo(function SourceItem({
@@ -52,9 +61,12 @@ const SourceItem = memo(function SourceItem({
   onDelete,
   onEdit,
   onDownload,
+  onSendToDocker,
 }: SourceItemProps) {
   const { t } = useTranslation();
   const inspecting = item.mediaInfo?.status === "inspecting";
+  const [sendingToDocker, setSendingToDocker] = useState(false);
+  const sendingRef = useRef(false);
   const variants = useMemo(
     () =>
       selectableSmartStreamVariants({
@@ -85,6 +97,23 @@ const SourceItem = memo(function SourceItem({
   const selectedQuality =
     selectedVariant?.quality?.trim() ||
     (selectedVariant?.height ? `${selectedVariant.height}p` : undefined);
+
+  const sendToDocker = useMemoizedFn(async () => {
+    if (inspecting || sendingRef.current) return;
+    sendingRef.current = true;
+    setSendingToDocker(true);
+    try {
+      await onSendToDocker(selectedItem);
+    } catch (error) {
+      toast.add({
+        title: error instanceof Error ? error.message : String(error),
+        type: "error",
+      });
+    } finally {
+      sendingRef.current = false;
+      setSendingToDocker(false);
+    }
+  });
 
   return (
     <div className="flex flex-col gap-2 border-b px-1 py-3 last:border-b-0">
@@ -204,11 +233,13 @@ const SourceItem = memo(function SourceItem({
               variant="ghost"
               size="sm"
               className="size-6 p-0"
-              title={t("edit")}
-              aria-label={t("edit")}
-              onClick={() => onEdit([selectedItem])}
+              title={t("addToDocker")}
+              aria-label={t("addToDocker")}
+              aria-busy={sendingToDocker}
+              disabled={inspecting || sendingToDocker}
+              onClick={() => void sendToDocker()}
             >
-              <Container className="size-4" />
+              <DockerIcon className="size-4" />
             </Button>
           ) : null}
         </div>
@@ -277,6 +308,21 @@ export function BrowserViewPanel() {
     }
   });
 
+  const handleSendToDocker = useMemoizedFn(async (item: SourceData) => {
+    await postVideosToDocker({
+      items: [
+        {
+          url: item.url,
+          name: item.name,
+          headers: item.headers,
+          type: item.type,
+          folder: "",
+        },
+      ],
+    });
+    toast.add({ title: t("addToDockerSuccess"), type: "success" });
+  });
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="mx-3 flex shrink-0 items-center gap-2 border-b py-3">
@@ -324,6 +370,7 @@ export function BrowserViewPanel() {
               onDelete={(url) => deleteSource(tabId, url)}
               onEdit={handleEdit}
               onDownload={handleDownloadNow}
+              onSendToDocker={handleSendToDocker}
             />
           ))
         ) : (

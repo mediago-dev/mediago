@@ -9,7 +9,6 @@ import {
   CirclePause,
   CirclePlay,
   CircleX,
-  Container,
   Download,
   Pause,
   Pencil,
@@ -21,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/toast";
 import { useShallow } from "zustand/react/shallow";
 import { DownloadTag } from "@/components/download-tag";
+import { DockerIcon } from "@/components/docker-icon";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -331,7 +331,7 @@ export const DownloadTaskItem = memo(function DownloadTaskItem({
       list.push(
         <DownloadTag
           key="docker"
-          icon={<Container />}
+          icon={<DockerIcon />}
           text={task.remoteOffline ? t("dockerOffline") : t("dockerSource")}
           variant={task.remoteOffline ? "muted" : "info"}
         />,
