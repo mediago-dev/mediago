@@ -1,10 +1,12 @@
-import { describe, expect, test } from "vitest";
+import path from "node:path";
+import { describe, expect, test, vi } from "vitest";
 import {
   assertTestSigningEnvironment,
   getWindowsTestVersion,
   getSigningProductVersion,
   signingPhase,
   unsignedPeDigest,
+  verifyWindowsReleaseArtifacts,
 } from "./windows-signing.ts";
 
 const environment = {
@@ -120,5 +122,52 @@ describe("signed payload verification", () => {
     invalid.writeUInt32LE(0xffffff00, 296);
     invalid.writeUInt32LE(32, 300);
     expect(() => unsignedPeDigest(invalid)).toThrow();
+  });
+});
+
+describe("Windows production release verification", () => {
+  const release = {
+    platform: "win32" as const,
+    runMode: "release",
+    isDir: false,
+    releaseDirectory: path.resolve("release"),
+    version: "3.6.0-beta.2",
+    arch: "x64" as const,
+  };
+  test("verifies the application, installer and portable before accepting a release", () => {
+    const verify = vi.fn();
+    verifyWindowsReleaseArtifacts(release, verify);
+    expect(verify.mock.calls.map(([file]) => path.basename(file))).toEqual([
+      "mediago.exe",
+      "mediago-setup-win32-x64-3.6.0-beta.2.exe",
+      "mediago-portable-win32-x64-3.6.0-beta.2.exe",
+    ]);
+  });
+  test("rejects an invalid installer even when application verification passed", () => {
+    const verify = vi.fn((file: string) => {
+      if (path.basename(file).startsWith("mediago-setup-"))
+        throw new Error("unsigned installer");
+    });
+    expect(() => verifyWindowsReleaseArtifacts(release, verify)).toThrow(
+      "Windows production release blocked",
+    );
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
+  test("fails closed if application signature verification cannot run", () => {
+    const verify = vi.fn(() => {
+      throw new Error("verification unavailable");
+    });
+    expect(() => verifyWindowsReleaseArtifacts(release, verify)).toThrow(
+      "Windows production release blocked",
+    );
+    expect(verify).toHaveBeenCalledTimes(1);
+  });
+  test("retains test, unpacked development and non-Windows behavior", () => {
+    const verify = vi.fn();
+    verifyWindowsReleaseArtifacts({ ...release, runMode: "test" }, verify);
+    verifyWindowsReleaseArtifacts({ ...release, runMode: undefined }, verify);
+    verifyWindowsReleaseArtifacts({ ...release, isDir: true }, verify);
+    verifyWindowsReleaseArtifacts({ ...release, platform: "darwin" }, verify);
+    expect(verify).not.toHaveBeenCalled();
   });
 });

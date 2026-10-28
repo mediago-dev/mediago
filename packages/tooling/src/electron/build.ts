@@ -7,6 +7,7 @@ import { withAppleNetworkRetry } from "./macos-network-retry.ts";
 import {
   getWindowsTestVersion,
   signWindowsTestFile,
+  verifyWindowsReleaseArtifacts,
 } from "./windows-signing.ts";
 import { SIGNPATH_PUBLISHER_DN } from "../../../../apps/electron/src/vendor/windows-signature.ts";
 import fs from "node:fs/promises";
@@ -363,6 +364,14 @@ const artifacts = macOSSigning.enabled
     })
   : await packageArtifacts();
 
+verifyWindowsReleaseArtifacts({
+  platform: process.platform,
+  runMode: process.env.RUN_MODE,
+  isDir,
+  releaseDirectory: path.resolve(appRoot, "release"),
+  version: pkg.version,
+  arch,
+});
 if (macOSSigning.enabled) {
   await verifyMacOSDistributionArtifacts({
     releaseDirectory: path.resolve(appRoot, "release"),

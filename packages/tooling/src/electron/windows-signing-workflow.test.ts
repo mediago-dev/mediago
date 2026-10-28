@@ -135,3 +135,20 @@ describe("test signing workflow safety", () => {
     expect(xml).not.toMatch(/file-set|directory|\*/);
   });
 });
+
+test("official desktop packaging explicitly enables the production signature gate", () => {
+  const desktop = parse(read(".github/workflows/build-electron.yml"));
+  const release = desktop.jobs.build_release.steps.find(
+    (step: { name: string }) => step.name === "Build desktop artifacts",
+  );
+  const preview = desktop.jobs.build_test.steps.find(
+    (step: { name: string }) => step.name === "Build private desktop artifacts",
+  );
+  expect(release.env.RUN_MODE).toBe("release");
+  expect(preview.env.RUN_MODE).toBe("test");
+  const build = read("packages/tooling/src/electron/build.ts");
+  expect(build.indexOf("verifyWindowsReleaseArtifacts({")).toBeGreaterThan(
+    build.indexOf("const artifacts ="),
+  );
+  expect(build).toContain("runMode: process.env.RUN_MODE");
+});

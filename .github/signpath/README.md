@@ -76,6 +76,12 @@ Windows. Never describe it as a production signature or distribute it through
 the stable/beta update feeds. If a checkpoint fails, inspect
 `signpath-diagnostics-*`; no unsigned fallback is published.
 
+Official Windows release builds (`RUN_MODE=release`) verify the packaged application,
+installer, and portable launcher with the production signature policy before the
+workflow can upload them. Until production signing is integrated, unsigned release
+builds fail closed. Test builds and unpacked development builds keep their existing
+behavior; do not disable this gate to publish unsigned updates.
+
 ## Before production signing
 
 Send SignPath the successful workflow and request links for their review, then

@@ -3,6 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import {
+  assertWindowsUpdateSignature,
   readSignatureEvidenceSync,
   validateSignatureEvidence,
 } from "../../../../apps/electron/src/vendor/windows-signature.ts";
@@ -215,4 +216,44 @@ export async function signWindowsTestFile(options: {
     phase,
     target,
   });
+}
+
+export function verifyWindowsReleaseArtifacts(
+  options: {
+    platform: NodeJS.Platform;
+    runMode: string | undefined;
+    isDir: boolean;
+    releaseDirectory: string;
+    version: string;
+    arch: "x64" | "arm64";
+  },
+  verifyFile: (file: string) => void = assertWindowsUpdateSignature,
+): void {
+  if (
+    options.platform !== "win32" ||
+    options.runMode !== "release" ||
+    options.isDir
+  )
+    return;
+  const files = [
+    path.resolve(options.releaseDirectory, "win-unpacked/mediago.exe"),
+    path.resolve(
+      options.releaseDirectory,
+      `mediago-setup-win32-${options.arch}-${options.version}.exe`,
+    ),
+    path.resolve(
+      options.releaseDirectory,
+      `mediago-portable-win32-${options.arch}-${options.version}.exe`,
+    ),
+  ];
+  for (const file of files) {
+    try {
+      verifyFile(file);
+    } catch (cause) {
+      throw new Error(
+        `Windows production release blocked: ${path.basename(file)} must have a valid timestamped production signature.`,
+        { cause },
+      );
+    }
+  }
 }
