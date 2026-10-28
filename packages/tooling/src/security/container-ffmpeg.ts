@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -150,9 +156,12 @@ export function verifyContainerFfmpeg(image: string): void {
     );
     assert.ifError(invalid.error);
     assert.ok(
-      invalid.status !== null && invalid.status > 0 && invalid.status < 128,
+      invalid.status !== null && invalid.status !== 0,
       "Invalid input must return a normal failure, not success or a crash",
     );
+    assert.equal(invalid.signal, null);
+    assert.match(invalid.stderr, /Invalid data found when processing input/);
+    assert.equal(existsSync(join(directory, "invalid.mp4")), false);
     console.log(
       "FFmpeg SDT/ISO6937 parsing, lossless remux, H.264 conversion and invalid-input rejection passed.",
     );

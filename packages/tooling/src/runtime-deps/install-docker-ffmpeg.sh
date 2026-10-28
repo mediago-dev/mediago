@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install the pinned Docker FFmpeg build and collect its complete runtime closure.
+# Keep FFmpeg's bundled codecs/iconv together; do not mix in distro codec libraries.
 set -eu
 
 output=${1:?Usage: install-docker-ffmpeg.sh OUTPUT_DIRECTORY}
@@ -11,64 +11,37 @@ esac
 version=8.1.3-1
 architecture=$(dpkg --print-architecture)
 case "$architecture" in
-  amd64) checksum=fbef9f81a53e175194e3f67832618a86111f7bd37197df21a5d748c34289f9c0 ;;
-  arm64) checksum=4af743bd776eda082d40c851a4201e51a77a258145dd6ebe164dade39b35b2d0 ;;
+  amd64) platform=linux64; checksum=b86dc023c64a5a9a410e6e3a938a970460214fae78f31c1553c9f88f1c289b6a ;;
+  arm64) platform=linuxarm64; checksum=7bc8e8d0986f7f4693f63e9728570f671f07b6e21c05d5465dd7ce461d1631dc ;;
   *) echo "Unsupported Docker FFmpeg architecture: $architecture" >&2; exit 2 ;;
 esac
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
-archive="$work/jellyfin-ffmpeg.deb"
-asset="jellyfin-ffmpeg8_${version}-trixie_${architecture}.deb"
+archive="$work/jellyfin-ffmpeg.tar.xz"
+asset="jellyfin-ffmpeg_${version}_portable_${platform}-gpl.tar.xz"
+url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v${version}/${asset}"
 curl --fail --location --silent --show-error --retry 3 --connect-timeout 20 \
-  --max-time 300 --proto '=https' --proto-redir '=https' \
-  "https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v${version}/${asset}" \
-  --output "$archive"
+  --max-time 300 --proto '=https' --proto-redir '=https' "$url" --output "$archive"
 printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --status
-[ "$(dpkg-deb --field "$archive" Package)" = jellyfin-ffmpeg8 ]
-[ "$(dpkg-deb --field "$archive" Version)" = "${version}-trixie" ]
-[ "$(dpkg-deb --field "$archive" Architecture)" = "$architecture" ]
-apt-get install -y --no-install-recommends "$archive"
 
-mkdir -p "$output/usr/lib" "$output/app/deps" "$output/var/lib/dpkg/status.d"
-cp --parents -a /usr/lib/jellyfin-ffmpeg "$output/"
-printf '%s\n' jellyfin-ffmpeg8 > "$work/packages"
-: > "$work/libraries"
+# This pinned upstream archive contains exactly these two root-level executables.
+tar -tJf "$archive" | sort > "$work/members"
+printf 'ffmpeg\nffprobe\n' > "$work/expected-members"
+cmp "$work/members" "$work/expected-members"
+mkdir -p "$output/usr/lib/jellyfin-ffmpeg" "$output/app/deps" "$output/app/licenses/ffmpeg"
+tar -xJf "$archive" --no-same-owner --no-same-permissions -C "$output/usr/lib/jellyfin-ffmpeg"
 for binary in ffmpeg ffprobe; do
-  ldd "/usr/lib/jellyfin-ffmpeg/$binary" > "$work/ldd"
-  if grep -q 'not found' "$work/ldd"; then
-    cat "$work/ldd" >&2
-    exit 1
-  fi
-  awk '$2 == "=>" && $3 ~ /^\// { print $3 } $1 ~ /^\// { print $1 }' \
-    "$work/ldd" >> "$work/libraries"
+  chmod 755 "$output/usr/lib/jellyfin-ffmpeg/$binary"
   ln -s "/usr/lib/jellyfin-ffmpeg/$binary" "$output/app/deps/$binary"
 done
-sort -u "$work/libraries" > "$work/sorted-libraries"
-while IFS= read -r library; do
-  case "$library" in /usr/lib/jellyfin-ffmpeg/*) continue ;; esac
-  resolved=$(readlink -f "$library")
-  destination="$(readlink -f "$(dirname "$library")")/$(basename "$library")"
-  # Keep the SONAME at its canonical directory; do not copy host /lib symlinks.
-  cp --parents -L --preserve=mode,timestamps "$destination" "$output/"
-  package=''
-  for candidate in "$resolved" "$destination" "${destination#/usr}"; do
-    package=$(dpkg-query --search "$candidate" 2>/dev/null | sed -n '1s/: \/.*$//p')
-    [ -z "$package" ] || break
-  done
-  if [ -z "$package" ]; then
-    echo "No package metadata found for runtime library: $library" >&2
-    exit 1
-  fi
-  printf '%s\n' "$package" >> "$work/packages"
-done < "$work/sorted-libraries"
-sort -u "$work/packages" > "$work/sorted-packages"
-while IFS= read -r package; do
-  name=${package%%:*}
-  dpkg-query --status "$package" > "$output/var/lib/dpkg/status.d/$name"
-  if [ -f "/usr/share/doc/$name/copyright" ]; then
-    mkdir -p "$output/app/licenses/ffmpeg-runtime/$name"
-    cp -L "/usr/share/doc/$name/copyright" "$output/app/licenses/ffmpeg-runtime/$name/copyright"
-  fi
-done < "$work/sorted-packages"
-printf 'Collected Jellyfin FFmpeg %s for %s with matching runtime libraries\n' "$version" "$architecture"
+curl --fail --location --silent --show-error --retry 3 --connect-timeout 20 \
+  --max-time 60 --proto '=https' --proto-redir '=https' \
+  "https://raw.githubusercontent.com/jellyfin/jellyfin-ffmpeg/v${version}/COPYING.GPLv3" \
+  --output "$output/app/licenses/ffmpeg/COPYING.GPLv3"
+printf '%s  %s\n' 8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903 \
+  "$output/app/licenses/ffmpeg/COPYING.GPLv3" | sha256sum --check --status
+printf 'Jellyfin FFmpeg: %s\nArchitecture: %s\nAsset: %s\nSHA-256: %s\nSource: https://github.com/jellyfin/jellyfin-ffmpeg/tree/v%s\n' \
+  "$version" "$architecture" "$asset" "$checksum" "$version" \
+  > "$output/app/licenses/ffmpeg/BUILD-INFO"
+printf 'Collected Jellyfin FFmpeg %s portable build for %s\n' "$version" "$architecture"
