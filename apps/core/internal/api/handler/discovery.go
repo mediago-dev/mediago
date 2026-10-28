@@ -8,6 +8,7 @@ import (
 
 	"caorushizi.cn/mediago/internal/api/dto"
 	"caorushizi.cn/mediago/internal/api/sse"
+	"caorushizi.cn/mediago/internal/core"
 	"caorushizi.cn/mediago/internal/db"
 	"caorushizi.cn/mediago/internal/discovery"
 	"caorushizi.cn/mediago/internal/i18n"
@@ -98,9 +99,11 @@ func (h *DiscoveryHandler) Downloads(c *gin.Context) {
 		return
 	}
 	startDownload := req.StartDownload == nil || *req.StartDownload
-	videos, err := h.createDownloads(c.Request.Context(), c.Param("id"), req.SourceIDs, req.Folder, "", req.Names, req.VariantURLs, startDownload)
+	videos, err := h.createDownloads(c.Request.Context(), c.Param("id"), req.SourceIDs, req.Folder, "", req.Names, req.VariantURLs, startDownload, req.ProxyMode, req.ProxyURL)
 	if err != nil {
 		switch {
+		case errors.Is(err, core.ErrInvalidDownloadProxy):
+			writeErrorResponse(c, http.StatusBadRequest, "invalid_download_proxy", err.Error())
 		case errors.Is(err, ErrDiscoveryDownloadUnavailable):
 			writeErrorResponse(c, http.StatusServiceUnavailable, "discovery_download_unavailable", i18n.T(c, i18n.MsgDiscoveryDownloadUnavailable))
 		case errors.Is(err, ErrDiscoveryDownloadInvalid):
@@ -128,12 +131,12 @@ func (h *DiscoveryHandler) CreateDownloads(ctx context.Context, jobID string, so
 	return h.createDownloads(ctx, jobID, sourceIDs, folderName, downloadDir, nil, nil, startDownload)
 }
 
-func (h *DiscoveryHandler) createDownloads(ctx context.Context, jobID string, sourceIDs []string, folderName, downloadDir string, names, variantURLs map[string]string, startDownload bool) ([]*db.Video, error) {
+func (h *DiscoveryHandler) createDownloads(ctx context.Context, jobID string, sourceIDs []string, folderName, downloadDir string, names, variantURLs map[string]string, startDownload bool, proxy ...string) ([]*db.Video, error) {
 	selections := make([]service.DiscoveryDownloadSelection, 0, len(sourceIDs))
 	for _, id := range sourceIDs {
 		selections = append(selections, service.DiscoveryDownloadSelection{SourceID: id, Name: names[id], VariantURL: variantURLs[id]})
 	}
-	results, err := h.CreateDownloadBatch(ctx, jobID, selections, folderName, downloadDir, startDownload)
+	results, err := h.createDownloadBatch(ctx, jobID, selections, folderName, downloadDir, startDownload, proxy...)
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +158,18 @@ func (h *DiscoveryHandler) createDownloads(ctx context.Context, jobID string, so
 // CreateDownloadBatch validates every selection before creating records, then
 // returns every outcome, including existing records and failures after creation.
 func (h *DiscoveryHandler) CreateDownloadBatch(ctx context.Context, jobID string, selections []service.DiscoveryDownloadSelection, folderName, downloadDir string, startDownload bool) ([]service.DiscoveryDownloadResult, error) {
+	return h.createDownloadBatch(ctx, jobID, selections, folderName, downloadDir, startDownload)
+}
+
+func (h *DiscoveryHandler) createDownloadBatch(ctx context.Context, jobID string, selections []service.DiscoveryDownloadSelection, folderName, downloadDir string, startDownload bool, proxy ...string) ([]service.DiscoveryDownloadResult, error) {
+	proxyMode, proxyURL := "", ""
+	if len(proxy) == 2 {
+		proxyMode, proxyURL = proxy[0], proxy[1]
+	}
+	proxyMode, proxyURL, proxyErr := core.NormalizeDownloadProxy(proxyMode, proxyURL)
+	if proxyErr != nil {
+		return nil, proxyErr
+	}
 	if h.downloadSvc == nil {
 		return nil, ErrDiscoveryDownloadUnavailable
 	}
@@ -189,12 +204,17 @@ func (h *DiscoveryHandler) CreateDownloadBatch(ctx context.Context, jobID string
 			return nil, err
 		}
 		headers := privateHeaders[id]
+		if err := core.ValidateDownloadProxyType(proxyMode, proxyURL, core.DownloadType(source.Type)); err != nil {
+			return nil, err
+		}
 		var folder *string
 		if folderName != "" {
 			value := folderName
 			folder = &value
 		}
 		inputs = append(inputs, &service.AddDownloadTaskInput{
+			ProxyMode:      proxyMode,
+			ProxyURL:       proxyURL,
 			DownloadDir:    downloadDir,
 			Name:           discoverySourceName(source, map[string]string{id: selection.Name}),
 			Type:           string(source.Type),

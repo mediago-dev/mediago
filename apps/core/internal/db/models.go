@@ -24,6 +24,8 @@ type Video struct {
 	Folder                 *string   `gorm:"column:folder;type:text" json:"folder"`
 	DownloadDir            string    `gorm:"column:downloadDir;type:text;not null;default:''" json:"downloadDir,omitempty"`
 	Headers                *string   `gorm:"column:headers;type:text" json:"headers"`
+	ProxyMode              string    `gorm:"column:proxyMode;type:text;not null;default:inherit" json:"proxyMode"`
+	ProxyURL               string    `gorm:"column:proxyUrl;type:text;not null;default:''" json:"proxyUrl"`
 	RequiresRuntimeHeaders bool      `gorm:"column:requiresRuntimeHeaders;not null;default:0" json:"-"`
 	LastErrorCode          string    `gorm:"column:lastErrorCode;type:text;not null;default:''" json:"-"`
 	OutputPath             string    `gorm:"column:outputPath;type:text;not null;default:''" json:"outputPath,omitempty"`

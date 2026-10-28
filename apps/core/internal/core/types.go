@@ -164,13 +164,16 @@ const (
 
 // DownloadParams holds the parameters for a download task
 type DownloadParams struct {
-	ID          TaskID       `json:"id"`                    // task ID
-	Type        DownloadType `json:"type"`                  // download type
-	URL         string       `json:"url"`                   // download URL
-	Name        string       `json:"name"`                  // file name
-	Folder      string       `json:"folder"`                // subdirectory
-	DownloadDir string       `json:"downloadDir,omitempty"` // desktop task download root override
-	Headers     []string     `json:"headers"`               // HTTP request headers
+	ID            TaskID       `json:"id"`                    // task ID
+	Type          DownloadType `json:"type"`                  // download type
+	URL           string       `json:"url"`                   // download URL
+	Name          string       `json:"name"`                  // file name
+	Folder        string       `json:"folder"`                // subdirectory
+	DownloadDir   string       `json:"downloadDir,omitempty"` // desktop task download root override
+	Headers       []string     `json:"headers"`               // HTTP request headers
+	ProxyMode     string       `json:"proxyMode,omitempty"`
+	ProxyURL      string       `json:"proxyUrl,omitempty"`
+	ResolvedProxy *string      `json:"-"`
 }
 
 // ProgressEvent is a progress update event
@@ -232,6 +235,7 @@ type Runner interface {
 // RunnerOptions controls cancellation behavior without changing the legacy
 // Runner contract used by lightweight integrations and tests.
 type RunnerOptions struct {
+	Environment          []string
 	ShouldGracefullyStop func() bool
 	GracePeriod          time.Duration
 }

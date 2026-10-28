@@ -12,6 +12,9 @@ import {
 export const DOWNLOAD_URL_RE = /^(?:(?:file|https?):\/\/.+|magnet:\?.+)/i;
 
 export const DEFAULT_DOWNLOAD_FORM_VALUES: DownloadFormItem = {
+  downloadTarget: "local",
+  proxyMode: "inherit",
+  proxyUrl: "",
   batch: false,
   batchList: "",
   folder: "",
@@ -35,6 +38,8 @@ export function createDownloadFormValues(
   const merged = { ...DEFAULT_DOWNLOAD_FORM_VALUES, ...values };
   return {
     ...merged,
+    downloadTarget:
+      values.origin === "docker" ? "docker" : merged.downloadTarget,
     // Xiaohongshu remains an internal compatibility type, but the form has a
     // single user-facing yt-dlp option. The concrete type is restored from the
     // submitted URL by resolveDownloadTaskType.
@@ -103,13 +108,22 @@ export function buildBatchDownloadTasks(
 
 export function buildDownloadTasks(
   values: DownloadFormItem,
+  target = values.downloadTarget ?? "local",
 ): Omit<DownloadTask, "id">[] {
+  const proxy =
+    target === "docker"
+      ? {}
+      : {
+          proxyMode: values.proxyMode ?? "inherit",
+          proxyUrl:
+            values.proxyMode === "custom" ? values.proxyUrl?.trim() : "",
+        };
   if (values.batch) {
     return buildBatchDownloadTasks(
       parseBatchDownloadRows(values.batchList ?? ""),
       values.type ?? SMART_DOWNLOAD_TYPE,
       values.headers,
-    );
+    ).map((task) => ({ ...task, ...proxy }));
   }
 
   const {
@@ -121,6 +135,7 @@ export function buildDownloadTasks(
   } = values;
   return [
     {
+      ...proxy,
       name,
       url,
       headers,

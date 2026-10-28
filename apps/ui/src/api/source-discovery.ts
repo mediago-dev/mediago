@@ -12,10 +12,28 @@ export async function inspectSource(
   url: string,
   headers: string[],
   signal?: AbortSignal,
+  proxy?: {
+    proxyMode?: "inherit" | "direct" | "custom";
+    proxyUrl?: string;
+    target?: "local" | "docker";
+  },
 ): Promise<SourceInspection> {
   const response = await http.post<never, InspectSourcesResponse>(
-    "/api/sources/inspect",
-    { sources: [{ id: "homepage-source", url, headers }] },
+    proxy?.target === "docker"
+      ? "/api/docker/sources/inspect"
+      : "/api/sources/inspect",
+    {
+      sources: [
+        {
+          id: "homepage-source",
+          url,
+          headers,
+          ...(proxy
+            ? { proxyMode: proxy.proxyMode, proxyUrl: proxy.proxyUrl }
+            : {}),
+        },
+      ],
+    },
     { signal },
   );
   return response.sources[0];

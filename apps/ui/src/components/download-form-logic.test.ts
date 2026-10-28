@@ -21,6 +21,9 @@ test("accepts supported download URL schemes", () => {
 
 test("fills form defaults without replacing supplied values", () => {
   expect(createDownloadFormValues({ name: "episode" })).toStrictEqual({
+    downloadTarget: "local",
+    proxyMode: "inherit",
+    proxyUrl: "",
     batch: false,
     batchList: "",
     folder: "",
@@ -151,6 +154,8 @@ test("builds one task from single-download form values", () => {
     }),
   ).toStrictEqual([
     {
+      proxyMode: "inherit",
+      proxyUrl: "",
       name: "episode",
       url: "https://a.example/1.m3u8",
       headers: undefined,
@@ -158,6 +163,31 @@ test("builds one task from single-download form values", () => {
       folder: "season",
     },
   ]);
+});
+
+test("preserves a custom proxy for every local batch task and strips it for Docker", () => {
+  const values = createDownloadFormValues({
+    batch: true,
+    batchList: "https://a.example/one.m3u8 one\nhttps://a.example/two.m3u8 two",
+    proxyMode: "custom",
+    proxyUrl: " http://127.0.0.1:7890 ",
+  });
+  for (const task of buildDownloadTasks(values)) {
+    expect(task).toMatchObject({
+      proxyMode: "custom",
+      proxyUrl: "http://127.0.0.1:7890",
+    });
+  }
+  for (const task of buildDownloadTasks(values, "docker")) {
+    expect(task).not.toHaveProperty("proxyMode");
+    expect(task).not.toHaveProperty("proxyUrl");
+  }
+  expect(
+    buildDownloadTasks({ ...values, proxyMode: "direct" })[0].proxyUrl,
+  ).toBe("");
+  expect(
+    createDownloadFormValues({ origin: "docker", id: 1 }).downloadTarget,
+  ).toBe("docker");
 });
 
 test("treats NaN or missing ids as new tasks instead of edit targets", () => {

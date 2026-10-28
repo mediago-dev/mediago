@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -52,11 +53,26 @@ func GetPageTitle(pageURL string, fallback string) string {
 }
 
 // GetPageTitleWithContext stops the request when its caller is cancelled.
-func GetPageTitleWithContext(ctx context.Context, pageURL string, fallback string) string {
+func GetPageTitleWithContext(ctx context.Context, pageURL string, fallback string, proxy ...string) string {
 	headers := make(http.Header)
 	headers.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
 	headers.Set("Referer", pageURL)
-	resp, err := mediahttp.Get(ctx, pageURL, headers, nil, 10*time.Second)
+	transport := mediahttp.NewTransport()
+	if len(proxy) > 0 {
+		transport.Proxy = nil
+		if proxy[0] != "" {
+			address := proxy[0]
+			if !strings.Contains(address, "://") {
+				address = "http://" + address
+			}
+			parsed, err := url.Parse(address)
+			if err != nil {
+				return fallback
+			}
+			transport.Proxy = http.ProxyURL(parsed)
+		}
+	}
+	resp, err := mediahttp.Get(ctx, pageURL, headers, transport, 10*time.Second)
 	if err != nil {
 		return fallback
 	}

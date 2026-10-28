@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,48 @@ import (
 
 type inspectorTestConfig struct {
 	values map[string]any
+}
+
+func TestM3U8InspectionUsesTaskProxyAndSeparatesCachedRoutes(t *testing.T) {
+	var direct, proxied atomic.Int32
+	manifest := "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\npart.ts\n#EXT-X-ENDLIST\n"
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { direct.Add(1); _, _ = w.Write([]byte(manifest)) }))
+	defer origin.Close()
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied.Add(1)
+		if r.Method != http.MethodConnect {
+			t.Error("expected pinned CONNECT tunnel")
+		}
+		conn, buffer, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+		_, _ = buffer.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
+		_ = buffer.Flush()
+		if _, err := http.ReadRequest(buffer.Reader); err != nil {
+			t.Error(err)
+			return
+		}
+		_, _ = fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(manifest), manifest)
+	}))
+	defer proxy.Close()
+	inspector := NewM3U8Inspector(inspectorTestConfig{values: map[string]any{"proxy": proxy.URL, "useProxy": true, "downloadProxySwitch": false}})
+	for _, input := range []InspectSourceInput{
+		{URL: origin.URL + "/video.m3u8", ProxyMode: "custom", ProxyURL: proxy.URL},
+		{URL: origin.URL + "/video.m3u8", ProxyMode: "direct"},
+		{URL: origin.URL + "/video.m3u8", ProxyMode: "inherit"},
+		{URL: origin.URL + "/video.m3u8"},
+	} {
+		if result := inspector.Inspect(context.Background(), input); result.Error != "" {
+			t.Fatal(result.Error)
+		}
+	}
+	if direct.Load() != 1 || proxied.Load() != 1 {
+		t.Fatalf("cache crossed proxy routes: direct=%d proxy=%d", direct.Load(), proxied.Load())
+	}
 }
 
 func (c inspectorTestConfig) Get(key string) any { return c.values[key] }

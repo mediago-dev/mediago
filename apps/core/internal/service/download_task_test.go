@@ -474,3 +474,44 @@ func newTestDownloadTaskService(t *testing.T) (*DownloadTaskService, *repo.Video
 	videoRepo := repo.NewVideoRepository(database)
 	return NewDownloadTaskService(videoRepo, nil, nil), videoRepo
 }
+
+func TestTaskProxyPersistsAcrossEditAndRetry(t *testing.T) {
+	logger.Logger = zap.NewNop()
+	logger.Sugar = logger.Logger.Sugar()
+	svc, repository := newTestDownloadTaskService(t)
+	capture := &headerCaptureDownloader{params: make(chan core.DownloadParams, 2)}
+	queue := core.NewTaskQueue(capture, 1)
+	svc.queue = queue
+	video, err := svc.AddDownloadTask(&AddDownloadTaskInput{Name: "proxy", Type: "m3u8", URL: "https://example.com/proxy.m3u8", ProxyMode: core.ProxyCustom, ProxyURL: "http://localhost:7890"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := svc.StartDownload(video.ID, t.TempDir(), true); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case params := <-capture.params:
+			if params.ProxyMode != core.ProxyCustom || params.ProxyURL != "http://localhost:7890" {
+				t.Fatalf("retry lost proxy: %+v", params)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("no queued task")
+		}
+		waitForRuntimeHeaderQueue(t, queue)
+	}
+	if _, err := svc.EditDownloadTask(video.ID, map[string]interface{}{"proxyMode": core.ProxyDirect}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := repository.FindByIDOrFail(video.ID)
+	if err != nil || stored.ProxyMode != core.ProxyDirect || stored.ProxyURL != "" {
+		t.Fatalf("edited proxy: %+v %v", stored, err)
+	}
+	if _, err := svc.EditDownloadTask(video.ID, map[string]interface{}{"proxyMode": core.ProxyCustom, "proxyUrl": "http://user:password@localhost:7890"}); !errors.Is(err, core.ErrInvalidDownloadProxy) {
+		t.Fatalf("invalid proxy error: %v", err)
+	}
+	stored, _ = repository.FindByIDOrFail(video.ID)
+	if stored.ProxyMode != core.ProxyDirect {
+		t.Fatal("invalid edit changed stored task")
+	}
+}

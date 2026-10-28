@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"caorushizi.cn/mediago/internal/core"
 	"caorushizi.cn/mediago/internal/mediahttp"
 )
 
@@ -56,9 +57,11 @@ type M3U8InspectorConfig interface {
 
 // InspectSourceInput is an ephemeral sniffed source. It is never persisted.
 type InspectSourceInput struct {
-	ID      string
-	URL     string
-	Headers []string
+	ProxyMode string
+	ProxyURL  string
+	ID        string
+	URL       string
+	Headers   []string
 }
 
 // HLSVariant describes one video variant advertised by a master playlist.
@@ -145,13 +148,28 @@ func (i *M3U8Inspector) Inspect(ctx context.Context, input InspectSourceInput) S
 		Variants:     []HLSVariant{},
 	}
 
-	cacheKey := inspectionCacheKey(input.URL, input.Headers)
+	mode, address, proxyErr := core.NormalizeDownloadProxy(input.ProxyMode, input.ProxyURL)
+	if proxyErr != nil {
+		base.ErrorCode, base.Error = "fetch_failed", proxyErr.Error()
+		return base
+	}
+	proxyKey := "useProxy"
+	if input.ProxyMode != "" {
+		proxyKey = "downloadProxySwitch"
+	}
+	if mode == core.ProxyInherit {
+		address = ""
+		if enabled, _ := i.config.Get(proxyKey).(bool); enabled {
+			address, _ = i.config.Get("proxy").(string)
+		}
+	}
+	cacheKey := inspectionCacheKey(input.URL, append(append([]string{}, input.Headers...), "proxy="+address))
 	if cached, ok := i.loadCache(cacheKey); ok {
 		cached.ID = input.ID
 		return cached
 	}
 
-	manifest, err := i.fetch(ctx, input.URL, input.Headers)
+	manifest, err := i.fetch(ctx, input.URL, input.Headers, address)
 	if err != nil {
 		base.ErrorCode = inspectionErrorCode(err)
 		base.Error = err.Error()
@@ -170,7 +188,7 @@ func (i *M3U8Inspector) Inspect(ctx context.Context, input InspectSourceInput) S
 	return parsed
 }
 
-func (i *M3U8Inspector) fetch(ctx context.Context, rawURL string, headers []string) (fetchedManifest, error) {
+func (i *M3U8Inspector) fetch(ctx context.Context, rawURL string, headers []string, proxyOverride ...string) (fetchedManifest, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		return fetchedManifest{}, errInspectionInvalidURL
@@ -185,18 +203,22 @@ func (i *M3U8Inspector) fetch(ctx context.Context, rawURL string, headers []stri
 	applyInspectHeaders(req, headers)
 
 	transport := mediahttp.NewTransport()
-	if useProxy, _ := i.config.Get("useProxy").(bool); useProxy {
-		proxyValue, _ := i.config.Get("proxy").(string)
-		if proxyValue != "" {
-			if !strings.Contains(proxyValue, "://") {
-				proxyValue = "http://" + proxyValue
-			}
-			proxyURL, err := url.Parse(proxyValue)
-			if err != nil {
-				return fetchedManifest{}, fmt.Errorf("parse configured proxy: %w", err)
-			}
-			transport.Proxy = http.ProxyURL(proxyURL)
+	transport.Proxy = nil
+	proxyValue := ""
+	if len(proxyOverride) > 0 {
+		proxyValue = proxyOverride[0]
+	} else if useProxy, _ := i.config.Get("useProxy").(bool); useProxy {
+		proxyValue, _ = i.config.Get("proxy").(string)
+	}
+	if proxyValue != "" {
+		if !strings.Contains(proxyValue, "://") {
+			proxyValue = "http://" + proxyValue
 		}
+		proxyURL, err := url.Parse(proxyValue)
+		if err != nil {
+			return fetchedManifest{}, fmt.Errorf("parse configured proxy: %w", err)
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
 	}
 
 	resp, err := mediahttp.Get(requestContext, rawURL, req.Header, transport, inspectTimeout)

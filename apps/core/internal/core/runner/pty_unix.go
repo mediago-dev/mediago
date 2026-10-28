@@ -21,6 +21,9 @@ func (r *PTYRunner) runWithPTY(ctx context.Context, binPath string, args []strin
 		return err
 	}
 	cmd := exec.Command(binPath, args...)
+	if options.Environment != nil {
+		cmd.Env = options.Environment
+	}
 
 	// start the PTY
 	ptmx, err := pty.Start(cmd)

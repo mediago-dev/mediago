@@ -42,6 +42,8 @@ func New(dbPath string) (*Database, error) {
 		}
 	}
 	for _, column := range []struct{ name, definition string }{
+		{"proxyMode", `TEXT NOT NULL DEFAULT 'inherit'`},
+		{"proxyUrl", `TEXT NOT NULL DEFAULT ''`},
 		{"requiresRuntimeHeaders", `INTEGER NOT NULL DEFAULT 0`},
 		{"lastErrorCode", `TEXT NOT NULL DEFAULT ''`},
 	} {

@@ -27,7 +27,11 @@ func (r *PTYRunner) runWithPTY(ctx context.Context, binPath string, args []strin
 	cmdLine := buildCommandLine(binPath, args)
 
 	// create ConPTY (80 columns x 24 rows)
-	cpty, err := conpty.Start(cmdLine, conpty.ConPtyDimensions(80, 24))
+	ptyOptions := []conpty.ConPtyOption{conpty.ConPtyDimensions(80, 24)}
+	if options.Environment != nil {
+		ptyOptions = append(ptyOptions, conpty.ConPtyEnv(options.Environment))
+	}
+	cpty, err := conpty.Start(cmdLine, ptyOptions...)
 	if err != nil {
 		// ConPTY creation failed, fall back to regular pipe
 		return r.fallbackToPipe(ctx, binPath, args, onStdLine, options)

@@ -14,6 +14,8 @@ type CreateDiscoveryReq struct {
 }
 
 type CreateDiscoveryDownloadsReq struct {
+	ProxyMode     string            `json:"proxyMode,omitempty"`
+	ProxyURL      string            `json:"proxyUrl,omitempty"`
 	SourceIDs     []string          `json:"sourceIds" binding:"required"`
 	Folder        string            `json:"folder"`
 	Names         map[string]string `json:"names,omitempty"`

@@ -37,6 +37,8 @@ func NewDownloadTaskService(repo *repo.VideoRepository, queue *core.TaskQueue, l
 
 // AddDownloadTaskInput holds the input for adding a download task.
 type AddDownloadTaskInput struct {
+	ProxyMode      string   `json:"proxyMode,omitempty"`
+	ProxyURL       string   `json:"proxyUrl,omitempty"`
 	DownloadDir    string   `json:"downloadDir,omitempty"`
 	Name           string   `json:"name"`
 	Type           string   `json:"type"`
@@ -79,6 +81,9 @@ func (s *DownloadTaskService) AddDownloadTaskWithContext(ctx context.Context, in
 	if strings.TrimSpace(input.Type) == "" {
 		input.Type = string(core.InferDownloadType(input.URL))
 	}
+	if err := normalizeTaskProxy(input); err != nil {
+		return nil, err
+	}
 
 	existingURL, err := s.repo.FindByURL(input.URL)
 	if err != nil {
@@ -94,6 +99,8 @@ func (s *DownloadTaskService) AddDownloadTaskWithContext(ctx context.Context, in
 	}
 
 	video := &db.Video{
+		ProxyMode:              input.ProxyMode,
+		ProxyURL:               input.ProxyURL,
 		DownloadDir:            input.DownloadDir,
 		Name:                   title,
 		Type:                   input.Type,
@@ -127,6 +134,9 @@ func (s *DownloadTaskService) AddDownloadTasks(inputs []*AddDownloadTaskInput) (
 		if strings.TrimSpace(input.Type) == "" {
 			input.Type = string(core.InferDownloadType(input.URL))
 		}
+		if err := normalizeTaskProxy(input); err != nil {
+			return nil, err
+		}
 		if _, exists := seenURLs[input.URL]; exists {
 			return nil, ErrDownloadURLAlreadyExists
 		}
@@ -145,6 +155,8 @@ func (s *DownloadTaskService) AddDownloadTasks(inputs []*AddDownloadTaskInput) (
 		}
 
 		videos = append(videos, &db.Video{
+			ProxyMode:              input.ProxyMode,
+			ProxyURL:               input.ProxyURL,
 			DownloadDir:            input.DownloadDir,
 			Name:                   title,
 			Type:                   input.Type,
@@ -184,7 +196,11 @@ func (s *DownloadTaskService) prepareDownloadTitle(ctx context.Context, input *A
 		isSocialTitle = true
 	} else {
 		if title == "" && input.Type == "bilibili" {
-			title = GetPageTitleWithContext(ctx, input.URL, "")
+			proxy, err := core.EffectiveDownloadProxy(input.ProxyMode, input.ProxyURL, s.queue.DownloadConfig())
+			if err != nil {
+				return "", err
+			}
+			title = GetPageTitleWithContext(ctx, input.URL, "", proxy)
 		}
 		if title == "" {
 			title = fmt.Sprintf("untitled-%s", RandomName())
@@ -253,6 +269,21 @@ func (s *DownloadTaskService) EditDownloadTask(id int64, data map[string]interfa
 	if err != nil {
 		return nil, err
 	}
+	proxyMode, proxyURL := video.ProxyMode, video.ProxyURL
+	if value, ok := data["proxyMode"].(string); ok {
+		proxyMode = value
+	}
+	if value, ok := data["proxyUrl"].(string); ok {
+		proxyURL = value
+	}
+	proxyMode, proxyURL, err = core.NormalizeDownloadProxy(proxyMode, proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := core.ValidateDownloadProxyType(proxyMode, proxyURL, core.DownloadType(video.Type)); err != nil {
+		return nil, err
+	}
+	data["proxyMode"], data["proxyUrl"] = proxyMode, proxyURL
 
 	if url, ok := data["url"].(string); ok {
 		existingURL, err := s.repo.FindByURL(url)
@@ -677,6 +708,8 @@ func downloadParamsForVideo(video *db.Video, downloadID int64) core.DownloadPara
 	}
 
 	return core.DownloadParams{
+		ProxyMode:   video.ProxyMode,
+		ProxyURL:    video.ProxyURL,
 		DownloadDir: video.DownloadDir,
 		ID:          queueTaskIDForDownload(downloadID),
 		Type:        core.DownloadType(video.Type),

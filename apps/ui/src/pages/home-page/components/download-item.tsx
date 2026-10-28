@@ -12,6 +12,7 @@ import {
   Download,
   Pause,
   Pencil,
+  Network,
   Square,
   SquareTerminal,
 } from "lucide-react";
@@ -323,6 +324,24 @@ export const DownloadTaskItem = memo(function DownloadTaskItem({
 
   const tags = useMemo<ReactNode[]>(() => {
     const list: ReactNode[] = [];
+    if (
+      !isWeb &&
+      task.origin !== "docker" &&
+      task.proxyMode &&
+      task.proxyMode !== "inherit"
+    )
+      list.push(
+        <DownloadTag
+          key="proxy"
+          icon={<Network />}
+          text={
+            task.proxyMode === "custom"
+              ? t("taskProxyCustom")
+              : t("taskProxyDirect")
+          }
+          variant="muted"
+        />,
+      );
     if (task.isLive)
       list.push(
         <DownloadTag key="live" text={t("liveResource")} variant="info" />,

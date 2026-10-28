@@ -2,11 +2,13 @@ package dto
 
 // AddDownloadReq Add download task request.
 type AddDownloadReq struct {
-	Type    string  `json:"type,omitempty"`
-	Name    string  `json:"name"`
-	URL     string  `json:"url" binding:"required"`
-	Headers *string `json:"headers"`
-	Folder  *string `json:"folder"`
+	ProxyMode string  `json:"proxyMode,omitempty"`
+	ProxyURL  string  `json:"proxyUrl,omitempty"`
+	Type      string  `json:"type,omitempty"`
+	Name      string  `json:"name"`
+	URL       string  `json:"url" binding:"required"`
+	Headers   *string `json:"headers"`
+	Folder    *string `json:"folder"`
 }
 
 // AddDownloadBatchReq Batch add download tasks request.
@@ -17,10 +19,12 @@ type AddDownloadBatchReq struct {
 
 // EditDownloadReq Edit download task request.
 type EditDownloadReq struct {
-	Name    *string `json:"name"`
-	URL     *string `json:"url"`
-	Headers *string `json:"headers"`
-	Folder  *string `json:"folder"`
+	ProxyMode *string `json:"proxyMode"`
+	ProxyURL  *string `json:"proxyUrl"`
+	Name      *string `json:"name"`
+	URL       *string `json:"url"`
+	Headers   *string `json:"headers"`
+	Folder    *string `json:"folder"`
 }
 
 // DownloadPaginationReq Paginated query request.

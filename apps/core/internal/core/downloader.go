@@ -170,11 +170,12 @@ func (d *DownloaderSvc) buildArgs(p DownloadParams, s schema.Schema) []string {
 			}
 
 		case "proxy":
-			// proxy argument: only add when proxy is configured
-			if d.cfg.(interface{ GetUseProxy() bool }).GetUseProxy() {
-				if proxy := d.cfg.(interface{ GetProxy() string }).GetProxy(); proxy != "" {
-					pushKV(spec.ArgsName, proxy)
-				}
+			proxy, err := EffectiveDownloadProxy(p.ProxyMode, p.ProxyURL, d.cfg)
+			if p.ResolvedProxy != nil {
+				proxy, err = *p.ResolvedProxy, nil
+			}
+			if err == nil && proxy != "" {
+				pushKV(spec.ArgsName, proxy)
 			}
 
 		case "ffmpegBinaryPath":
@@ -626,6 +627,17 @@ func guessExtFromURL(u string) string {
 
 // Download executes a download task
 func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callbacks) (DownloadResult, error) {
+	if err := ValidateDownloadProxyType(p.ProxyMode, p.ProxyURL, p.Type); err != nil {
+		return DownloadResult{}, err
+	}
+	proxy, proxyErr := EffectiveDownloadProxy(p.ProxyMode, p.ProxyURL, d.cfg)
+	if proxyErr != nil {
+		return DownloadResult{}, proxyErr
+	}
+	if p.Type == TypeDirect && strings.HasPrefix(proxy, "socks5:") {
+		return DownloadResult{}, errors.Join(ErrInvalidDownloadProxy, errors.New("direct file downloads require an HTTP proxy"))
+	}
+	p.ResolvedProxy = &proxy
 	logger.Info("Starting download task",
 		zap.String("id", string(p.ID)),
 		zap.String("type", string(p.Type)),
@@ -698,6 +710,21 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 
 	// build command-line arguments
 	args := d.buildArgs(p, schema)
+	switch p.Type {
+	case TypeM3U8:
+		args = append(args, "--use-system-proxy", "false")
+	case TypeDirect:
+		args = append(args, "--all-proxy="+proxy)
+		if proxy == "" {
+			args = append(args, "--no-proxy=*")
+		} else {
+			args = append(args, "--no-proxy=")
+		}
+	case TypeYoutube, TypeXiaohongshu:
+		if proxy == "" {
+			args = append(args, "--proxy", "")
+		}
+	}
 	args, cleanupCookies, err := appendYTDLPCookieFile(args, p)
 	if err != nil {
 		return DownloadResult{}, err
@@ -708,7 +735,7 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 		zap.Int("arg_count", len(args)),
 		zap.String("url_origin", urlOriginForLog(p.URL)),
 		zap.Strings("header_names", headerNamesForLog(p.Headers)),
-		zap.Bool("proxy_configured", proxyConfiguredForLog(d.cfg)))
+		zap.Bool("proxy_configured", proxy != ""))
 
 	// initialize parse state
 	st := &parser.ParseState{}
@@ -787,6 +814,7 @@ func (d *DownloaderSvc) Download(ctx context.Context, p DownloadParams, cb Callb
 		zap.String("binary", bin))
 	if configurable, ok := d.runner.(ConfigurableRunner); ok {
 		err = configurable.RunWithOptions(ctx, bin, args, onLine, RunnerOptions{
+			Environment:          DownloadProxyEnvironment(proxy),
 			ShouldGracefullyStop: liveDetected.Load,
 			GracePeriod:          8 * time.Second,
 		})

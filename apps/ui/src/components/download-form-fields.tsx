@@ -22,6 +22,7 @@ import {
 } from "@/store/download-dialog";
 import { cn } from "@/utils";
 import { BatchDownloadField } from "./batch-download-field";
+import { DownloadProxyFields } from "./download-network-fields";
 import { DOWNLOAD_URL_RE } from "./download-form-logic";
 
 const DOWNLOAD_TYPE_OPTIONS = [
@@ -174,6 +175,12 @@ export function DownloadFormFields({
               disabled={isEdit}
               onValueChange={(value) => {
                 const type = value as DownloadFormType;
+                if (
+                  type === DownloadType.bilibili &&
+                  form.getValues("proxyMode") === "direct"
+                ) {
+                  form.setValue("proxyMode", "inherit");
+                }
                 field.onChange(type);
                 setLastDownloadTypes(type);
               }}
@@ -299,6 +306,7 @@ export function DownloadFormFields({
           <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
         </summary>
         <div className="space-y-4 pt-3">
+          <DownloadProxyFields form={form} formId={formId} />
           {!isBatch ? (
             <FormRow htmlFor={`${formId}-folder`} label={t("folder")}>
               <Input

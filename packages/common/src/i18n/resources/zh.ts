@@ -1,4 +1,28 @@
 export const zh = {
+  downloadTarget: "下载位置",
+  downloadOnThisDevice: "本机",
+  addToDockerList: "加入 Docker 列表",
+  downloadOnDocker: "在 Docker 下载",
+  copyToDocker: "复制到 Docker",
+  dockerDownloadNetworkHelp:
+    "下载由 Docker 服务器执行，使用服务器自身的代理设置。",
+  dockerDownloadSetupHelp: "请先在软件设置中配置并启用 Docker 连接。",
+  taskProxyStrategy: "代理策略",
+  taskProxyInherit: "跟随全局下载设置",
+  taskProxyDirect: "不使用 MediaGo 代理",
+  taskProxyCustom: "自定义代理",
+  taskProxyAddress: "本任务代理地址",
+  taskProxyBilibiliHelp:
+    "BBDown 无法强制绕过系统代理，因此不支持本任务直连；可关闭系统代理，或使用 yt-dlp 下载。",
+  taskProxyAddressInvalid:
+    "请填写有效的 HTTP 或 SOCKS5 代理地址，不包含用户名、密码或额外路径。",
+  taskProxyInheritHelp:
+    "启动或重试时使用全局下载代理设置。内置浏览器仍使用浏览器自己的设置。",
+  taskProxyDirectHelp:
+    "本任务不使用软件或系统代理。路由器的透明代理规则仍可能生效。",
+  taskProxyCustomHelp:
+    "仅用于本机下载和播放列表检测。直链下载仅支持 HTTP 代理；此处暂不支持带账号密码的代理地址。",
+  dockerProxyInherited: "使用 Docker 服务器的代理设置",
   analyticsUsage: "分享使用统计",
   analyticsChoiceTitle: "可选的使用统计",
   analyticsDescription:

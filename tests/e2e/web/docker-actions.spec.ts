@@ -13,7 +13,7 @@ let close: (() => Promise<void>) | undefined;
 let previousTarget: string | undefined;
 test.beforeAll(async () => {
   previousTarget = process.env.APP_TARGET;
-  process.env.APP_TARGET = "server";
+  process.env.APP_TARGET = "electron";
   const root = fileURLToPath(new URL("../../../", import.meta.url));
   const require = createRequire(path.join(root, "apps/ui/package.json"));
   const { createServer } = await import(
@@ -95,7 +95,7 @@ test("offers Docker send from local edit and retains remote edit semantics", asy
     path: testInfo.outputPath("local-edit-docker-action.png"),
   });
   await dialog
-    .getByRole("button", { name: "添加到 Docker", exact: true })
+    .getByRole("button", { name: "复制到 Docker", exact: true })
     .click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0]).toMatchObject({
@@ -124,5 +124,70 @@ test("offers Docker send from local edit and retains remote edit semantics", asy
   expect(writes[1]).toMatchObject({
     url: "http://127.0.0.1:9900/api/docker/downloads/42",
     method: "PUT",
+  });
+});
+
+test("destination switches preserve the local proxy without sending it to Docker", async ({
+  page,
+}, testInfo) => {
+  const writes: { url: string; body: any }[] = [];
+  await page.route("http://127.0.0.1:9900/api/**", async (route) => {
+    if (route.request().method() !== "GET")
+      writes.push({
+        url: route.request().url(),
+        body: route.request().postDataJSON(),
+      });
+    await route.fulfill({ json: { success: true, code: 200, data: [] } });
+  });
+  await page.goto(fixtureURL);
+  await page.getByRole("button", { name: "新建下载任务", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("radio", { name: "本机", exact: true }),
+  ).toBeChecked();
+  await dialog.getByText("更多设置", { exact: true }).click();
+  await dialog.getByLabel("代理策略", { exact: true }).click();
+  await page.getByRole("option", { name: "自定义代理", exact: true }).click();
+  await expect(dialog.getByLabel("代理策略", { exact: true })).toHaveText(
+    "自定义代理",
+  );
+  const address = dialog.getByRole("textbox", {
+    name: "本任务代理地址",
+    exact: true,
+  });
+  await address.fill("http://127.0.0.1:7890");
+  await dialog.getByRole("radio", { name: "Docker", exact: true }).click();
+  await expect(
+    dialog.getByText("使用 Docker 服务器的代理设置", { exact: true }),
+  ).toBeVisible();
+  await expect(address).toHaveCount(0);
+  await dialog.getByRole("radio", { name: "本机", exact: true }).click();
+  await expect(address).toHaveValue("http://127.0.0.1:7890");
+  await dialog.screenshot({
+    path: testInfo.outputPath("task-proxy-local.png"),
+  });
+  await dialog.getByRole("radio", { name: "Docker", exact: true }).click();
+  await dialog.screenshot({
+    path: testInfo.outputPath("task-proxy-docker.png"),
+  });
+  await dialog
+    .getByRole("button", { name: "加入 Docker 列表", exact: true })
+    .click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].url).toBe("http://127.0.0.1:9900/api/docker/downloads");
+  expect(writes[0].body.tasks[0]).not.toHaveProperty("proxyMode");
+  expect(writes[0].body.tasks[0]).not.toHaveProperty("proxyUrl");
+  await page.getByRole("button", { name: "新建下载任务", exact: true }).click();
+  await dialog.getByText("更多设置", { exact: true }).click();
+  await dialog.getByLabel("代理策略", { exact: true }).click();
+  await page
+    .getByRole("option", { name: "不使用 MediaGo 代理", exact: true })
+    .click();
+  await dialog.getByRole("button", { name: "立即下载", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[1].url).toBe("http://127.0.0.1:9900/api/downloads");
+  expect(writes[1].body).toMatchObject({
+    startDownload: true,
+    tasks: [{ proxyMode: "direct", proxyUrl: "" }],
   });
 });
