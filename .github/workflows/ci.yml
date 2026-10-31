@@ -91,7 +91,7 @@ jobs:
           go-version-file: apps/core/go.mod
           cache-dependency-path: apps/core/go.sum
       - name: Cache media integration dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .deps
           key: media-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/tooling/manifests/runtime-deps.json') }}
@@ -125,12 +125,12 @@ jobs:
           go-version-file: apps/core/go.mod
           cache-dependency-path: apps/core/go.sum
       - name: Cache E2E dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .deps
           key: e2e-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/tooling/manifests/runtime-deps.json') }}-${{ hashFiles('packages/tooling/src/runtime-deps/download.ts', 'packages/tooling/src/runtime-deps/args.ts', 'packages/tooling/src/runtime-deps/integrity.ts') }}
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
