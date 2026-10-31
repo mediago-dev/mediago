@@ -43,7 +43,7 @@ jobs:
         with:
           go-version-file: apps/core/go.mod
           cache-dependency-path: apps/core/go.sum
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
       - name: Check signing prerequisites
