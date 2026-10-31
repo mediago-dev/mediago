@@ -68,7 +68,7 @@ jobs:
           version: "3.51.1"
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24.14.0"
 
@@ -224,7 +224,7 @@ jobs:
           version: "3.51.1"
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24.14.0"
 
@@ -307,7 +307,7 @@ jobs:
           version: "3.51.1"
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24.14.0"
 
@@ -346,7 +346,7 @@ jobs:
           version: "3.51.1"
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24.14.0"
 
