@@ -22,7 +22,7 @@
     "@types/node": "^26.3.0",
     "cross-env": "^10.1.0",
     "electron": "43.8.3",
-    "electron-builder-squirrel-windows": "26.15.3",
+    "electron-builder-squirrel-windows": "26.18.0",
     "electron-updater": "^6.8.9",
     "glob": "^13.0.6",
     "rimraf": "^6.1.3",
