@@ -1,0 +1,47 @@
+name: Original issue784 sample verification
+on:
+  push:
+    branches: [codex/issue784-original-sample-20261103]
+permissions:
+  contents: read
+concurrency:
+  group: issue784-original-sample-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  original-sample:
+    name: Original TS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.14.0"
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - name: Pull immutable published beta.1 image without credentials
+        run: docker pull "caorushizi/mediago@sha256:fbb152778ecc03c9ae7082bc698d6a83eb410d94f2b4e0390048f1bbb8fec6a7"
+      - name: Build current source locally without publishing
+        run: docker build --tag mediago:issue784-original .
+        env:
+          DOCKER_BUILDKIT: "1"
+      - name: Verify original CRC-checked TS in isolated containers
+        run: pnpm --filter @mediago/tooling run verify:issue784-sample mediago:issue784-original "caorushizi/mediago@sha256:fbb152778ecc03c9ae7082bc698d6a83eb410d94f2b4e0390048f1bbb8fec6a7" "$RUNNER_TEMP/issue784-report.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: issue784-original-${{ matrix.arch }}
+          path: ${{ runner.temp }}/issue784-report.json
+          if-no-files-found: warn
+          retention-days: 7

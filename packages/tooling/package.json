@@ -14,7 +14,8 @@
   },
   "scripts": {
     "type:check": "tsc --noEmit",
-    "test": "pnpm --dir ../.. exec vitest run packages/tooling"
+    "test": "pnpm --dir ../.. exec vitest run packages/tooling",
+    "verify:issue784-sample": "node src/security/issue784-original-sample.ts"
   },
   "dependencies": {
     "@electron/osx-sign": "2.7.0",
