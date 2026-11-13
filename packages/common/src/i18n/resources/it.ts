@@ -480,6 +480,13 @@ export const it = {
   setupToken: "Codice di inizializzazione",
   setupTokenHelp:
     "Leggi il file setup-token nella cartella di configurazione del server. Solo l’amministratore del server può accedere al file.",
+  setupTokenInstructionsTitle: "Come ottenere il codice di inizializzazione",
+  setupTokenDockerInstructions:
+    "Nel terminale del server, esegui questo comando. Sostituisci mediago con il nome del contenitore (puoi trovarlo con docker ps):",
+  setupTokenCopyInstructions:
+    "Copia il codice completo mostrato nel terminale e incollalo nel campo del codice di inizializzazione.",
+  setupTokenFileInstructions:
+    "Senza Docker, apri il file setup-token nella directory di configurazione del server e copiane il contenuto.",
   setupFailed:
     "Configurazione fallita. Controlla il codice di inizializzazione o riprova più tardi.",
   initializeMediaGoServer: "Imposta server MediaGo",
