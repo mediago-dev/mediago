@@ -2,10 +2,10 @@
 #   docker build -t mediago .
 
 # ===== Stage 1: Node Builder (runs natively on build machine) =====
-FROM --platform=$BUILDPLATFORM node:24.14.0-bookworm-slim AS node-builder
+FROM --platform=$BUILDPLATFORM node:26.13.0-bookworm-slim AS node-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*
-RUN corepack enable && corepack prepare pnpm@11.23.0 --activate
+RUN npm install --global pnpm@11.23.0
 
 # Map Docker TARGETARCH to Node arch naming for deps download
 ARG TARGETARCH
