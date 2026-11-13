@@ -68,7 +68,7 @@ jobs:
         with:
           node-version: "24.14.0"
           cache: "pnpm"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
       - uses: actions/setup-go@v7
