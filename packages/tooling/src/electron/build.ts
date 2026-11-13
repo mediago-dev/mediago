@@ -345,7 +345,7 @@ execFileSync(
   ],
   {
     stdio: "inherit",
-    env: { ...process.env, GOWORK: "off", GOTOOLCHAIN: "go1.27.3" },
+    env: { ...process.env, GOWORK: "off", GOTOOLCHAIN: "go1.27.4" },
   },
 );
 

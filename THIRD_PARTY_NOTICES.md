@@ -55,7 +55,7 @@ recommended by yt-dlp for YouTube challenge solving.
 ## MediaGo download engine v0.2.1
 
 The external streaming download engine is distinct from this repository's API
-client. Its unmodified v0.2.1 source is rebuilt with Go 1.27.3 for desktop and
+client. Its unmodified v0.2.1 source is rebuilt with Go 1.27.4 for desktop and
 container distribution. The build verifies the module checksum recorded in
 packages/tooling/src/runtime-deps/rebuild-mediago.go.
 

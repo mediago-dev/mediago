@@ -12,7 +12,7 @@ main [README](./README.md).
   versions without changing your global tool selections.
 - **Node.js** ≥ 24.14 — install from [nodejs.org](https://nodejs.org/)
 - **pnpm** 11.23 — activated from the repository's `packageManager` field
-- **Go** ≥ 1.27.3 — install from [go.dev](https://go.dev/dl/)
+- **Go** ≥ 1.27.4 — install from [go.dev](https://go.dev/dl/)
 - **Task** ≥ 3.51.1 and < 4.0.0 — the repository task runner
 
 Install the latest compatible Task v3 release on macOS, Linux, or Windows

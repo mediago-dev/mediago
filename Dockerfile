@@ -52,7 +52,7 @@ RUN pnpm build:web:raw
 RUN pnpm deps:download:raw --tools N_m3u8DL-RE,BBDown,aria2,yt-dlp,deno,mediago --platform "$(cat /tmp/deps-platform)"
 
 # ===== Stage 2: Go Builder =====
-FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm AS go-builder
 
 # Inherit BuildKit platform values; defaults here override --platform.
 ARG TARGETOS
@@ -85,7 +85,7 @@ RUN cd apps/core && \
 # The repository API client is a different CLI and cannot replace this engine.
 COPY packages/tooling/src/runtime-deps/rebuild-mediago.go /src/rebuild-mediago.go
 COPY --from=node-builder /src/.deps/ /out/deps/
-RUN GOTOOLCHAIN=go1.27.3 go run /src/rebuild-mediago.go \
+RUN GOTOOLCHAIN=go1.27.4 go run /src/rebuild-mediago.go \
     --output /out/deps/linux-$(if [ "$TARGETARCH" = "amd64" ]; then echo x64; else echo "$TARGETARCH"; fi)/mediago \
     --platform linux-${TARGETARCH}
 

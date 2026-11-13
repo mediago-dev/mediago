@@ -54,7 +54,7 @@ func rebuild(output, platform string) error {
 	}
 	defer os.RemoveAll(work)
 	// Keep dependency resolution outside both the app module and any active go.work.
-	environment := append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.3", "GOFLAGS=")
+	environment := append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.27.4", "GOFLAGS=")
 	download := exec.Command("go", "mod", "download", "-json", module+"@"+version)
 	download.Dir, download.Env = work, environment
 	data, err := download.Output()
@@ -72,7 +72,7 @@ func rebuild(output, platform string) error {
 	if err := build.Run(); err != nil {
 		return fmt.Errorf("build pinned engine: %w", err)
 	}
-	fmt.Printf("Rebuilt %s@%s for %s with Go1.27.3; verified source %s\n", module, version, platform, sourceSum)
+	fmt.Printf("Rebuilt %s@%s for %s with Go1.27.4; verified source %s\n", module, version, platform, sourceSum)
 	return nil
 }
 
