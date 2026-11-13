@@ -221,4 +221,4 @@ lp_Zain@www.52pojie.cn
 
 ## 隐私与代码签名政策
 
-使用统计为可选项，安装时选择及设置中的控制方式见[隐私政策](docs/privacy.md)。Windows SignPath 签名尚在申请准备阶段，已有未签名版本仍然未签名，详见[Code signing policy](docs/code-signing.md)。
+使用统计为可选项，安装时选择及设置中的控制方式见[隐私政策](docs/privacy.md)。MediaGo 已获准加入 SignPath Foundation 计划；Windows 签名接入在独立的 [codex/signpath-integration 分支](https://github.com/mediago-dev/mediago/tree/codex/signpath-integration)继续维护，正式签名尚未启用，公开 Windows 版本仍未签名。详见[Code signing policy](docs/code-signing.md)。

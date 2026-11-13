@@ -5,11 +5,11 @@ outline: deep
 
 # 代码签名政策（Code signing policy）
 
-更新日期：2026 年 10 月 24 日。
+更新日期：2026 年 11 月 13 日。
 
 ## 当前状态
 
-MediaGo 正在准备申请 [SignPath Foundation](https://signpath.org/) Windows 代码签名服务，审批与接入均**尚未完成**。目前不声明 SignPath 已为 MediaGo 签名。包括 3.6.0-beta.1 在内的已有未签名 Windows 包仍然未签名；macOS 的签名与公证是独立流程。
+MediaGo 已获准加入 [SignPath Foundation](https://signpath.org/) 开源项目计划，但项目中的正式签名证书尚不可用，**公开 Windows 发布尚未启用 SignPath 签名**。测试签名实现保留在独立的 [codex/signpath-integration 分支](https://github.com/mediago-dev/mediago/tree/codex/signpath-integration)，用于继续接入和验证。当前公开 Windows 安装包以及包括 3.6.0-beta.1 在内的已有未签名版本仍然未签名；测试签名包不进入正式版或 beta 更新渠道。macOS 的签名与公证是独立流程。
 
 首次提供签名版时，下载页和发布说明会标明首个签名版本、核实后的发布者身份和验证方法。签名不代表软件不存在缺陷。
 

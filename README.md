@@ -268,4 +268,4 @@ engine is rebuilt from checksum-pinned v0.2.1 source with the patched Go toolcha
 
 ## Privacy and Code signing policy
 
-Usage statistics are optional. See the [Privacy policy](docs/en/privacy.md) for installer-time choice and in-app controls. Windows SignPath signing is pending approval/integration; existing unsigned releases remain unsigned. See the [Code signing policy](docs/en/code-signing.md).
+Usage statistics are optional. See the [Privacy policy](docs/en/privacy.md) for installer-time choice and in-app controls. MediaGo has joined the SignPath Foundation program; Windows signing is maintained on the [codex/signpath-integration branch](https://github.com/mediago-dev/mediago/tree/codex/signpath-integration) while production signing remains pending. Public Windows releases remain unsigned. See the [Code signing policy](docs/en/code-signing.md).
