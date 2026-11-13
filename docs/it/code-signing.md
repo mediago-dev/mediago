@@ -5,9 +5,9 @@ outline: deep
 
 # Code signing policy
 
-Aggiornata il 24 ottobre 2026.
+Aggiornata il 13 novembre 2026.
 
-MediaGo sta preparando la richiesta a [SignPath Foundation](https://signpath.org/) per la firma Windows. Approvazione e integrazione sono **in attesa**: non dichiariamo che SignPath firmi già MediaGo. I pacchetti Windows precedenti non firmati, incluso 3.6.0-beta.1, restano tali. La firma e notarizzazione macOS sono separate.
+MediaGo è stato accettato nel programma open source di [SignPath Foundation](https://signpath.org/), ma il progetto non dispone ancora di un certificato di firma di produzione. **Le versioni pubbliche per Windows non usano ancora la firma SignPath.** L'integrazione della firma di test è mantenuta nel branch separato [codex/signpath-integration](https://github.com/mediago-dev/mediago/tree/codex/signpath-integration) per lo sviluppo e la verifica. Gli installer Windows pubblici attuali e le versioni precedenti non firmate, incluso 3.6.0-beta.1, restano non firmati. I pacchetti con firma di test non sono distribuiti nei canali di aggiornamento stabile o beta. La firma e notarizzazione macOS sono separate.
 
 La prima versione firmata sarà identificata nella pagina di download e nelle note di rilascio, con identità verificata dell’editore e istruzioni. Una firma non certifica l’assenza di difetti.
 

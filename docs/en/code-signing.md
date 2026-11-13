@@ -5,11 +5,11 @@ outline: deep
 
 # Code signing policy
 
-Updated: 24 October 2026.
+Updated: 13 November 2026.
 
 ## Current status
 
-MediaGo is preparing an application to [SignPath Foundation](https://signpath.org/) for Windows code signing. Approval and integration are **pending**. We do not currently claim that SignPath signs MediaGo. Existing unsigned Windows releases, including 3.6.0-beta.1, remain unsigned. macOS signing/notarization is a separate process.
+MediaGo has been accepted into the [SignPath Foundation](https://signpath.org/) open-source program, but a production signing certificate is not yet available in the project. **Public Windows releases do not yet use SignPath signing.** The test-signing integration is maintained on the separate [codex/signpath-integration branch](https://github.com/mediago-dev/mediago/tree/codex/signpath-integration) for further development and verification. Current public Windows installers and existing unsigned releases, including 3.6.0-beta.1, remain unsigned. Test-signed packages are not distributed through the stable or beta update channels. macOS signing/notarization is a separate process.
 
 When Windows signing becomes available, the download page and release notes will identify the first signed release, its verified publisher identity and verification instructions. Signing does not certify that software has no defects.
 

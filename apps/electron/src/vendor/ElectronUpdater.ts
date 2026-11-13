@@ -9,7 +9,7 @@ import {
 import { app, shell } from "electron";
 import isDev from "electron-is-dev";
 import {
-  autoUpdater as defaultAutoUpdater,
+  autoUpdater,
   type ProgressInfo,
   type UpdateInfo,
 } from "electron-updater";
@@ -18,10 +18,6 @@ import { i18n } from "../core/i18n";
 import { logDir } from "../constants";
 import MainWindow from "../windows/main.window";
 import ElectronLogger from "./ElectronLogger";
-import VerifiedNsisUpdater from "./VerifiedNsisUpdater";
-
-const autoUpdater =
-  process.platform === "win32" ? new VerifiedNsisUpdater() : defaultAutoUpdater;
 
 const GITHUB_RELEASES_URL = "https://github.com/mediago-dev/mediago/releases";
 

@@ -213,4 +213,4 @@ task check
 
 ## Privacy e Code signing policy
 
-Le statistiche sono facoltative: scelta nell’installer e controlli nell’app sono descritti nell’[informativa privacy](docs/it/privacy.md). La firma Windows con SignPath è in attesa di approvazione e integrazione; le versioni non firmate restano tali. Vedi la [Code signing policy](docs/it/code-signing.md).
+Le statistiche sono facoltative: scelta nell’installer e controlli nell’app sono descritti nell’[informativa privacy](docs/it/privacy.md). MediaGo è stato accettato nel programma SignPath Foundation. L'integrazione della firma Windows è mantenuta nel branch [codex/signpath-integration](https://github.com/mediago-dev/mediago/tree/codex/signpath-integration); la firma di produzione non è ancora attiva e le versioni pubbliche Windows restano non firmate. Vedi la [Code signing policy](docs/it/code-signing.md).

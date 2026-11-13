@@ -183,4 +183,4 @@ task check
 
 ## プライバシーと Code signing policy
 
-利用統計は任意です。インストーラーでの選択と設定方法は[プライバシーポリシー](docs/jp/privacy.md)を参照してください。Windows の SignPath 署名は申請準備中で、既存の未署名版は未署名のままです。[Code signing policy（英語）](docs/en/code-signing.md)を公開しています。
+利用統計は任意です。インストーラーでの選択と設定方法は[プライバシーポリシー](docs/jp/privacy.md)を参照してください。MediaGo は SignPath Foundation プログラムに承認されています。Windows 署名の実装は独立した [codex/signpath-integration ブランチ](https://github.com/mediago-dev/mediago/tree/codex/signpath-integration)で保守しており、本番署名はまだ有効ではありません。公開 Windows 版は引き続き未署名です。[Code signing policy（英語）](docs/en/code-signing.md)を参照してください。
