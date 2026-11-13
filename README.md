@@ -168,7 +168,6 @@ one dev
 one dev:web
 one dev:electron
 one check
-one test
 ```
 
 `one.manifest.toml` registers the existing projects. `mise.toml` pins Node,
@@ -214,7 +213,6 @@ there is no separate Node.js server package. Before submitting changes, run:
 
 ```shell
 task check
-task test
 ```
 
 ## 🛠️ Built with

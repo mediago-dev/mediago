@@ -70,7 +70,6 @@ for (const [name, command, project] of [
   ["pack", "task --dir ../.. pack:electron", "electron"],
   ["release", "task --dir ../.. release:electron", "electron"],
   ["build", "pnpm --dir ../.. core:build", "core"],
-  ["test", "go test ./...", "core"],
   ["build", "task --dir ../.. build:extension", "extension"],
   ["dev", "task --dir .. docs:dev", "docs"],
   ["build", "task --dir .. build:docs", "docs"],

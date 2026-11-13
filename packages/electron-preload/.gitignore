@@ -36,10 +36,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Coverage reports
-coverage/
-*.lcov
-
 # Temporary files
 *.tmp
 *.temp

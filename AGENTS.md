@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-MediaGo is a pnpm/turborepo monorepo registered in `one.manifest.toml`. Feature apps live in `apps/` (`core` for the Go backend, `electron` for desktop, `ui` for the shared frontend, `player-ui` for playback). Reusable logic stays in `packages/`, including `common`, `core-sdk`, `electron-preload`, and `tooling`. Long-form docs and assets sit in `docs/`, `images/`, and `docker/`. End-to-end checks live in `tests/`.
+MediaGo is a pnpm/turborepo monorepo registered in `one.manifest.toml`. Feature apps live in `apps/` (`core` for the Go backend, `electron` for desktop, `ui` for the shared frontend, `player-ui` for playback). Reusable logic stays in `packages/`, including `common`, `core-sdk`, `electron-preload`, and `tooling`. Long-form docs and assets sit in `docs/`, `images/`, and `docker/`.
 
 ## Tooling and Script Placement
 
@@ -23,9 +23,9 @@ Repository automation is centralized in `packages/tooling`.
 - This rule overrides any skill, tool, or template that defaults to writing plans under `docs/` or `docs/plans/`.
 - Before finishing a task that touches documentation, inspect `git status --short -- docs` and remove accidental internal artifacts without deleting legitimate documentation content.
 
-## Build, Test, and Development Commands
+## Build and Development Commands
 
-Use One CLI 0.1.24 or newer. On a new clone, review `mise.toml`, run `one mise trust`, `one mise install`, then `one setup`. Use `one dev` for desktop + Web, or `one dev:web` / `one dev:electron` for one surface. Use `one build -p core`, `one build -p electron`, `one build -p docs`, and `one build:docker` for the corresponding targets. `one check` runs lint, formatting and type checks; `one test` runs the TypeScript and Go suites. `mise.toml` pins tool versions and delegates product workflows to the existing Taskfile; CI continues to use Task. After changing project scripts, run `one init mise`, review the diff, and run `pnpm one:verify`. Keep `pnpm format` as the formatting command before commits.
+Use One CLI 0.1.24 or newer. On a new clone, review `mise.toml`, run `one mise trust`, `one mise install`, then `one setup`. Use `one dev` for desktop + Web, or `one dev:web` / `one dev:electron` for one surface. Use `one build -p core`, `one build -p electron`, `one build -p docs`, and `one build:docker` for the corresponding targets. `one check` runs lint, formatting and type checks. `mise.toml` pins tool versions and delegates product workflows to the existing Taskfile; CI continues to use Task. After changing project scripts, run `one init mise`, review the diff, and run `pnpm one:verify`. Keep `pnpm format` as the formatting command before commits.
 
 ## Coding Style & Naming Conventions
 
@@ -48,10 +48,10 @@ Mouse cursors must communicate what an element will do. Define cursor behavior i
 
 Do not use cursor-default on an enabled interactive element. Avoid pointer-events: none on disabled controls when it prevents the not-allowed cursor from being shown; use native disabled, aria-disabled, or the component library's disabled state to block the action. Cursor styling does not replace semantic HTML, keyboard interaction, focus states, or accessible names.
 
-## Testing Guidelines
+## Validation Guidelines
 
-TypeScript suites use Vitest through `one test:ts`; Go suites use `one test:go`. Integration and Playwright checks use `one test:integration` and `one test:e2e`. Name files descriptively like `download.queue.integration.test.ts`. Mock external services, prefer shared fixtures in `tests/fixtures/`, and cover happy path, recovery, and edge behaviors when touching runtime code.
+The repository does not currently maintain automated test suites. Validate changes with `one check`, `pnpm one:verify`, and the relevant application build. CI retains lint, formatting, type checks, builds, and security scans.
 
 ## Commit & Pull Request Guidelines
 
-Follow Conventional Commits (e.g. `feat(frontend-main): add download queue UI`) and use `pnpm commit` (Commitizen) to stay compliant. Pull requests should summarize the change, link issues with `Closes #123`, note local test runs (`pnpm test`), and attach screenshots or recordings for UI updates. Call out new environment variables, migrations, or follow-up tasks so reviewers can reproduce the setup quickly.
+Follow Conventional Commits (e.g. `feat(frontend-main): add download queue UI`) and use `pnpm commit` (Commitizen) to stay compliant. Pull requests should summarize the change, link issues with `Closes #123`, note local validation results (`one check`), and attach screenshots or recordings for UI updates. Call out new environment variables, migrations, or follow-up tasks so reviewers can reproduce the setup quickly.

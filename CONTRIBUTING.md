@@ -12,7 +12,7 @@ main [README](./README.md).
   versions without changing your global tool selections.
 - **Node.js** ≥ 24.14 — install from [nodejs.org](https://nodejs.org/)
 - **pnpm** 11.23 — activated from the repository's `packageManager` field
-- **Go** ≥ 1.27.3 — install from [go.dev](https://go.dev/dl/)
+- **Go** ≥ 1.27.4 — install from [go.dev](https://go.dev/dl/)
 - **Task** ≥ 3.51.1 and < 4.0.0 — the repository task runner
 
 Install the latest compatible Task v3 release on macOS, Linux, or Windows
@@ -85,7 +85,7 @@ task build:docker
 # Build the Electron workspace without creating an installer
 task build:electron
 
-# Build an unpacked Electron directory (fast, for smoke-testing layout)
+# Build an unpacked Electron directory to inspect the package layout
 task pack:electron
 
 # Build full Electron installers for distribution (.exe / .dmg / .deb)
@@ -93,9 +93,6 @@ task release:electron
 
 # Lint + format + type-check (what CI runs)
 task check
-
-# Run the TypeScript and Go test suites
-task test
 ```
 
 One is the preferred local entry point. Task remains the implementation of
@@ -119,7 +116,6 @@ one build -p electron          # Desktop assets
 one build -p docs              # VitePress documentation
 one pack -p electron           # Unpacked desktop directory
 one check                      # Repository lint, format and types
-one test                       # Repository TypeScript and Go suites
 one dev --dry-run -o json      # Inspect without running or loading secrets
 pnpm one:verify                # Verify task plans and configuration synchronization
 ```

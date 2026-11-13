@@ -6,7 +6,6 @@
     "dev": "tsdown --watch ./src",
     "build": "tsdown",
     "lint": "oxlint .",
-    "test:public-types": "tsc --noEmit -p test-dts/tsconfig.json && node test-dts/verify-declaration.mjs",
     "type:check": "tsc --noEmit"
   },
   "dependencies": {

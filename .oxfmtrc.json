@@ -10,7 +10,6 @@
     "build",
     "dist",
     "release",
-    "coverage",
     "docs/.vitepress/cache",
     "docs/.vitepress/dist"
   ],

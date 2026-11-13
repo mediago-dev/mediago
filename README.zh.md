@@ -166,7 +166,6 @@ one dev
 one dev:web
 one dev:electron
 one check
-one test
 ```
 
 `one.manifest.toml` 登记现有项目，`mise.toml` 固定 Node、pnpm、Go 和 Task 版本。
@@ -181,7 +180,6 @@ one test
 
 ```shell
 task check
-task test
 ```
 
 ## 🛠️ 技术栈

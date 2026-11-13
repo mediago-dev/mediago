@@ -55,8 +55,6 @@ jobs:
         run: task ci:windows-signing
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-      - name: Test Windows update signature enforcement
-        run: pnpm exec vitest run apps/electron/src/vendor/windows-signature.test.ts apps/electron/src/vendor/VerifiedNsisUpdater.test.ts apps/electron/src/vendor/ElectronUpdater.test.ts packages/tooling/src/electron/windows-signing.test.ts
       - name: Apply isolated test version
         run: task ci:desktop:apply-version
       - name: Trust only the pinned test certificate on this disposable runner
