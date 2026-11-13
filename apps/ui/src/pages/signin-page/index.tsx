@@ -181,7 +181,7 @@ export default function SigninPage() {
                             <p>{t("setupTokenDockerInstructions")}</p>
                             <code className="block select-text break-words rounded bg-background/10 px-2 py-1.5 font-mono">
                               {
-                                "docker exec mediago cat /app/mediago/data/setup-token"
+                                "docker cp mediago:/app/mediago/data/setup-token - | tar -xO"
                               }
                             </code>
                             <p>{t("setupTokenCopyInstructions")}</p>
