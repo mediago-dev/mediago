@@ -11,6 +11,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  InfoTip,
+  InfoTipContent,
+  InfoTipTrigger,
+} from "@/components/ui/info-tip";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -18,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AppLanguage } from "@mediago/common";
-import { Languages } from "lucide-react";
+import { CircleHelp, Languages } from "lucide-react";
 import { useAuthApi } from "@/hooks/use-auth-api";
 import { useMemoizedFn } from "ahooks";
 import { useNavigate } from "react-router-dom";
@@ -151,7 +156,38 @@ export default function SigninPage() {
                         id="setup-token-help"
                         className="mt-2 text-sm text-muted-foreground"
                       >
-                        {t("setupTokenHelp")}
+                        {t("setupTokenHelp")}{" "}
+                        <InfoTip>
+                          <InfoTipTrigger
+                            render={
+                              <button
+                                type="button"
+                                aria-label={t("setupTokenInstructionsTitle")}
+                                className="inline-flex size-6 items-center justify-center rounded-sm align-middle text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                              />
+                            }
+                          >
+                            <CircleHelp className="size-4" aria-hidden="true" />
+                          </InfoTipTrigger>
+                          <InfoTipContent
+                            aria-label={t("setupTokenInstructionsTitle")}
+                            className="w-80 max-w-[calc(100vw-2rem)] space-y-2"
+                            side="bottom"
+                            align="start"
+                          >
+                            <p className="font-medium">
+                              {t("setupTokenInstructionsTitle")}
+                            </p>
+                            <p>{t("setupTokenDockerInstructions")}</p>
+                            <code className="block select-text break-words rounded bg-background/10 px-2 py-1.5 font-mono">
+                              {
+                                "docker exec mediago cat /app/mediago/data/setup-token"
+                              }
+                            </code>
+                            <p>{t("setupTokenCopyInstructions")}</p>
+                            <p>{t("setupTokenFileInstructions")}</p>
+                          </InfoTipContent>
+                        </InfoTip>
                       </p>
                     </div>
                   )}

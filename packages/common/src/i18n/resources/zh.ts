@@ -459,6 +459,12 @@ export const zh = {
   setupToken: "初始化校验码",
   setupTokenHelp:
     "请读取服务器配置目录中的 setup-token 文件。只有服务器管理员才能访问此文件。",
+  setupTokenInstructionsTitle: "如何获取初始化校验码",
+  setupTokenDockerInstructions:
+    "在服务器终端运行以下命令，将 mediago 替换为实际容器名（可用 docker ps 查看）：",
+  setupTokenCopyInstructions: "复制终端输出的完整校验码，粘贴到校验码输入框。",
+  setupTokenFileInstructions:
+    "非 Docker 部署：打开服务器实际配置目录中的 setup-token 文件，复制其全部内容。",
   setupFailed: "初始化失败，请检查校验码或稍后再试。",
   initializeMediaGoServer: "初始化 MediaGo 服务器",
 
