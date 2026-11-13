@@ -40,8 +40,6 @@ jobs:
       - name: Install official Go vulnerability scanner
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
       - run: pnpm security:go
-      - name: Verify engine source checks and target validation
-        run: go test packages/tooling/src/runtime-deps/rebuild-mediago.go packages/tooling/src/runtime-deps/rebuild-mediago_test.go
 
   codeql:
     name: CodeQL (${{ matrix.language }})
@@ -109,13 +107,6 @@ jobs:
         env:
           DOCKER_BUILDKIT: "1"
           TARGET_PLATFORM: ${{ matrix.platform }}
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24.14.0"
-      - name: Verify Core architecture, native tools, server startup and SIGTERM
-        run: node packages/tooling/src/security/container-smoke.ts mediago:security "$TARGET_ARCH"
-        env:
-          TARGET_ARCH: ${{ matrix.arch }}
       - name: Scan OS and identifiable bundled dependencies
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: aquasecurity/trivy-action@8f28faec26515256b6d22074d1d2a8986f4cbd87

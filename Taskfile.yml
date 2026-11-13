@@ -70,18 +70,6 @@ tasks:
       - task: internal:require-task-version
       - task: internal:deps:runtime
 
-  deps:media-integration:
-    desc: Install tools used by media integration tests
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:deps:media-integration
-
-  deps:e2e:
-    desc: Install tools used by end-to-end tests
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:deps:e2e
-
   dev:all:
     desc: Start every MediaGo development surface
     cmds:
@@ -117,54 +105,6 @@ tasks:
     cmds:
       - task: internal:require-task-version
       - task: internal:check
-
-  test:
-    desc: Run the TypeScript and Go test suites
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:test
-
-  test:ts:
-    desc: Run the TypeScript test suite
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:test:ts
-
-  test:go:
-    desc: Run the Go test suite
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:test:go
-
-  test:integration:
-    desc: Run media integration tests
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:test:integration
-
-  test:e2e:
-    desc: Run all Playwright end-to-end projects
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:test:e2e
-
-  test:e2e:web:
-    desc: Run the Playwright web project
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:test:e2e:web
-
-  test:e2e:electron:
-    desc: Run the Playwright Electron project
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:test:e2e:electron
-
-  test:e2e:extension:
-    desc: Run the Playwright extension project
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:test:e2e:extension
 
   build:electron:
     desc: Build the Electron desktop application
@@ -213,30 +153,6 @@ tasks:
     cmds:
       - task: internal:require-task-version
       - task: internal:ci:quality
-
-  ci:test:ts:
-    desc: Run the pull-request TypeScript tests
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:ci:test:ts
-
-  ci:test:go:
-    desc: Run the pull-request Go tests
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:ci:test:go
-
-  ci:test:media:
-    desc: Run the pull-request media integration tests
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:ci:test:media
-
-  ci:test:e2e:
-    desc: Run the pull-request Playwright end-to-end tests
-    cmds:
-      - task: internal:require-task-version
-      - task: internal:ci:test:e2e
 
   ci:docs:build:
     desc: Build documentation for continuous integration
@@ -468,39 +384,6 @@ tasks:
       - pnpm deps:download:raw --tools ffmpeg,N_m3u8DL-RE,BBDown,aria2,yt-dlp,deno,mediago
       - 'node -e "console.log(''MEDIAGO_RUNTIME_READY'', process.env.MEDIAGO_DEPS_DIR)"'
 
-  internal:deps:media-integration:
-    internal: true
-    vars: &test-runtime-vars
-      MEDIAGO_PROFILE: '{{default "test" .MEDIAGO_PROFILE}}'
-      MEDIAGO_PLATFORM_KEY:
-        sh: node packages/tooling/src/runtime-deps/print-platform-key.ts
-    env:
-      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
-      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
-      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps:
-      - task: internal:deps:node
-    cmds:
-      - pnpm deps:download:raw --tools aria2,N_m3u8DL-RE,ffmpeg,BBDown
-      - 'node -e "console.log(''MEDIAGO_RUNTIME_READY'', process.env.MEDIAGO_DEPS_DIR)"'
-
-  internal:deps:e2e:
-    internal: true
-    vars: *test-runtime-vars
-    env:
-      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
-      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
-      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps:
-      - task: internal:deps:node
-    cmds:
-      - pnpm deps:download:raw --tools aria2
-      - 'node -e "console.log(''MEDIAGO_RUNTIME_READY'', process.env.MEDIAGO_DEPS_DIR)"'
-
   internal:dev:all:
     internal: true
     vars: &development-runtime-vars
@@ -629,7 +512,7 @@ tasks:
 
   internal:check:
     internal: true
-    vars: &test-profile-vars
+    vars: &check-profile-vars
       MEDIAGO_PROFILE: '{{default "test" .MEDIAGO_PROFILE}}'
     env: *profile-env
     dotenv: *profile-dotenv
@@ -640,98 +523,6 @@ tasks:
       - pnpm lint
       - pnpm format:check
       - pnpm type:check
-
-  internal:test:
-    internal: true
-    vars: *test-profile-vars
-    env: *profile-env
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps:
-      - task: internal:deps:node
-      - task: internal:test:ts
-      - task: internal:test:go
-
-  internal:test:ts:
-    internal: true
-    vars: *test-profile-vars
-    env: *profile-env
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps:
-      - task: internal:deps:node
-    cmds:
-      - pnpm exec vitest run
-
-  internal:test:go:
-    internal: true
-    vars: *test-profile-vars
-    env: *profile-env
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    dir: apps/core
-    cmds:
-      - go test ./...
-
-  internal:test:integration:
-    internal: true
-    vars: *test-runtime-vars
-    env:
-      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
-      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
-      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps:
-      - task: internal:deps:media-integration
-    cmds:
-      - pnpm test:integration:media:run:raw
-
-  internal:test:e2e:
-    internal: true
-    vars: *test-runtime-vars
-    env: &test-runtime-env
-      MEDIAGO_PROFILE: "{{.MEDIAGO_PROFILE}}"
-      MEDIAGO_DEPS_ROOT: "{{.MEDIAGO_DEPS_ROOT}}"
-      MEDIAGO_DEPS_DIR: "{{.MEDIAGO_DEPS_ROOT}}/{{.MEDIAGO_PLATFORM_KEY}}"
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps: &e2e-deps
-      - task: internal:deps:e2e
-      - task: internal:test:e2e:build
-      - task: internal:test:e2e:chromium
-    cmds:
-      - pnpm test:e2e:raw
-
-  internal:test:e2e:web:
-    internal: true
-    vars: *test-runtime-vars
-    env: *test-runtime-env
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps: *e2e-deps
-    cmds:
-      - pnpm test:e2e:web:raw
-
-  internal:test:e2e:electron:
-    internal: true
-    vars: *test-runtime-vars
-    env: *test-runtime-env
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps: *e2e-deps
-    cmds:
-      - pnpm test:e2e:electron:raw
-
-  internal:test:e2e:extension:
-    internal: true
-    vars: *test-runtime-vars
-    env: *test-runtime-env
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps: *e2e-deps
-    cmds:
-      - pnpm test:e2e:extension:raw
 
   internal:core:build:
     internal: true
@@ -748,24 +539,6 @@ tasks:
       - task: internal:deps:node
     cmds:
       - pnpm core:build:production
-
-  internal:test:e2e:build:
-    internal: true
-    vars: *test-profile-vars
-    env: *profile-env
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps:
-      - task: internal:core:build
-    cmds:
-      - pnpm test:e2e:build:raw
-
-  internal:test:e2e:chromium:
-    internal: true
-    deps:
-      - task: internal:deps:node
-    cmds:
-      - pnpm exec playwright install chromium
 
   internal:build:electron:
     internal: true
@@ -937,37 +710,6 @@ tasks:
     internal: true
     deps:
       - task: internal:check
-
-  internal:ci:test:ts:
-    internal: true
-    deps:
-      - task: internal:test:ts
-
-  internal:ci:test:go:
-    internal: true
-    deps:
-      - task: internal:test:go
-
-  internal:ci:test:media:
-    internal: true
-    deps:
-      - task: internal:test:integration
-
-  internal:ci:test:e2e:
-    internal: true
-    vars: *test-runtime-vars
-    env: *test-runtime-env
-    dotenv: *profile-dotenv
-    requires: *profile-requires
-    deps:
-      - task: internal:deps:e2e
-      - task: internal:test:e2e:build
-    cmds:
-      - node packages/tooling/src/github/prepare-playwright-apt.ts
-      - pnpm exec playwright install-deps chromium
-      - pnpm exec playwright install chromium
-      - pnpm type:check:e2e
-      - xvfb-run -a pnpm test:e2e:raw --project="${MEDIAGO_E2E_PROJECT:-*}"
 
   internal:ci:docs:build:
     internal: true

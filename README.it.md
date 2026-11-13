@@ -175,7 +175,6 @@ modifiche, esegui:
 
 ```shell
 task check
-task test
 ```
 
 ## 🛠️ Tecnologie

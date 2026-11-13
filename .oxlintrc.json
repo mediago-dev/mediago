@@ -32,13 +32,6 @@
         "react-hooks/rules-of-hooks": "error",
         "react-hooks/exhaustive-deps": "warn"
       }
-    },
-    {
-      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"],
-      "rules": {
-        "no-console": "off",
-        "typescript/no-explicit-any": "off"
-      }
     }
   ],
   "ignorePatterns": [

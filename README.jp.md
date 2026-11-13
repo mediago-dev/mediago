@@ -145,7 +145,6 @@ Web のみを開発する場合は `task dev:web`、デスクトップのみの�
 
 ```shell
 task check
-task test
 ```
 
 ## 🛠️ 技術スタック

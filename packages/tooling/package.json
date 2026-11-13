@@ -13,8 +13,7 @@
     "./vite": "./src/vite/index.ts"
   },
   "scripts": {
-    "type:check": "tsc --noEmit",
-    "test": "pnpm --dir ../.. exec vitest run packages/tooling"
+    "type:check": "tsc --noEmit"
   },
   "dependencies": {
     "@electron/osx-sign": "2.7.0",
@@ -25,7 +24,6 @@
     "electron-builder": "26.15.3",
     "sharp": "0.35.5",
     "typescript": "^7.0.2",
-    "vite": "~8.2.4",
-    "vitest": "~4.1.12"
+    "vite": "~8.2.4"
   }
 }

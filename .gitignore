@@ -12,9 +12,6 @@ log
 release
 !packages/tooling/src/release/
 !packages/tooling/src/release/**
-coverage/
-playwright-report/
-test-results/
 go.work.sum
 apps/core/bin/
 apps/electron/bin/
