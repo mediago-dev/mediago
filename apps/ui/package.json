@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@mediago/tooling": "workspace:*",
-    "@tailwindcss/postcss": "^4.3.3",
+    "@tailwindcss/postcss": "^4.3.5",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.3.0",
     "@types/qs": "^6.15.1",
