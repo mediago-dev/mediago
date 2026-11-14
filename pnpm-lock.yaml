@@ -77,8 +77,8 @@ importers:
         specifier: 2.18.2
         version: 2.18.2(electron@43.8.3(supports-color@10.2.2))
       '@ghostery/adblocker-electron-preload':
-        specifier: ^2.18.2
-        version: 2.18.2(electron@43.8.3(supports-color@10.2.2))
+        specifier: ^2.20.3
+        version: 2.20.3(electron@43.8.3(supports-color@10.2.2))
       '@inversifyjs/binding-decorators':
         specifier: ^3.0.0
         version: 3.0.0(inversify@8.2.3(reflect-metadata@0.2.2))(reflect-metadata@0.2.2)
@@ -942,11 +942,11 @@ packages:
   '@fontsource-variable/source-serif-4@5.3.0':
     resolution: {integrity: sha512-9vch9WqxjaaA+1o9Ur8pOgIGbCYLjRReOUel23A6lOpD1syptgjtkORevvNmldJ5kGXQL29onQUqI5Ltz0s3bQ==}
 
-  '@ghostery/adblocker-content@2.18.2':
-    resolution: {integrity: sha512-TOe/b4KOBFEc9OjLG+wvgamGcSTIPSDBAL5YSa8lzjBsoSl8IDnfOjeJDldlLacsC/JEUMLkZIDDNknEolJVqg==}
+  '@ghostery/adblocker-content@2.20.3':
+    resolution: {integrity: sha512-tuV4T5wPbfVdcY6dnM1dfaXSazpStx7ZI54bd2l9r93yPZfZoVsHR1Uxf/A8ETBMXJPQ92JMDQzmV8hOgpyq+w==}
 
-  '@ghostery/adblocker-electron-preload@2.18.2':
-    resolution: {integrity: sha512-l941hNABXsUMx1oqVSHjRMQXWFCmlC/DF8rHBBOH+A0uxLjL6r62Fl6KsL7F4hxlg3dyWrDPEIcKzaxWqRdfOg==}
+  '@ghostery/adblocker-electron-preload@2.20.3':
+    resolution: {integrity: sha512-374UtV7B9XuN6x8zhJf0OqFQ/JYJAZeLFusQ8danvkgf7fz6YkBWMhr3gfxODFCRXGc99eYhboh5QIyvPIgnfA==}
     peerDependencies:
       electron: '>11'
 
@@ -957,6 +957,9 @@ packages:
 
   '@ghostery/adblocker-extended-selectors@2.18.2':
     resolution: {integrity: sha512-doKNShBk3+czQL08UkrysHkCPeG/kNPlXvz3DH7SXxD9Y78ovWkEAhjeR+upoan3fomJJuK3dD+IrlofnjckYw==}
+
+  '@ghostery/adblocker-extended-selectors@2.20.3':
+    resolution: {integrity: sha512-cwloe8GXCoiLor685fOCsx3PyDFvsVnYdCO/MMAyZ4Dr5q8cgSHijqqYSU2fWgoWfz1Fhfepj7mGbQnrvUR37w==}
 
   '@ghostery/adblocker@2.18.2':
     resolution: {integrity: sha512-x6zEkf1dHSN0t4ExLmuN6nIgH0oAi6laoKe5yGsiIB4jkEvutea1PJgxgRUIjWfNbDRmkf4GjUtuqQFZgvQG1w==}
@@ -5484,27 +5487,29 @@ snapshots:
 
   '@fontsource-variable/source-serif-4@5.3.0': {}
 
-  '@ghostery/adblocker-content@2.18.2':
+  '@ghostery/adblocker-content@2.20.3':
     dependencies:
-      '@ghostery/adblocker-extended-selectors': 2.18.2
+      '@ghostery/adblocker-extended-selectors': 2.20.3
 
-  '@ghostery/adblocker-electron-preload@2.18.2(electron@43.8.3(supports-color@10.2.2))':
+  '@ghostery/adblocker-electron-preload@2.20.3(electron@43.8.3(supports-color@10.2.2))':
     dependencies:
-      '@ghostery/adblocker-content': 2.18.2
+      '@ghostery/adblocker-content': 2.20.3
       electron: 43.8.3(supports-color@10.2.2)
 
   '@ghostery/adblocker-electron@2.18.2(electron@43.8.3(supports-color@10.2.2))':
     dependencies:
       '@ghostery/adblocker': 2.18.2
-      '@ghostery/adblocker-electron-preload': 2.18.2(electron@43.8.3(supports-color@10.2.2))
+      '@ghostery/adblocker-electron-preload': 2.20.3(electron@43.8.3(supports-color@10.2.2))
       electron: 43.8.3(supports-color@10.2.2)
       tldts-experimental: 7.4.11
 
   '@ghostery/adblocker-extended-selectors@2.18.2': {}
 
+  '@ghostery/adblocker-extended-selectors@2.20.3': {}
+
   '@ghostery/adblocker@2.18.2':
     dependencies:
-      '@ghostery/adblocker-content': 2.18.2
+      '@ghostery/adblocker-content': 2.20.3
       '@ghostery/adblocker-extended-selectors': 2.18.2
       '@ghostery/url-parser': 1.3.1
       '@remusao/guess-url-type': 2.1.0
