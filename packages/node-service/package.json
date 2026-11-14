@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.3.0",
-    "bumpp": "^12.2.1",
+    "bumpp": "^12.3.0",
     "tsdown": "^0.22.14",
     "typescript": "^7.0.2"
   },
