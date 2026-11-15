@@ -1,0 +1,165 @@
+const resource = {
+  popup: {
+    header: "MediaGo 資源偵測",
+    workspaceLabel: "資源工作台",
+    pageContext: "目前頁面",
+    untitledPage: "未命名頁面",
+    noPageUrl: "尚無頁面位址",
+    detectedCount_one: "已偵測 {{count}} 個資源",
+    detectedCount_other: "已偵測 {{count}} 個資源",
+    resourceList: "偵測到的資源",
+    clear: "清空",
+    clearLabel: "清空偵測到的資源",
+    importAll: "匯入全部",
+    importAllWithCount: "匯入全部（{{count}}）",
+    importing: "正在匯入資源",
+    settings: "設定",
+    imported: "已匯入 {{count}} 個任務",
+    importFailed: "匯入失敗",
+    loadingTitle: "正在掃描目前頁面",
+    loadErrorTitle: "無法載入資源",
+    loadErrorHint: "擴充功能讀取頁面資料時遇到問題，請重新嘗試。",
+    retry: "重試",
+    setupTitle: "完成連線設定",
+    setupHint: "請先設定 MediaGo 伺服器位址，再匯入偵測到的資源。",
+    openConnectionSettings: "開啟連線設定",
+    connectionErrorTitle: "MediaGo 目前離線",
+    connectionErrorHint: "請檢查 MediaGo 是否執行，以及連線設定是否正確。",
+  },
+  status: {
+    detecting: "偵測中",
+    unavailable: "狀態不可用",
+    schemaMode: "Schema 模式",
+    notConfigured: "未設定",
+    connectionFailed: "連線失敗",
+  },
+  empty: {
+    title: "目前頁面暫未偵測到可下載資源。",
+    hint: "瀏覽網頁過程中命中規則時會自動出現在這裡。",
+    reloadPage: "重新整理目前頁面",
+    openSettings: "開啟設定",
+  },
+  source: {
+    unnamed: "(未命名)",
+    import: "匯入",
+    importNamed: "匯入 {{name}}",
+    inspecting: "正在辨識",
+    autoBest: "自動最佳",
+    qualityUnknown: "畫質未知",
+  },
+  options: {
+    pageTitle: "MediaGo 擴充功能設定",
+    workspaceLabel: "瀏覽器工作台",
+    settingsLabel: "設定",
+    description: "設定偵測資源傳送到 MediaGo 的方式，並管理擴充功能偏好。",
+    preferencesLabel: "擴充功能偏好",
+    loadingTitle: "正在載入設定",
+    loadErrorTitle: "無法載入設定",
+    loadErrorHint: "擴充功能無法讀取已儲存的設定，請重新載入。",
+    retry: "重試",
+    language: {
+      title: "介面語言",
+      description:
+        '影響 popup 與設定頁的顯示語言。選擇"跟隨系統"時按瀏覽器 UI 語言自動挑選。',
+      system: "跟隨系統",
+      zh: "中文",
+      en: "English",
+      it: "Italiano",
+      zhTW: "繁體中文",
+    },
+    server: {
+      title: "呼叫方式",
+      eyebrow: "連線",
+      modeLegend: "MediaGo 連線方式",
+      description:
+        "為偵測到的資源選擇一種明確的傳送路徑。連線失敗會保持可見，直到你修復連線或切換模式。",
+      modeSchemaTitle: "Desktop / Schema 協議",
+      modeSchemaDesc:
+        "透過 mediago-community:// 協議喚起桌面版，並開啟預填的下載確認表單。桌面版未執行時會自動拉起。",
+      modeDesktopHttpTitle: "Desktop / HTTP 本地介面",
+      modeDesktopHttpDesc:
+        "透過 {{base}} 與執行中的桌面版通訊。要求 Desktop 處於執行狀態，但無需授權彈窗。",
+      modeDockerHttpTitle: "Docker / 自建服務 / HTTP",
+      modeDockerHttpDesc:
+        "連線遠端 Docker 部署或任何自建 MediaGo 伺服器端。需要填寫伺服器位址；啟用鑑權時額外填 API Key。",
+      serverUrlLabel: "伺服器 URL",
+      serverUrlPlaceholder: "http://your-host:8899",
+      apiKeyLabel: "API Key",
+      apiKeyOptional: "（可選）",
+      apiKeyPlaceholder: "留空則不傳送 X-API-Key",
+      schemaNoteLead: "透過新的",
+      schemaNoteBody: "Share Intent 協議喚起 MediaGo Desktop 並開啟確認表單。",
+      schemaNoteMid:
+        'Share Intent 協議呼叫桌面版。目前分頁 會跳到協議 URL，Chrome 首次彈出 "Open MediaGo-community?" 對話方塊時，請點',
+      schemaAllow: "允許",
+      schemaAlways: "總是允許",
+      schemaAfter: "後續瀏覽器不再重複確認，MediaGo 仍會開啟下載表單供你核對。",
+      limitationLabel: "限制",
+      limitationBody:
+        "Schema 一次只能傳送一條且不傳遞請求標頭；批次或帶 Headers 的任務請切 HTTP 模式。",
+      desktopHttpNoteLead: "固定連線",
+      desktopHttpNoteTail:
+        '。桌面版隨應用啟動自動監聽，點選"測試連線"可確認目前是否線上。',
+    },
+    importBehaviour: {
+      title: "匯入行為",
+      httpDescription: "HTTP 模式可以直接新增任務，並可選擇是否立即開始下載。",
+      schemaReviewOnly:
+        "Schema 模式只負責喚起 MediaGo 並開啟確認表單，不會自動建立或開始下載。",
+      schemaDisabled: "Schema 模式始終開啟確認表單，因此無法立即開始下載。",
+      downloadNowLabel: "立即開始下載",
+      downloadNowDesc:
+        "開：任務進佇列並立刻開跑。關：僅加入下載列表，等使用者手動觸發。僅對 HTTP 模式生效。",
+    },
+    pageQuickAction: {
+      title: "頁面快捷按鈕",
+      description: "在支援的頁面右上角顯示“新增到 MediaGo”。",
+      enabledLabel: "顯示頁面快捷按鈕",
+      enabledDescription:
+        "點選後把目前頁面加入擴充功能 彈出式視窗清單，並自動開啟列表。",
+    },
+    rules: {
+      title: "嗅探規則",
+      description: "簡要展示與 MediaGo Desktop 共享的資源匹配規則。",
+      descriptionLead: "目前規則由",
+      descriptionTail: "集中維護，桌面版和瀏覽器擴充功能共享同一份。",
+      m3u8Label: "HLS / m3u8 流",
+      directLabel: "直連媒體檔案",
+      bilibiliLabel: "Bilibili 影片頁",
+      youtubeLabel: "YouTube",
+    },
+    about: {
+      title: "關於",
+      productName: "MediaGo 擴充功能",
+      description: "MediaGo 的瀏覽器資源偵測助手",
+      version: "版本 {{version}}",
+    },
+  },
+  common: {
+    close: "關閉",
+    notifications: "通知",
+    save: "儲存",
+    saved: "已儲存",
+    saveFailed: "儲存失敗",
+    testConnection: "測試連線",
+    testing: "測試中",
+    saving: "儲存中",
+  },
+  errors: {
+    serverUrlRequired: "請先填寫伺服器 URL",
+    dockerServerRequired: "Docker 模式必須填寫伺服器 URL",
+    schemaBatchNotSupported:
+      "Schema 模式一次只能匯入一條；批次匯入請切換到 HTTP 模式（Options 頁）",
+    schemaHeadersNotSupported:
+      "Schema 模式不傳遞請求標頭；請切換到 HTTP 模式匯入該資源",
+    schemaNoActiveTab: "目前視窗沒有作用中的分頁，無法發起協議呼叫",
+    schemaInvoked:
+      "已喚起 mediago-community:// 協議，如 Desktop 視窗未出現請確認是否已安裝",
+    serverNotConfigured: "MediaGo 服務未設定",
+    dockerNotConfigured: "Docker 模式未設定伺服器位址，請先到設定頁填寫",
+    unknown: "{{detail}}",
+  },
+};
+
+export default resource;
+export type ExtensionResources = typeof resource;

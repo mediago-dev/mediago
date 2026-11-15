@@ -28,6 +28,7 @@ export function LanguageCard({
     { value: "zh", title: t("options.language.zh") },
     { value: "en", title: t("options.language.en") },
     { value: "it", title: t("options.language.it") },
+    { value: "zh-TW", title: t("options.language.zhTW") },
   ];
 
   return (

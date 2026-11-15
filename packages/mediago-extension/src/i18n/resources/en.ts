@@ -71,6 +71,7 @@ const resource: ExtensionResources = {
       zh: "中文",
       en: "English",
       it: "Italiano",
+      zhTW: "Traditional Chinese",
     },
     server: {
       title: "Dispatch Mode",

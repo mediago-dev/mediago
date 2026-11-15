@@ -183,6 +183,7 @@ export enum AppLanguage {
   ZH = "zh",
   EN = "en",
   IT = "it",
+  ZH_TW = "zh-TW",
 }
 
 export interface DownloadContext {

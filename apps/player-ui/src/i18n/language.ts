@@ -1,4 +1,4 @@
-export type PlayerLanguage = "en" | "zh-CN" | "it";
+export type PlayerLanguage = "en" | "zh-CN" | "it" | "zh-TW";
 
 export function resolvePlayerLanguage(
   languages: readonly string[] = navigator.languages,
@@ -7,6 +7,14 @@ export function resolvePlayerLanguage(
     const normalizedLanguage = language.toLowerCase();
 
     if (normalizedLanguage.startsWith("zh")) {
+      if (
+        normalizedLanguage.includes("hant") ||
+        normalizedLanguage.startsWith("zh-tw") ||
+        normalizedLanguage.startsWith("zh-hk") ||
+        normalizedLanguage.startsWith("zh-mo")
+      ) {
+        return "zh-TW";
+      }
       return "zh-CN";
     }
 

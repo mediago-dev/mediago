@@ -71,6 +71,7 @@ const resource: ExtensionResources = {
       zh: "中文",
       en: "English",
       it: "Italiano",
+      zhTW: "Cinese tradizionale",
     },
     server: {
       title: "Modalità spedizione",

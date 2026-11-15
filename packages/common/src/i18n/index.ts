@@ -12,4 +12,5 @@ export {
   en,
   it,
   zh,
+  zhTW,
 } from "./resources";

@@ -1,0 +1,14 @@
+{
+  "appName": {
+    "message": "MediaGo 媒體偵測",
+    "description": "Extension name shown in the Chrome toolbar and chrome://extensions."
+  },
+  "appDescription": {
+    "message": "偵測任意網頁上可下載的影片 / 音訊網址，一鍵傳送到 MediaGo 伺服器。",
+    "description": "Extension description shown in chrome://extensions."
+  },
+  "actionTitle": {
+    "message": "MediaGo 媒體偵測",
+    "description": "Tooltip shown when hovering the toolbar icon."
+  }
+}

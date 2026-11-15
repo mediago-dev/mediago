@@ -10,7 +10,7 @@ import type { DownloadType, HLSMediaInfo } from "@mediago/common";
  * This maps 1:1 to the language radio on the options
  * page and is resolved to a concrete locale at i18n bootstrap time.
  */
-export type ExtensionLanguage = "system" | "zh" | "en" | "it";
+export type ExtensionLanguage = "system" | "zh" | "en" | "it" | "zh-TW";
 
 /**
  * Wire-format for localisable text produced in the service worker and
