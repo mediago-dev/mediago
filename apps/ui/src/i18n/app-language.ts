@@ -56,7 +56,10 @@ export function createAppLanguageSynchronizer({
   return async (preference: string | undefined): Promise<void> => {
     const version = ++requestVersion;
     const usesSystemLanguage =
-      preference !== "zh" && preference !== "en" && preference !== "it";
+      preference !== "zh" &&
+      preference !== "en" &&
+      preference !== "it" &&
+      preference !== "zh-TW";
     const systemLanguage = usesSystemLanguage
       ? await readPreferredSystemLanguage()
       : undefined;

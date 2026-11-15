@@ -16,9 +16,21 @@ export interface LanguageChangeSource {
   off(event: "languageChanged", listener: (language: string) => void): unknown;
 }
 
-function concreteDocumentLanguage(language: string): "zh" | "en" | "it" {
+function concreteDocumentLanguage(
+  language: string,
+): "zh" | "en" | "it" | "zh-TW" {
   const normalized = language.toLowerCase();
-  if (normalized.startsWith("zh")) return "zh";
+  if (normalized.startsWith("zh")) {
+    if (
+      normalized.includes("hant") ||
+      normalized.startsWith("zh-tw") ||
+      normalized.startsWith("zh-hk") ||
+      normalized.startsWith("zh-mo")
+    ) {
+      return "zh-TW";
+    }
+    return "zh";
+  }
   if (normalized.startsWith("it")) return "it";
   return "en";
 }

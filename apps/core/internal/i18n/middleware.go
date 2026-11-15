@@ -14,9 +14,10 @@ var (
 		language.English,           // index 0, fallback
 		language.SimplifiedChinese, // index 1
 		language.Italian,           // index 2
+		language.TraditionalChinese, // index 3
 	}
 	matcher        = language.NewMatcher(supported)
-	supportedCodes = []string{"en", "zh", "it"}
+	supportedCodes = []string{"en", "zh", "it", "zh-TW"}
 )
 
 // Middleware resolves the request language and stores it in gin.Context.

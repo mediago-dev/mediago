@@ -32,6 +32,20 @@ const resources = {
       refresh: "刷新",
     },
   },
+  "zh-TW": {
+    translation: {
+      close: "關閉",
+      emptyDescription: "已完成下載的影片會顯示在這裡，供你播放。",
+      emptyTitle: "尚無可播放的影片",
+      errorDescription: "請檢查 MediaGo 服務後重試。",
+      errorTitle: "無法載入影片",
+      loadingDescription: "正在準備媒體庫…",
+      loadingTitle: "正在載入影片",
+      pageTitle: "MediaGo 播放器",
+      playlist: "播放列表",
+      refresh: "重新整理",
+    },
+  },
   it: {
     translation: {
       close: "Chiudi",
@@ -58,7 +72,7 @@ export const playerI18nReady = i18n.use(initReactI18next).init({
   },
   lng: playerLanguage,
   resources,
-  supportedLngs: ["en", "zh-CN", "it"],
+  supportedLngs: ["en", "zh-CN", "it", "zh-TW"],
 });
 
 export { i18n as playerI18n };

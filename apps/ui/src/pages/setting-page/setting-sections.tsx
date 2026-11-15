@@ -140,6 +140,7 @@ export const BasicSettingsCard = memo(function BasicSettingsCard() {
           { label: t("chinese"), value: AppLanguage.ZH },
           { label: t("english"), value: AppLanguage.EN },
           { label: t("italian"), value: AppLanguage.IT },
+          { label: t("traditionalChinese"), value: AppLanguage.ZH_TW },
         ]}
       />
 

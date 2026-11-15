@@ -6,7 +6,7 @@ export const BASE_I18N_OPTIONS = {
   },
 } as const;
 
-export type ResolvedAppLanguage = "zh" | "en" | "it";
+export type ResolvedAppLanguage = "zh" | "en" | "it" | "zh-TW";
 
 /**
  * Resolve a stored AppStore.language value to a real i18n key.
@@ -22,12 +22,25 @@ export function resolveAppLanguage(
   language: string | undefined,
   systemLocale: string | undefined,
 ): ResolvedAppLanguage {
-  if (language === "zh" || language === "en" || language === "it") {
+  if (
+    language === "zh" ||
+    language === "en" ||
+    language === "it" ||
+    language === "zh-TW"
+  ) {
     return language;
   }
 
   const normalizedSystemLocale = (systemLocale ?? "").toLowerCase();
   if (normalizedSystemLocale.startsWith("zh")) {
+    if (
+      normalizedSystemLocale.includes("hant") ||
+      normalizedSystemLocale.startsWith("zh-tw") ||
+      normalizedSystemLocale.startsWith("zh-hk") ||
+      normalizedSystemLocale.startsWith("zh-mo")
+    ) {
+      return "zh-TW";
+    }
     return "zh";
   }
   if (normalizedSystemLocale.startsWith("it")) {

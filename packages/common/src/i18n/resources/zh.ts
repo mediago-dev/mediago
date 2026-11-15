@@ -556,4 +556,5 @@ Agent 必须能够访问此 URL。localhost 或 127.0.0.1 地址仅在 Agent 与
   dockerLastSynced: "上次同步：{{time}}",
   batchDeleteResult: "已删除 {{success}} 个任务，{{failed}} 个失败",
   batchDownloadResult: "已启动 {{success}} 个任务，{{failed}} 个失败",
+  traditionalChinese: "繁体中文",
 };

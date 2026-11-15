@@ -582,4 +582,5 @@ Se non puoi modificare direttamente le impostazioni, restituisci il frammento di
   dockerLastSynced: "Ultima sincronizzazione: {{time}}",
   batchDeleteResult: "Eliminate {{success}} attività; {{failed}} non riuscite",
   batchDownloadResult: "Avviate {{success}} attività; {{failed}} non riuscite",
+  traditionalChinese: "Cinese tradizionale",
 };

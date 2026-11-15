@@ -576,4 +576,5 @@ If you cannot modify the settings directly, return the exact configuration snipp
   dockerLastSynced: "Last synced: {{time}}",
   batchDeleteResult: "Deleted {{success}} tasks; {{failed}} failed",
   batchDownloadResult: "Started {{success}} tasks; {{failed}} failed",
+  traditionalChinese: "Traditional Chinese",
 };

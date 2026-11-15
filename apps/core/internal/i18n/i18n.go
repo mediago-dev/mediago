@@ -148,6 +148,73 @@ var catalogs = map[string]map[string]string{
 		MsgVideoNotFound:      "未找到 ID 为 %d 的视频",
 		MsgConversionNotFound: "未找到 ID 为 %d 的转换记录",
 	},
+	"zh-TW": {
+		// Common
+		MsgOK:                  "操作成功",
+		MsgDeleted:             "已刪除",
+		MsgImported:            "已匯入",
+		MsgInvalidID:           "無效 ID",
+		MsgInvalidRequest:      "請求引數無效",
+		MsgInternalError:       "發生內部錯誤",
+		MsgSourcesCountInvalid: "來源數量必須在 1 到 20 個之間",
+
+		MsgDiscoveryNotFound:             "未找到素材發現任務",
+		MsgDiscoveryInvalidURL:           "素材發現 URL 必須使用 HTTP 或 HTTPS",
+		MsgDiscoveryInvalidMode:          "無效的素材發現模式",
+		MsgDiscoveryInvalidInspectURL:    "檢查模式需要直接的 M3U8 URL",
+		MsgDiscoveryExecutorUnavailable:  "瀏覽器素材發現執行器不可用",
+		MsgDiscoveryInspectorUnavailable: "HLS 檢查器不可用",
+		MsgDiscoveryQueueFull:            "素材發現佇列已滿",
+		MsgDiscoveryInvalidState:         "素材發現任務狀態無效",
+		MsgDiscoverySourceNotFound:       "未找到素材來源",
+		MsgDiscoveryDownloadUnavailable:  "下載持久化服務不可用",
+
+		// Auth
+		MsgUnauthorized:     "未授權",
+		MsgAPIKeyRequired:   "請提供 apiKey",
+		MsgAPIKeyAlreadySet: "apiKey 已設定",
+		MsgInvalidAPIKey:    "apiKey 無效",
+
+		MsgAuthSetupTokenInvalid: "初始化校驗碼缺失或無效",
+		MsgAuthSetupUnavailable:  "初始化校驗碼不可用，請聯絡伺服器管理員",
+		MsgAuthRateLimited:       "認證請求過於頻繁，請稍後重試",
+
+		// Task
+		MsgTaskCreated:          "任務建立成功",
+		MsgTaskEnqueued:         "任務已加入佇列",
+		MsgTaskNotFound:         "任務未找到",
+		MsgTaskStopped:          "任務已停止",
+		MsgTaskLogNotConfigured: "任務日誌儲存未設定",
+		MsgTaskLogNotFound:      "任務日誌未找到",
+		MsgTaskLogReadFailed:    "讀取任務日誌失敗",
+
+		// Download
+		MsgDownloadStarted: "下載已開始",
+		MsgDownloadStopped: "下載已停止",
+		MsgStatusUpdated:   "狀態已更新",
+
+		// Config
+		MsgConfigUpdated:    "設定已更新",
+		MsgConfigKeyUpdated: "設定鍵 '%s' 已更新",
+
+		// Util
+		MsgURLRequired: "缺少 url 引數",
+
+		// Favorite
+		MsgURLAlreadyExists: "URL 已存在",
+		MsgFavoriteNotFound: "未找到 ID 為 %d 的收藏",
+
+		// Event
+		MsgEventStreamFailed: "建立事件流失敗",
+
+		// Core
+		MsgUnsupportedType: "不支援的下載類型",
+		MsgBinNotFound:     "未找到對應類型的可執行檔案",
+
+		// DB
+		MsgVideoNotFound:      "未找到 ID 為 %d 的影片",
+		MsgConversionNotFound: "未找到 ID 為 %d 的轉換記錄",
+	},
 	"it": {
 		// Common
 		MsgOK:                  "Operazione riuscita",

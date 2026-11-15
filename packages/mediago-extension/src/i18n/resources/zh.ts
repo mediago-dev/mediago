@@ -65,6 +65,7 @@ const resource = {
       zh: "中文",
       en: "English",
       it: "Italiano",
+      zhTW: "繁体中文",
     },
     server: {
       title: "调用方式",
